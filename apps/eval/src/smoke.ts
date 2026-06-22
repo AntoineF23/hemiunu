@@ -120,35 +120,46 @@ async function main() {
     }
   });
 
-  await check("remember() appends a durable note to disk", () => {
-    const root = mkdtempSync(join(tmpdir(), "hemiunu-smoke-"));
-    mkdirSync(join(root, "context"), { recursive: true });
+  await check("remember() routes 'user' globally and 'memory' to the project", () => {
+    const userRoot = mkdtempSync(join(tmpdir(), "hemiunu-user-"));
+    const projectRoot = mkdtempSync(join(tmpdir(), "hemiunu-proj-"));
     try {
-      remember("user", "Smoke test note.", root);
-      const out = readFileSync(join(root, "context", "user.md"), "utf8");
-      assert(out.includes("Smoke test note."), "note should be written to user.md");
+      remember("user", "A user fact.", { userRoot, projectRoot });
+      remember("memory", "A project fact.", { userRoot, projectRoot });
+      // 'user' → the global user.md in the user data dir.
+      const user = readFileSync(join(userRoot, "user.md"), "utf8");
+      assert(user.includes("A user fact."), "user note should land in the global user.md");
+      // 'memory' → HEMIUNU.md at the project (launch folder) root.
+      const project = readFileSync(join(projectRoot, "HEMIUNU.md"), "utf8");
+      assert(project.includes("A project fact."), "project note should land in HEMIUNU.md");
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(userRoot, { recursive: true, force: true });
+      rmSync(projectRoot, { recursive: true, force: true });
     }
   });
 
-  await check("fresh clone seeds an EMPTY user.md from the template", () => {
-    // Simulate a clone: only the committed *.example templates are present.
-    const root = mkdtempSync(join(tmpdir(), "hemiunu-clone-"));
-    const ctx = join(root, "context");
+  await check("fresh install seeds an EMPTY global user.md from the template", () => {
+    // Simulate an install: the committed template ships in the app's context/;
+    // the live user.md is seeded into a separate user data dir.
+    const appRoot = mkdtempSync(join(tmpdir(), "hemiunu-app-"));
+    const userRoot = mkdtempSync(join(tmpdir(), "hemiunu-userdir-"));
+    const ctx = join(appRoot, "context");
     mkdirSync(ctx, { recursive: true });
     // Resolve from this file (apps/eval/src/) → repo root → context/.
     const repoCtx = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "context");
     try {
       copyFileSync(join(repoCtx, "user.md.example"), join(ctx, "user.md.example"));
-      copyFileSync(join(repoCtx, "memory.md.example"), join(ctx, "memory.md.example"));
-      seedContextFiles(root);
+      seedContextFiles({ appRoot, userRoot });
       // remember() appends facts as lines starting with "- "; a fresh template has none.
-      const user = loadContext(root).user;
+      const user = loadContext({ appRoot, userRoot }).user;
       assert(!/^- \S/m.test(user), `seeded user.md should carry no learned facts, got: ${user.slice(0, 80)}`);
-      assert(buildSystemPrompt(loadContext(root)).includes("Hemiunu"), "persona still wires through on a fresh clone");
+      assert(
+        buildSystemPrompt(loadContext({ appRoot, userRoot })).includes("Hemiunu"),
+        "persona still wires through on a fresh install",
+      );
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(appRoot, { recursive: true, force: true });
+      rmSync(userRoot, { recursive: true, force: true });
     }
   });
 

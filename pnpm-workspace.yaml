@@ -2,9 +2,8 @@ packages:
   - apps/*
   - packages/*
 
-allowBuilds:
-  esbuild: set this to true or false
-
+# esbuild (pulled in via tsx) ships a postinstall build script; approve it so
+# pnpm doesn't warn on install.
 onlyBuiltDependencies:
   - esbuild
 

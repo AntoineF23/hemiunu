@@ -669,15 +669,18 @@ function App({
   }
 
   async function showModels() {
-    const base = (process.env.ANTHROPIC_BASE_URL ?? "https://models.thiga.co").replace(
-      /\/+$/,
-      "",
-    );
+    // Default to Anthropic direct; a gateway is used only if one is configured.
+    const gateway = process.env.ANTHROPIC_BASE_URL?.trim();
+    const base = (gateway || "https://api.anthropic.com").replace(/\/+$/, "");
+    const key = process.env.ANTHROPIC_API_KEY ?? "";
+    // Anthropic direct authenticates with x-api-key; a gateway/proxy typically
+    // takes a Bearer token.
+    const headers: Record<string, string> = gateway
+      ? { Authorization: `Bearer ${key}` }
+      : { "x-api-key": key, "anthropic-version": "2023-06-01" };
     let ids: string[] = [];
     try {
-      const res = await fetch(`${base}/v1/models`, {
-        headers: { Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY ?? ""}` },
-      });
+      const res = await fetch(`${base}/v1/models`, { headers });
       const json = (await res.json()) as { data?: { id?: string }[] };
       ids = (json.data ?? []).map((m) => m.id).filter((x): x is string => Boolean(x));
     } catch (e) {
@@ -1004,10 +1007,13 @@ async function main() {
   // App default mcp.json + the user's own overlay (~/.hemiunu/mcp.json).
   const registry = loadMcpRegistry(home, join(dataDir, "mcp.json"));
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
-  // First run: seed each user's own (gitignored) user.md / memory.md from the
-  // committed *.example templates, so a fresh clone starts with blank memory.
-  seedContextFiles(home);
-  const systemPrompt = buildSystemPrompt(loadContext(home));
+  // Context comes from three homes: soul.md ships with the app (home); the
+  // global user.md lives in the user data dir (~/.hemiunu); the per-project
+  // HEMIUNU.md lives in the launch folder (cwd). First run seeds the global
+  // user.md from the committed template; project memory is created lazily.
+  const contextRoots = { appRoot: home, userRoot: dataDir, projectRoot: process.cwd() };
+  seedContextFiles(contextRoots);
+  const systemPrompt = buildSystemPrompt(loadContext(contextRoots));
 
   const handle: { clear: () => void } = { clear: () => {} };
   const app = render(

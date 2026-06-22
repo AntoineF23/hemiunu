@@ -6,8 +6,16 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
 /** save_prototype tool pattern (the prototyper's only tool). */
 const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
 
-/** Load a domain knowledge doc from context/knowledge/<name>.md ("" if absent). */
-function knowledge(name: string, root: string = process.cwd()): string {
+/**
+ * Load a domain knowledge doc from context/knowledge/<name>.md ("" if absent).
+ * These are committed app assets, so resolve them against HEMIUNU_HOME (the
+ * install dir) rather than the launch folder — otherwise running hemiunu from
+ * any other directory silently drops them (e.g. the prototyper's design guide).
+ */
+function knowledge(
+  name: string,
+  root: string = process.env.HEMIUNU_HOME ?? process.cwd(),
+): string {
   const path = join(root, "context", "knowledge", `${name}.md`);
   return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
 }

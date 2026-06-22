@@ -39,12 +39,15 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
   fan-out, not the model's sequential dispatch), each in its own isolated
   context, and merges the results. Genuinely parallel + no cross-contamination.
 - **File-based context construction** (Hermes-inspired): each turn the system
-  prompt is assembled from `context/soul.md` (persona), `context/user.md`
-  (learned user facts), and `context/memory.md` (durable notes). The agent
-  updates the latter two **autonomously** via a `remember` tool. `user.md` and
-  `memory.md` are **per-user and gitignored** — the repo ships empty
-  `*.md.example` templates, and the live files are seeded from them on first
-  run, so every clone starts with a blank slate.
+  prompt is assembled from three homes — `context/soul.md` (persona, ships with
+  the app), a **global** `user.md` of learned user facts in `~/.hemiunu/`
+  (carried into every project), and a **per-project** `HEMIUNU.md` at the root
+  of the folder you launched in (the agent's notes about *this* project, like a
+  `CLAUDE.md`). The agent updates the latter two **autonomously** via a
+  `remember` tool (`target: "user"` → global, `"memory"` → this project). The
+  global `user.md` is seeded empty from the committed `user.md.example` on first
+  run; per-project `HEMIUNU.md` files are created only when the agent first saves
+  a note there.
 - **Persistent conversations** in SQLite (`~/.hemiunu/hemiunu.db`) — list,
   resume, replay.
 - **Adaptive context management** — per-model context window with automatic
@@ -110,7 +113,6 @@ corepack pnpm link --global   # optional: expose the `hemiunu` command
 | `NOTION_TOKEN`, `TAVILY_API_KEY` | *Optional.* Enable the Notion / Tavily MCP servers. |
 | `HEMIUNU_THINKING_BUDGET` | Extended-thinking tokens. `0`/unset = disabled (cheaper, works everywhere). |
 | `HEMIUNU_CONTEXT_WINDOW` / `HEMIUNU_COMPACT_THRESHOLD` | Context window override / auto-compaction threshold (default `0.5`). |
-| `NOTION_TOKEN` | Notion integration token — connects the Notion MCP server. |
 
 ### Connecting MCP servers
 
@@ -152,8 +154,9 @@ packages/
   agent-core/   # runTurn() — SDK query() wrapper: model/env/thinking config, remember tool
   memory/       # context loader (soul/user/memory) + remember() + SQLite conversation store
   mcp/          # mcp.json registry — stdio/http/sse, ${ENV} interpolation, auto-skip
-context/         # soul.md (persona, tracked) · *.md.example templates (tracked)
-                 #   user.md / memory.md are per-user, gitignored, seeded on first run
+context/         # soul.md (persona) · knowledge/design.md · user.md.example template
+                 #   global user.md lives in ~/.hemiunu; per-project memory is
+                 #   a HEMIUNU.md at the root of the folder you launch in
 mcp.json         # connected MCP servers
 ```
 

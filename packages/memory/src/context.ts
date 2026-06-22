@@ -5,11 +5,14 @@ import {
   mkdirSync,
   readFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export interface AgentContext {
+  /** Persona — a committed app asset (context/soul.md, ships with the code). */
   soul: string;
+  /** Global per-user memory — facts about the user, carried across all projects. */
   user: string;
+  /** Per-project memory — the agent's notes about the launch folder (HEMIUNU.md). */
   memory: string;
 }
 
@@ -18,58 +21,102 @@ export type MemoryTarget = "user" | "memory";
 const DEFAULT_SOUL =
   "You are Hemiunu, a product agent for a product team. Be professional and concise, with simple, precise vocabulary. Answer directly; if you lack information, say so in one line.";
 
+/** Persona file, relative to the app/install dir. */
+const SOUL_FILE = join("context", "soul.md");
+/** Global per-user memory file (in the user data dir) + its committed template. */
+const USER_FILE = "user.md";
+const USER_TEMPLATE = join("context", "user.md.example");
+/** Per-project memory file — at the root of the launch folder (CLAUDE.md-style). */
+export const PROJECT_MEMORY_FILE = "HEMIUNU.md";
+
 function read(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
 }
 
-export function contextDir(root: string = process.cwd()): string {
-  return join(root, "context");
+/**
+ * The three independent homes the context is assembled from. Each defaults to
+ * `appRoot` (which defaults to cwd), so a single-directory caller — e.g. a test
+ * that drops every file in one temp dir — still works with no roots passed.
+ */
+export interface ContextRoots {
+  /** Install dir — committed assets (soul.md, knowledge/, templates). */
+  appRoot?: string;
+  /** Per-user data dir (e.g. ~/.hemiunu) — the global user.md. */
+  userRoot?: string;
+  /** Launch folder — the per-project HEMIUNU.md. */
+  projectRoot?: string;
 }
 
-/** Load soul.md / user.md / memory.md from the context/ directory. */
-export function loadContext(root: string = process.cwd()): AgentContext {
-  const dir = contextDir(root);
+function resolveRoots(r: ContextRoots): Required<ContextRoots> {
+  const appRoot = r.appRoot ?? process.cwd();
   return {
-    soul: read(join(dir, "soul.md")) || DEFAULT_SOUL,
-    user: read(join(dir, "user.md")),
-    memory: read(join(dir, "memory.md")),
+    appRoot,
+    userRoot: r.userRoot ?? appRoot,
+    projectRoot: r.projectRoot ?? appRoot,
   };
 }
 
-/** Assemble the system prompt: soul + (learned user facts) + (durable memory). */
+/**
+ * Load the agent's context from its three homes:
+ * - soul.md    — persona, ships with the app (appRoot)
+ * - user.md    — global per-user memory, in the user data dir (userRoot)
+ * - HEMIUNU.md — per-project memory, in the launch folder (projectRoot)
+ *
+ * Reads and the `remember` writes target the same paths, so memory is consistent
+ * across sessions and independent of which folder hemiunu was launched in.
+ */
+export function loadContext(r: ContextRoots = {}): AgentContext {
+  const { appRoot, userRoot, projectRoot } = resolveRoots(r);
+  return {
+    soul: read(join(appRoot, SOUL_FILE)) || DEFAULT_SOUL,
+    user: read(join(userRoot, USER_FILE)),
+    memory: read(join(projectRoot, PROJECT_MEMORY_FILE)),
+  };
+}
+
+/** Assemble the system prompt: soul + (global user facts) + (this project's notes). */
 export function buildSystemPrompt(ctx: AgentContext): string {
   const parts = [ctx.soul];
   if (ctx.user) parts.push(`\n\n## What you know about the user\n${ctx.user}`);
-  if (ctx.memory) parts.push(`\n\n## Durable memory\n${ctx.memory}`);
+  if (ctx.memory) parts.push(`\n\n## Notes on this project\n${ctx.memory}`);
   return parts.join("");
 }
 
-/** Append a durable note to user.md or memory.md (used by the `remember` tool). */
+/**
+ * Append a durable note (used by the `remember` tool):
+ * - target 'user'   → the global per-user memory (user.md in `userRoot`)
+ * - target 'memory' → this project's notes (HEMIUNU.md in `projectRoot`, the
+ *   launch folder) — like a CLAUDE.md, scoped to the folder you're working in.
+ * The file (and its directory) is created on demand.
+ */
 export function remember(
   target: MemoryTarget,
   note: string,
-  root: string = process.cwd(),
+  r: ContextRoots = {},
 ): void {
-  const dir = contextDir(root);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const file = join(dir, target === "user" ? "user.md" : "memory.md");
+  const { userRoot, projectRoot } = resolveRoots(r);
+  const file =
+    target === "user"
+      ? join(userRoot, USER_FILE)
+      : join(projectRoot, PROJECT_MEMORY_FILE);
+  mkdirSync(dirname(file), { recursive: true });
   appendFileSync(file, `\n- ${note.trim()}`, "utf8");
 }
 
 /**
- * Seed the per-user memory files on first run. user.md / memory.md are each
- * user's own (gitignored) memory; the repo ships empty `*.md.example`
- * templates. If a live file is missing, copy it from its template so a fresh
- * clone starts blank and the user fills it their own way.
+ * Seed the global per-user memory on first run: copy the committed
+ * `context/user.md.example` template (from appRoot) to `user.md` in the user
+ * data dir (userRoot) if it's missing, so the file starts present but blank.
+ * Per-project HEMIUNU.md is deliberately NOT seeded — it's created lazily the
+ * first time the agent saves a project note, so launching in a folder you only
+ * pass through never litters it with an empty memory file.
  */
-export function seedContextFiles(root: string = process.cwd()): void {
-  const dir = contextDir(root);
-  for (const name of ["user.md", "memory.md"]) {
-    const live = join(dir, name);
-    const template = join(dir, `${name}.example`);
-    if (!existsSync(live) && existsSync(template)) {
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      copyFileSync(template, live);
-    }
+export function seedContextFiles(r: ContextRoots = {}): void {
+  const { appRoot, userRoot } = resolveRoots(r);
+  const live = join(userRoot, USER_FILE);
+  const template = join(appRoot, USER_TEMPLATE);
+  if (!existsSync(live) && existsSync(template)) {
+    mkdirSync(dirname(live), { recursive: true });
+    copyFileSync(template, live);
   }
 }

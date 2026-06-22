@@ -9,8 +9,11 @@ dist/
 *.db-*
 .hemiunu/
 
-# per-user memory — each user's own copy, seeded from context/*.md.example on
-# first run. The repo ships only the empty templates.
+# Per-project memory the agent writes when run from THIS repo during dev
+# (HEMIUNU.md is meant to be committed in real user projects, just not here).
+# The global user.md lives in ~/.hemiunu (covered by .hemiunu/ above), and any
+# legacy per-user files under context/ are ignored too.
+/HEMIUNU.md
 context/user.md
 context/memory.md
 

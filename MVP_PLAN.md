@@ -1,5 +1,11 @@
 # Hemiunu — MVP Implementation Plan
 
+> **Status: SHIPPED — kept as a historical record.** The MVP described here is
+> built and the project has since grown past it (subagents, prototyping,
+> `ask_model`, and the eval harness — listed below as "out of scope" — now
+> exist). For how Hemiunu actually works today, **the README is the source of
+> truth**; read this doc for the original milestone reasoning only.
+
 > Standalone, execution-focused plan for the **first build**. The long-term product vision lives in `FINAL_PLAN.md`; this document only covers the MVP and is self-contained.
 
 ## What we're building (MVP)
@@ -16,7 +22,7 @@
 ## Stack
 - TypeScript + pnpm + Turborepo (lean), run via `tsx`
 - `@anthropic-ai/claude-agent-sdk`
-- `better-sqlite3` (conversation store)
+- `node:sqlite` (Node 24+ built-in) for the conversation store
 - `zod`
 - Notion MCP (read-only)
 

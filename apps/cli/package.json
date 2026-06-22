@@ -3,9 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "hemiunu": "./src/index.tsx"
-  },
   "scripts": {
     "dev": "tsx src/index.tsx",
     "typecheck": "tsc --noEmit"

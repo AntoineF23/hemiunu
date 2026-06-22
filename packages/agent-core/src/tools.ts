@@ -1,18 +1,39 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { remember } from "@hemiunu/memory";
 import { z } from "zod";
+import { configDir } from "./config";
 import { PROVIDER_NAMES, resolveProvider } from "./providers";
 
-/** In-process MCP server exposing the `remember` tool to the agent. */
-export function createMemoryServer() {
+/**
+ * In-process MCP server exposing the `remember` tool. Notes are routed by target
+ * to the same paths loadContext reads from, so memory is consistent across
+ * sessions:
+ * - 'user'   → the GLOBAL per-user memory (user.md in `userRoot`, ~/.hemiunu),
+ *   carried into every project.
+ * - 'memory' → THIS project's notes (HEMIUNU.md in `projectRoot`, the launch
+ *   folder), scoped to the folder you're working in.
+ */
+export function createMemoryServer(
+  roots: { userRoot?: string; projectRoot?: string } = {},
+) {
+  const userRoot = roots.userRoot ?? configDir();
+  const projectRoot = roots.projectRoot ?? process.cwd();
   const rememberTool = tool(
     "remember",
-    "Save a durable note for future sessions. Use target 'user' for facts about the user, 'memory' for general product context, workflows, or facts.",
+    "Save a durable note for future sessions. Use target 'user' for facts about the USER that hold across all their projects (role, team, preferences). Use 'memory' for facts about the CURRENT project/folder (its product context, decisions, workflows) — these are saved to a HEMIUNU.md in this folder, like a project memory file.",
     { target: z.enum(["user", "memory"]), note: z.string() },
     async ({ target, note }) => {
-      remember(target, note);
+      remember(target, note, { userRoot, projectRoot });
       return {
-        content: [{ type: "text", text: `Saved to ${target}.md.` }],
+        content: [
+          {
+            type: "text",
+            text:
+              target === "user"
+                ? "Saved to your global user memory."
+                : "Saved to this project's HEMIUNU.md.",
+          },
+        ],
       };
     },
     { annotations: { title: "Remember", readOnlyHint: false } },
