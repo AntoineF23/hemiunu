@@ -7,6 +7,7 @@ import {
   buildSystemPrompt,
   ConversationStore,
   loadContext,
+  seedContextFiles,
 } from "@hemiunu/memory";
 import { Box, render, Static, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
@@ -818,6 +819,9 @@ async function main() {
   const store = new ConversationStore(join(dataDir, "hemiunu.db"));
   const registry = loadMcpRegistry();
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
+  // First run: seed each user's own (gitignored) user.md / memory.md from the
+  // committed *.example templates, so a fresh clone starts with blank memory.
+  seedContextFiles();
   const systemPrompt = buildSystemPrompt(loadContext());
 
   const handle: { clear: () => void } = { clear: () => {} };

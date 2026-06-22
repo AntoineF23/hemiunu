@@ -8,3 +8,8 @@ dist/
 *.db
 *.db-*
 .hemiunu/
+
+# per-user memory — each user's own copy, seeded from context/*.md.example on
+# first run. The repo ships only the empty templates.
+context/user.md
+context/memory.md

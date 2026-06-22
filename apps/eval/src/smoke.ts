@@ -11,10 +11,18 @@
  */
 import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { copyFileSync } from "node:fs";
 
 import { runTurn, loadConfig } from "@hemiunu/agent-core";
-import { loadContext, buildSystemPrompt, remember } from "@hemiunu/memory";
+import {
+  loadContext,
+  buildSystemPrompt,
+  remember,
+  seedContextFiles,
+} from "@hemiunu/memory";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 
 const OFFLINE = process.argv.includes("--offline");
@@ -111,6 +119,26 @@ async function main() {
       remember("user", "Smoke test note.", root);
       const out = readFileSync(join(root, "context", "user.md"), "utf8");
       assert(out.includes("Smoke test note."), "note should be written to user.md");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await check("fresh clone seeds an EMPTY user.md from the template", () => {
+    // Simulate a clone: only the committed *.example templates are present.
+    const root = mkdtempSync(join(tmpdir(), "hemiunu-clone-"));
+    const ctx = join(root, "context");
+    mkdirSync(ctx, { recursive: true });
+    // Resolve from this file (apps/eval/src/) → repo root → context/.
+    const repoCtx = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "context");
+    try {
+      copyFileSync(join(repoCtx, "user.md.example"), join(ctx, "user.md.example"));
+      copyFileSync(join(repoCtx, "memory.md.example"), join(ctx, "memory.md.example"));
+      seedContextFiles(root);
+      // remember() appends facts as lines starting with "- "; a fresh template has none.
+      const user = loadContext(root).user;
+      assert(!/^- \S/m.test(user), `seeded user.md should carry no learned facts, got: ${user.slice(0, 80)}`);
+      assert(buildSystemPrompt(loadContext(root)).includes("Hemiunu"), "persona still wires through on a fresh clone");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

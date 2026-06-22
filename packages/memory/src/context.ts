@@ -1,5 +1,6 @@
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -53,4 +54,22 @@ export function remember(
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const file = join(dir, target === "user" ? "user.md" : "memory.md");
   appendFileSync(file, `\n- ${note.trim()}`, "utf8");
+}
+
+/**
+ * Seed the per-user memory files on first run. user.md / memory.md are each
+ * user's own (gitignored) memory; the repo ships empty `*.md.example`
+ * templates. If a live file is missing, copy it from its template so a fresh
+ * clone starts blank and the user fills it their own way.
+ */
+export function seedContextFiles(root: string = process.cwd()): void {
+  const dir = contextDir(root);
+  for (const name of ["user.md", "memory.md"]) {
+    const live = join(dir, name);
+    const template = join(dir, `${name}.example`);
+    if (!existsSync(live) && existsSync(template)) {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      copyFileSync(template, live);
+    }
+  }
 }

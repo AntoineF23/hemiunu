@@ -20,7 +20,10 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
 - **File-based context construction** (Hermes-inspired): each turn the system
   prompt is assembled from `context/soul.md` (persona), `context/user.md`
   (learned user facts), and `context/memory.md` (durable notes). The agent
-  updates the latter two **autonomously** via a `remember` tool.
+  updates the latter two **autonomously** via a `remember` tool. `user.md` and
+  `memory.md` are **per-user and gitignored** — the repo ships empty
+  `*.md.example` templates, and the live files are seeded from them on first
+  run, so every clone starts with a blank slate.
 - **Persistent conversations** in SQLite (`~/.hemiunu/hemiunu.db`) — list,
   resume, replay.
 - **Adaptive context management** — per-model context window with automatic
@@ -90,7 +93,8 @@ packages/
   agent-core/   # runTurn() — SDK query() wrapper: model/env/thinking config, remember tool
   memory/       # context loader (soul/user/memory) + remember() + SQLite conversation store
   mcp/          # mcp.json registry — stdio/http/sse, ${ENV} interpolation, auto-skip
-context/         # soul.md (persona) · user.md · memory.md  (the last two are agent-updatable)
+context/         # soul.md (persona, tracked) · *.md.example templates (tracked)
+                 #   user.md / memory.md are per-user, gitignored, seeded on first run
 mcp.json         # connected MCP servers
 ```
 
