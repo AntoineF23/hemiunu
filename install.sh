@@ -17,12 +17,25 @@ err()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 
 sand "Installing Hemiunu..."
 
-# 1. Prerequisites: git + Node 24+ (corepack ships with Node and runs pnpm).
+# 1. Prerequisites: git + Node 24+.
 command -v git >/dev/null 2>&1 || { err "git is required. Install it and re-run."; exit 1; }
 command -v node >/dev/null 2>&1 || { err "Node.js 24+ is required - https://nodejs.org"; exit 1; }
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 if [ "$NODE_MAJOR" -lt 24 ]; then
   err "Node 24+ is required (found $(node -v)). Upgrade at https://nodejs.org and re-run."
+  exit 1
+fi
+
+# Resolve a pnpm runner: an installed pnpm, else corepack (ships with Node but
+# isn't always on PATH), else a one-off npx download of the pinned pnpm.
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM="pnpm"
+elif command -v corepack >/dev/null 2>&1; then
+  PNPM="corepack pnpm"
+elif command -v npx >/dev/null 2>&1; then
+  PNPM="npx --yes pnpm@11.8.0"
+else
+  err "Could not find pnpm, corepack, or npx. Install pnpm (https://pnpm.io/installation) and re-run."
   exit 1
 fi
 
@@ -43,7 +56,7 @@ fi
 sand "Installing dependencies..."
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 LOG="$(mktemp)"
-( cd "$APP_DIR" && corepack pnpm install ) >"$LOG" 2>&1 || true
+( cd "$APP_DIR" && $PNPM install ) >"$LOG" 2>&1 || true
 if ! "$APP_DIR/node_modules/.bin/tsx" -e 'process.exit(0)' >/dev/null 2>&1; then
   err "Dependency install failed:"
   cat "$LOG" >&2

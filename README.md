@@ -87,7 +87,9 @@ project lets the agent read *that* project, with its brain from the install.
 
 ## Setup from source
 
-Requires Node 24+ (uses the built-in `node:sqlite`). pnpm via Corepack.
+Requires Node 24+ (uses the built-in `node:sqlite`). Uses pnpm — via Corepack
+(`corepack pnpm …`), an installed `pnpm`, or `npx pnpm …` if you have neither.
+The `curl | bash` installer above resolves this for you automatically.
 
 ```bash
 corepack pnpm install
