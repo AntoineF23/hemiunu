@@ -1,8 +1,38 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 
 /** save_prototype tool pattern (the prototyper's only tool). */
 const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
+
+/** Load a domain knowledge doc from context/knowledge/<name>.md ("" if absent). */
+function knowledge(name: string, root: string = process.cwd()): string {
+  const path = join(root, "context", "knowledge", `${name}.md`);
+  return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
+}
+
+/**
+ * Resolve a subagent's full system prompt, injecting domain knowledge where it
+ * applies. The prototyper carries the full design guideline so every wireframe
+ * is designed to those principles; other subagents use their base prompt.
+ */
+export function subagentPrompt(name: SubagentName): string {
+  const base = SUBAGENTS[name].prompt;
+  if (name === "prototyper") {
+    const design = knowledge("design");
+    if (design) {
+      return `${base}
+
+# Design principles to apply
+
+Apply these when making structural and interaction decisions. At the LOW-FI wireframe stage you are working on, lean on Purpose, Agency (incl. Forgiveness), Familiarity, Flexibility, and especially Simplicity/Clarity — hierarchy via order, spacing, and contrast; every element earns its place. Visual Craft (fonts, colour, motion) and Delight polish belong to the hi-fi stage, not here — keep the wireframe grayscale and structural, but let these principles shape what you include and how you arrange it.
+
+${design}`;
+    }
+  }
+  return base;
+}
 
 export type SubagentName = "researcher" | "prototyper";
 
@@ -94,7 +124,7 @@ export async function runSubagent(
     options: {
       model: modelFor(spec, ctx),
       thinking: ctx.thinking,
-      systemPrompt: spec.prompt,
+      systemPrompt: subagentPrompt(name),
       settingSources: [],
       env: {
         ...process.env,

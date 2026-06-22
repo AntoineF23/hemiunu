@@ -24,6 +24,7 @@ export type {
 export { createOrchestratorServer, PARALLEL_TOOL_ID, pool } from "./orchestrator";
 export {
   runSubagent,
+  subagentPrompt,
   SUBAGENTS,
   SUBAGENT_NAMES,
 } from "./subagents";

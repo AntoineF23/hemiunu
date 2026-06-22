@@ -4,7 +4,12 @@ import { loadConfig } from "./config";
 import { createMemoryServer, createModelsServer } from "./tools";
 import { createPrototypeServer } from "./prototype";
 import { createOrchestratorServer } from "./orchestrator";
-import { SUBAGENTS, SUBAGENT_NAMES, type SubagentRunContext } from "./subagents";
+import {
+  SUBAGENTS,
+  SUBAGENT_NAMES,
+  subagentPrompt,
+  type SubagentRunContext,
+} from "./subagents";
 
 /** Minimal default persona if context/soul.md is empty/missing. */
 const DEFAULT_SOUL =
@@ -75,7 +80,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     if (name === "researcher" && !hasSources) continue;
     agents[name] = {
       description: spec.description,
-      prompt: spec.prompt,
+      prompt: subagentPrompt(name),
       model: spec.tier === "research" ? researchModel : model,
       tools: agentTools,
     };

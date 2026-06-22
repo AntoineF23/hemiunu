@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runTurn, loadConfig, askModel, savePrototype, pool } from "@hemiunu/agent-core";
+import { runTurn, loadConfig, askModel, savePrototype, pool, subagentPrompt } from "@hemiunu/agent-core";
 import {
   loadContext,
   buildSystemPrompt,
@@ -184,6 +184,14 @@ async function main() {
     assert(maxActive > 1, "tasks should overlap (run concurrently)");
     assert(maxActive <= 3, `concurrency cap of 3 should hold, saw ${maxActive}`);
     assert(elapsed < 110, `concurrent run should beat the 125ms serial sum, took ${elapsed}ms`);
+  });
+
+  await check("prototyper prompt carries the design guideline; researcher doesn't", () => {
+    const proto = subagentPrompt("prototyper");
+    assert(/design principles to apply/i.test(proto), "prototyper prompt should inject the design knowledge");
+    assert(/Purpose|Familiarity|earn its place/i.test(proto), "design principles should be present");
+    const researcher = subagentPrompt("researcher");
+    assert(!/design principles to apply/i.test(researcher), "researcher should NOT carry the design guideline");
   });
 
   if (OFFLINE) return report();
