@@ -10,6 +10,8 @@ export {
   askModel,
 } from "./tools";
 export type { AskModelOptions } from "./tools";
+export { PROVIDERS, PROVIDER_NAMES, resolveProvider } from "./providers";
+export type { ProviderSpec } from "./providers";
 export {
   createPrototypeServer,
   SAVE_PROTOTYPE_TOOL_ID,

@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { remember } from "@hemiunu/memory";
 import { z } from "zod";
-import { loadConfig } from "./config";
+import { PROVIDER_NAMES, resolveProvider } from "./providers";
 
 /** In-process MCP server exposing the `remember` tool to the agent. */
 export function createMemoryServer() {
@@ -29,6 +29,8 @@ export function createMemoryServer() {
 export const REMEMBER_TOOL_ID = "mcp__hemiunu-memory__remember";
 
 export interface AskModelOptions {
+  /** Provider name (openai, google, groq, xai, deepseek, mistral, or proxy). */
+  provider: string;
   model: string;
   prompt: string;
   system?: string;
@@ -36,23 +38,25 @@ export interface AskModelOptions {
 }
 
 /**
- * One-shot call to any model on the proxy via its OpenAI-format
- * chat-completions endpoint (the reliable path for non-Claude models), using
- * the same bearer key. Returns the model's text, or a human-readable message
- * describing why there was none (HTTP error, empty completion, network).
+ * One-shot call to a model on a bring-your-own provider via its OpenAI-format
+ * chat-completions endpoint. The user supplies each provider's key in
+ * ~/.hemiunu/.env. Returns the model's text, or a human-readable message saying
+ * why there was none (missing key, HTTP error, empty completion, network).
  */
 export async function askModel({
+  provider,
   model,
   prompt,
   system,
   maxTokens = 2000,
 }: AskModelOptions): Promise<string> {
-  const cfg = loadConfig();
+  const resolved = resolveProvider(provider);
+  if ("error" in resolved) return resolved.error;
   try {
-    const res = await fetch(`${cfg.baseUrl}/v1/chat/completions`, {
+    const res = await fetch(resolved.chatUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
+        Authorization: `Bearer ${resolved.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -66,7 +70,7 @@ export async function askModel({
     });
     if (!res.ok) {
       const body = await res.text();
-      return `Error from ${model} (HTTP ${res.status}): ${body.slice(0, 400)}`;
+      return `Error from ${provider}/${model} (HTTP ${res.status}): ${body.slice(0, 400)}`;
     }
     const json = (await res.json()) as {
       choices?: { message?: { content?: string }; finish_reason?: string }[];
@@ -74,11 +78,11 @@ export async function askModel({
     const text = json.choices?.[0]?.message?.content;
     if (!text) {
       const reason = json.choices?.[0]?.finish_reason ?? "unknown";
-      return `${model} returned no content (finish_reason: ${reason}). Raise max_tokens or simplify the request.`;
+      return `${provider}/${model} returned no content (finish_reason: ${reason}). Raise max_tokens or simplify the request.`;
     }
     return text;
   } catch (e) {
-    return `Failed to reach ${model}: ${e instanceof Error ? e.message : String(e)}`;
+    return `Failed to reach ${provider}/${model}: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
@@ -90,11 +94,14 @@ export async function askModel({
 export function createModelsServer() {
   const askModelTool = tool(
     "ask_model",
-    "Ask a non-Claude model (Gemini, GPT, Grok, DeepSeek, Qwen, Mistral, Llama, …) one question through the proxy and get its answer as text. Use for a second opinion, to compare across models, or when another model is stronger for a subtask. You remain the primary agent: call this for a focused subtask, then integrate the result. Pass the exact proxy model id.",
+    "Ask a non-Claude model one question and get its answer as text. Use for a second opinion, to compare across models, or when another model is stronger for a subtask. You remain the primary agent: call this for a focused subtask, then integrate the result. Each provider needs its own API key configured by the user; if one is missing the tool says which key to add.",
     {
+      provider: z
+        .enum(PROVIDER_NAMES as [string, ...string[]])
+        .describe("Which provider to use: openai, google, groq, xai, deepseek, mistral, or proxy (the user's own gateway)."),
       model: z
         .string()
-        .describe("Exact proxy model id, e.g. 'gemini-3.1-pro-preview', 'gpt-5.5', 'grok-4.3', 'deepseek-r1'."),
+        .describe("The provider's exact model id, e.g. 'gpt-5.5' (openai), 'gemini-2.5-flash' (google), 'grok-4.3' (xai)."),
       prompt: z.string().describe("The full request/question to send to that model."),
       system: z.string().optional().describe("Optional system instruction for that model."),
       max_tokens: z
@@ -104,8 +111,8 @@ export function createModelsServer() {
         .optional()
         .describe("Max output tokens (default 2000; raise for reasoning models, which spend tokens thinking)."),
     },
-    async ({ model, prompt, system, max_tokens }) => {
-      const text = await askModel({ model, prompt, system, maxTokens: max_tokens });
+    async ({ provider, model, prompt, system, max_tokens }) => {
+      const text = await askModel({ provider, model, prompt, system, maxTokens: max_tokens });
       return { content: [{ type: "text", text }] };
     },
     { annotations: { title: "Ask model", readOnlyHint: true } },

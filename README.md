@@ -67,10 +67,16 @@ This clones Hemiunu to `~/.hemiunu/app`, installs dependencies, and puts the
 hemiunu
 ```
 
-**On first run it asks for your API key** (one key unlocks every model) and,
-optionally, Notion / Tavily tokens — no file editing. Your keys are saved to
-`~/.hemiunu/.env`. `/setup` shows where they live; `/mcp` shows connected
-servers.
+**On first run it asks for your Anthropic API key** (the Claude brain) and,
+optionally, a gateway base URL and Notion / Tavily tokens — no file editing.
+Your keys are saved to `~/.hemiunu/.env`. `/setup` shows where they live; `/mcp`
+shows connected servers.
+
+**Models are bring-your-own.** The brain is Claude (Anthropic directly, or any
+Anthropic-compatible gateway via `ANTHROPIC_BASE_URL`). The `ask_model` tool can
+consult other providers (OpenAI, Google, Groq, xAI, DeepSeek, Mistral) — add
+each provider's key to `~/.hemiunu/.env` (`OPENAI_API_KEY`, `GEMINI_API_KEY`, …)
+to enable it; if a key is missing, the agent tells you which one to add.
 
 Re-run the install command any time to update — your config in `~/.hemiunu/`
 is never touched. **Your settings live in `~/.hemiunu/`, separate from the
@@ -94,13 +100,14 @@ corepack pnpm link --global   # optional: expose the `hemiunu` command
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_BASE_URL` | Anthropic-compatible endpoint (the org LiteLLM proxy). |
-| `ANTHROPIC_API_KEY` | Key for that endpoint. **Required.** |
+| `ANTHROPIC_API_KEY` | Key for the Claude brain. **Required.** |
+| `ANTHROPIC_BASE_URL` | *Optional.* Anthropic-compatible gateway/proxy. Unset = Anthropic direct. |
 | `HEMIUNU_MODEL` | Main / synthesis model id, e.g. `claude-opus-4.8` / `claude-sonnet-4.6`. |
 | `HEMIUNU_MODEL_RESEARCH` | Retrieval tier for the `researcher` subagent (default `claude-sonnet-4.6`). Haiku isn't supported — see note below. |
+| `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` | *Optional, per provider.* Enable that provider for the `ask_model` tool. |
+| `NOTION_TOKEN`, `TAVILY_API_KEY` | *Optional.* Enable the Notion / Tavily MCP servers. |
 | `HEMIUNU_THINKING_BUDGET` | Extended-thinking tokens. `0`/unset = disabled (cheaper, works everywhere). |
-| `HEMIUNU_CONTEXT_WINDOW` | Override the context window (for compaction). |
-| `HEMIUNU_COMPACT_THRESHOLD` | Fraction of the window that triggers auto-compaction (default `0.5`). |
+| `HEMIUNU_CONTEXT_WINDOW` / `HEMIUNU_COMPACT_THRESHOLD` | Context window override / auto-compaction threshold (default `0.5`). |
 | `NOTION_TOKEN` | Notion integration token — connects the Notion MCP server. |
 
 ### Connecting MCP servers

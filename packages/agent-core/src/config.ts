@@ -49,16 +49,19 @@ export interface UserEnv {
 export function writeUserEnv(env: UserEnv): string {
   const dir = configDir();
   mkdirSync(dir, { recursive: true });
-  const baseUrl = env.baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? "https://models.thiga.co";
-  const lines = [`ANTHROPIC_BASE_URL=${baseUrl}`, `ANTHROPIC_API_KEY=${env.apiKey}`];
+  const baseUrl = env.baseUrl?.trim();
+  // No base URL = talk to Anthropic directly; only write the line if the user
+  // set a gateway/proxy.
+  const lines = [`ANTHROPIC_API_KEY=${env.apiKey}`];
+  if (baseUrl) lines.unshift(`ANTHROPIC_BASE_URL=${baseUrl}`);
   if (env.model) lines.push(`HEMIUNU_MODEL=${env.model}`);
   if (env.notionToken) lines.push(`NOTION_TOKEN=${env.notionToken}`);
   if (env.tavilyKey) lines.push(`TAVILY_API_KEY=${env.tavilyKey}`);
   const path = join(dir, ".env");
   writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
 
-  process.env.ANTHROPIC_BASE_URL = baseUrl;
   process.env.ANTHROPIC_API_KEY = env.apiKey;
+  if (baseUrl) process.env.ANTHROPIC_BASE_URL = baseUrl;
   if (env.model) process.env.HEMIUNU_MODEL = env.model;
   if (env.notionToken) process.env.NOTION_TOKEN = env.notionToken;
   if (env.tavilyKey) process.env.TAVILY_API_KEY = env.tavilyKey;
@@ -66,9 +69,10 @@ export function writeUserEnv(env: UserEnv): string {
 }
 
 export interface HemiunuConfig {
-  /** Base URL of the Anthropic-compatible endpoint (here: the LiteLLM proxy). */
-  baseUrl: string;
-  /** API key / token sent to the proxy. */
+  /** Anthropic-compatible endpoint for the Claude brain. Undefined = Anthropic
+   *  direct (api.anthropic.com); set it to a gateway/proxy (LiteLLM, etc.). */
+  baseUrl: string | undefined;
+  /** API key for the brain endpoint (your Anthropic key, or your gateway key). */
   apiKey: string;
   /** Main / synthesis model — the agent's brain (e.g. "claude-opus-4.8"). */
   model: string;
@@ -83,7 +87,9 @@ export interface HemiunuConfig {
 }
 
 export function loadConfig(): HemiunuConfig {
-  const baseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://models.thiga.co";
+  // Undefined base URL = talk to Anthropic directly; set ANTHROPIC_BASE_URL to
+  // route the brain through a gateway/proxy instead.
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim() || undefined;
   const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
   const researchModel = process.env.HEMIUNU_MODEL_RESEARCH ?? "claude-sonnet-4.6";
@@ -93,9 +99,7 @@ export function loadConfig(): HemiunuConfig {
     budget > 0 ? { type: "enabled", budgetTokens: budget } : { type: "disabled" };
 
   if (!apiKey) {
-    throw new Error(
-      "Missing ANTHROPIC_API_KEY. Copy .env.example to .env and add your LiteLLM key.",
-    );
+    throw new Error("Missing ANTHROPIC_API_KEY. Run `hemiunu` and complete first-run setup.");
   }
   return { baseUrl, apiKey, model, researchModel, thinking };
 }

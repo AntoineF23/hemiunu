@@ -897,6 +897,7 @@ function App({
 
 interface SetupValues {
   apiKey: string;
+  baseUrl: string;
   notionToken: string;
   tavilyKey: string;
 }
@@ -907,7 +908,8 @@ const SETUP_FIELDS: {
   mask?: boolean;
   required?: boolean;
 }[] = [
-  { key: "apiKey", label: "API key", hint: "your proxy key — unlocks every model", mask: true, required: true },
+  { key: "apiKey", label: "Anthropic API key", hint: "the Claude brain — required", mask: true, required: true },
+  { key: "baseUrl", label: "Gateway base URL", hint: "optional — Enter for Anthropic direct, or a proxy URL" },
   { key: "notionToken", label: "Notion token", hint: "optional — press Enter to skip" },
   { key: "tavilyKey", label: "Tavily key", hint: "optional (web search) — press Enter to skip" },
 ];
@@ -915,7 +917,7 @@ const SETUP_FIELDS: {
 function Setup({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [value, setValue] = useState("");
-  const valuesRef = useRef<SetupValues>({ apiKey: "", notionToken: "", tavilyKey: "" });
+  const valuesRef = useRef<SetupValues>({ apiKey: "", baseUrl: "", notionToken: "", tavilyKey: "" });
   const field = SETUP_FIELDS[step];
 
   const submit = (raw: string) => {
@@ -929,6 +931,7 @@ function Setup({ onDone }: { onDone: () => void }) {
       const vals = valuesRef.current;
       writeUserEnv({
         apiKey: vals.apiKey,
+        baseUrl: vals.baseUrl || undefined,
         notionToken: vals.notionToken || undefined,
         tavilyKey: vals.tavilyKey || undefined,
       });

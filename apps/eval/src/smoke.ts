@@ -77,11 +77,12 @@ async function main() {
   // ---- Offline: structural checks (free, deterministic) ----
   console.log("\n\x1b[2mOffline checks\x1b[0m");
 
-  await check("config loads (proxy url, model, key present)", () => {
+  await check("config loads (model, key; base URL optional)", () => {
     const cfg = loadConfig();
-    assert(cfg.baseUrl.startsWith("http"), "baseUrl should be a URL");
+    // baseUrl is optional now (undefined = Anthropic direct).
+    assert(cfg.baseUrl === undefined || cfg.baseUrl.startsWith("http"), "baseUrl, if set, should be a URL");
     assert(cfg.model.length > 0, "model id should be set");
-    assert(cfg.apiKey.length > 0, "ANTHROPIC_API_KEY should be set (.env)");
+    assert(cfg.apiKey.length > 0, "ANTHROPIC_API_KEY should be set");
   });
 
   await check("context builds the system prompt from soul/user/memory", () => {
@@ -243,6 +244,20 @@ async function main() {
     }
   });
 
+  await check("ask_model reports a missing provider key without a network call", async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const msg = await askModel({ provider: "openai", model: "gpt-4o", prompt: "hi" });
+      assert(/OPENAI_API_KEY/.test(msg), `should name the missing key, got: ${msg.slice(0, 120)}`);
+      const unknown = await askModel({ provider: "nope", model: "x", prompt: "hi" });
+      assert(/unknown provider/i.test(unknown), `should reject unknown provider, got: ${unknown.slice(0, 80)}`);
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = prev;
+    }
+  });
+
   if (OFFLINE) return report();
 
   // ---- Live: one real turn through the proxy (the M0 gate) ----
@@ -312,20 +327,33 @@ async function main() {
     assert(/product agent/i.test(text), `expected a grounded answer from the README, got: ${text.slice(0, 120)}`);
   });
 
-  await check("ask_model reaches a non-Claude model on the proxy", async () => {
-    // Retry transient upstream hiccups (the proxy's gemini backend 504s now and
-    // then) — this checks OUR tool, not the model's uptime.
+  await check("ask_model reaches a configured provider", async () => {
+    // Use whichever provider is actually configured in this environment.
+    let provider: string | undefined;
+    let model = "";
+    if (process.env.ANTHROPIC_BASE_URL) {
+      provider = "proxy";
+      model = "gemini-2.5-flash";
+    } else if (process.env.OPENAI_API_KEY) {
+      provider = "openai";
+      model = "gpt-4o-mini";
+    }
+    if (!provider) {
+      console.log("      \x1b[2m(skipped: no ask_model provider configured)\x1b[0m");
+      return;
+    }
+    // Retry transient upstream hiccups — this checks OUR tool, not model uptime.
     let text = "";
     for (let attempt = 1; attempt <= 3; attempt++) {
-      text = await askModel({ model: "gemini-2.5-flash", prompt: "Reply with exactly: PONG" });
+      text = await askModel({ provider, model, prompt: "Reply with exactly: PONG" });
       if (/pong/i.test(text)) return;
       if (!/HTTP 5\d\d|timeout/i.test(text)) break; // a real error — stop and fail
     }
     if (/HTTP 5\d\d|timeout/i.test(text)) {
-      console.log(`      \x1b[2m(skipped: upstream model unavailable — ${text.slice(0, 60)})\x1b[0m`);
-      return; // transient backend outage, not a Hemiunu fault
+      console.log(`      \x1b[2m(skipped: ${provider} upstream unavailable — ${text.slice(0, 50)})\x1b[0m`);
+      return;
     }
-    assert(/pong/i.test(text), `expected PONG from gemini-2.5-flash, got: ${text.slice(0, 120)}`);
+    assert(/pong/i.test(text), `expected PONG from ${provider}/${model}, got: ${text.slice(0, 120)}`);
   });
 
   console.log(`\n\x1b[2m  live turns cost ~$${liveCost.toFixed(4)}\x1b[0m`);

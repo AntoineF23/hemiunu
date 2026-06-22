@@ -95,7 +95,8 @@ export interface SubagentRunContext {
   sourceTools: string[];
   /** MCP servers the subagent can reach (in-process + registry). */
   mcpServers: Options["mcpServers"];
-  baseUrl: string;
+  /** Brain endpoint (undefined = Anthropic direct). */
+  baseUrl: string | undefined;
   apiKey: string;
   thinking: Options["thinking"];
 }
@@ -128,8 +129,8 @@ export async function runSubagent(
       settingSources: [],
       env: {
         ...process.env,
-        ANTHROPIC_BASE_URL: ctx.baseUrl,
         ANTHROPIC_API_KEY: ctx.apiKey,
+        ...(ctx.baseUrl ? { ANTHROPIC_BASE_URL: ctx.baseUrl } : {}),
       } as Record<string, string>,
       mcpServers: ctx.mcpServers,
       tools,

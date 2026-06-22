@@ -115,8 +115,8 @@ export async function* runTurn(opts: RunTurnOptions) {
       settingSources: [],
       env: {
         ...process.env,
-        ANTHROPIC_BASE_URL: cfg.baseUrl,
         ANTHROPIC_API_KEY: cfg.apiKey,
+        ...(cfg.baseUrl ? { ANTHROPIC_BASE_URL: cfg.baseUrl } : {}),
       } as Record<string, string>,
       mcpServers: {
         ...baseServers,
