@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hemiunu installer — clones the app, installs deps, and exposes the `hemiunu`
+# Hemiunu installer - clones the app, installs deps, and exposes the `hemiunu`
 # command. Re-run any time to update.
 #
 #   curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh | bash
@@ -15,11 +15,11 @@ sand() { printf '\033[38;5;180m%s\033[0m\n' "$*"; }
 sage() { printf '\033[38;5;108m%s\033[0m\n' "$*"; }
 err()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 
-sand "△ Installing Hemiunu…"
+sand "Installing Hemiunu..."
 
 # 1. Prerequisites: git + Node 24+ (corepack ships with Node and runs pnpm).
 command -v git >/dev/null 2>&1 || { err "git is required. Install it and re-run."; exit 1; }
-command -v node >/dev/null 2>&1 || { err "Node.js 24+ is required — https://nodejs.org"; exit 1; }
+command -v node >/dev/null 2>&1 || { err "Node.js 24+ is required - https://nodejs.org"; exit 1; }
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 if [ "$NODE_MAJOR" -lt 24 ]; then
   err "Node 24+ is required (found $(node -v)). Upgrade at https://nodejs.org and re-run."
@@ -28,18 +28,29 @@ fi
 
 # 2. Clone or update.
 if [ -d "$APP_DIR/.git" ]; then
-  sand "Updating $APP_DIR…"
+  sand "Updating $APP_DIR ..."
   git -C "$APP_DIR" pull --ff-only --quiet
 else
-  sand "Cloning into $APP_DIR…"
+  sand "Cloning into $APP_DIR ..."
   mkdir -p "$(dirname "$APP_DIR")"
   git clone --depth 1 --quiet "$REPO_URL" "$APP_DIR"
 fi
 
-# 3. Install dependencies (buildless — tsx runs the TypeScript directly).
-sand "Installing dependencies…"
+# 3. Install dependencies (buildless - tsx runs the TypeScript directly).
+# pnpm may exit non-zero only to flag an un-approved (but harmless, already
+# satisfied) esbuild build script - deps still link and tsx still runs. So we
+# don't abort on that; instead we verify tsx is runnable below.
+sand "Installing dependencies..."
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-( cd "$APP_DIR" && corepack pnpm install --silent )
+LOG="$(mktemp)"
+( cd "$APP_DIR" && corepack pnpm install ) >"$LOG" 2>&1 || true
+if ! "$APP_DIR/node_modules/.bin/tsx" -e 'process.exit(0)' >/dev/null 2>&1; then
+  err "Dependency install failed:"
+  cat "$LOG" >&2
+  rm -f "$LOG"
+  exit 1
+fi
+rm -f "$LOG"
 
 # 4. Expose the `hemiunu` command (symlink resolves back to the install dir).
 mkdir -p "$BIN_DIR"
@@ -49,14 +60,14 @@ ln -sf "$APP_DIR/bin/hemiunu.mjs" "$BIN_DIR/hemiunu"
 # 5. First-run config.
 if [ ! -f "$APP_DIR/.env" ]; then
   cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-  sand "Created $APP_DIR/.env — add your ANTHROPIC_API_KEY (and NOTION_TOKEN / TAVILY_API_KEY if you use them)."
+  sand "Created $APP_DIR/.env - add your ANTHROPIC_API_KEY (and NOTION_TOKEN / TAVILY_API_KEY if you use them)."
 fi
 
 # 6. PATH guidance.
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) sand "Add this to your shell profile so \`hemiunu\` is found:"
+  *) sand "Add this to your shell profile so 'hemiunu' is found:"
      printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
 esac
 
-sage "✓ Hemiunu installed. Add your key to $APP_DIR/.env, then run:  hemiunu"
+sage "Done. Add your key to $APP_DIR/.env, then run:  hemiunu"
