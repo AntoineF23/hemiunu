@@ -61,17 +61,23 @@ curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh 
 ```
 
 This clones Hemiunu to `~/.hemiunu/app`, installs dependencies, and puts the
-`hemiunu` command on your PATH. Then add your key to `~/.hemiunu/app/.env` and run:
+`hemiunu` command on your PATH. Then just run it:
 
 ```bash
 hemiunu
 ```
 
-Re-run the same command any time to update. Hemiunu's own config (`soul.md`,
-`mcp.json`, `.env`) is read from the install dir, while file access (the
-filesystem MCP) and folder-trust follow the directory you launch it in — so
-`hemiunu` in a project lets the agent read *that* project, with its brain
-coming from the install.
+**On first run it asks for your API key** (one key unlocks every model) and,
+optionally, Notion / Tavily tokens — no file editing. Your keys are saved to
+`~/.hemiunu/.env`. `/setup` shows where they live; `/mcp` shows connected
+servers.
+
+Re-run the install command any time to update — your config in `~/.hemiunu/`
+is never touched. **Your settings live in `~/.hemiunu/`, separate from the
+code:** keys in `~/.hemiunu/.env`, and your own MCP servers in
+`~/.hemiunu/mcp.json` (merged over the defaults — add servers there). File
+access and folder-trust follow the directory you launch in, so `hemiunu` in a
+project lets the agent read *that* project, with its brain from the install.
 
 ## Setup from source
 
@@ -109,8 +115,8 @@ access; the decision is remembered per folder. `/trust` re-opens it.
 
 ## Slash commands
 
-`/new` `/clear` `/compact` `/models` `/trust` `/list` `/resume` `/mcp`
-`/help` `/exit`
+`/new` `/clear` `/compact` `/models` `/setup` `/trust` `/list` `/resume`
+`/mcp` `/help` `/exit`
 
 ## Smoke / eval harness
 

@@ -57,17 +57,11 @@ mkdir -p "$BIN_DIR"
 chmod +x "$APP_DIR/bin/hemiunu.mjs"
 ln -sf "$APP_DIR/bin/hemiunu.mjs" "$BIN_DIR/hemiunu"
 
-# 5. First-run config.
-if [ ! -f "$APP_DIR/.env" ]; then
-  cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-  sand "Created $APP_DIR/.env - add your ANTHROPIC_API_KEY (and NOTION_TOKEN / TAVILY_API_KEY if you use them)."
-fi
-
-# 6. PATH guidance.
+# 5. PATH guidance (keys are collected by `hemiunu` on first run - no file editing).
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) sand "Add this to your shell profile so 'hemiunu' is found:"
      printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
 esac
 
-sage "Done. Add your key to $APP_DIR/.env, then run:  hemiunu"
+sage "Done. Run:  hemiunu   (it will ask for your API key the first time)"

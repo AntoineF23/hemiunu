@@ -139,6 +139,15 @@ product-agent/
 
 ---
 
+## Distribution & onboarding (BUILT, 2026-06-22)
+
+How users get and configure Hemiunu without cloning/editing files:
+- **One-line install:** `curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh | bash` (repo is public). `install.sh` checks Node 24+, clones to `~/.hemiunu/app`, `corepack pnpm install` (tolerates pnpm's harmless ignored-builds exit, verifies `tsx` runs), symlinks `~/.local/bin/hemiunu` → `bin/hemiunu.mjs`. Re-run to update.
+- **`hemiunu` command:** the launcher resolves the install dir from its own location, sets `HEMIUNU_HOME`, and runs the CLI with the caller's cwd preserved.
+- **User config separate from code (`~/.hemiunu/`):** keys in `~/.hemiunu/.env`, user MCP servers in `~/.hemiunu/mcp.json` (merged over the app default by `loadMcpRegistry(home, userPath)`). Updates never clobber config. `.env` resolution: `~/.hemiunu/.env` → `HEMIUNU_HOME/.env` → cwd.
+- **First-run setup:** if no real key, the CLI shows an Ink prompt for the API key (masked) + optional Notion/Tavily, writes `~/.hemiunu/.env` via `writeUserEnv()` (also applied in-process). `hasApiKey()` gates it; `/setup` shows the config path + which keys are set. One key unlocks every model (all via the proxy).
+- **Better URL (TODO):** point a custom domain (e.g. `hemiunu.sh/install`) at the raw `install.sh` via a Vercel/Cloudflare rewrite.
+
 ## ▶ MVP (the first thing we build — a subset of the above)
 
 **Goal:** smallest end-to-end thread that proves the knowledge backbone and teaches the agent core, memory, and MCP — no UI, no auth, no prototyping yet.

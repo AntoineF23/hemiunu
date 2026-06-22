@@ -1,16 +1,68 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
-// Load .env from Hemiunu's home (the install dir, set by the `hemiunu` launcher)
-// when present, else the current directory (running from the repo). Node 24 builtin.
-const ENV_PATH = join(process.env.HEMIUNU_HOME ?? process.cwd(), ".env");
-if (existsSync(ENV_PATH)) {
+const PLACEHOLDER_KEY = "sk-your-litellm-key-here";
+
+/** Hemiunu's per-user config + data dir (keys, conversations, folder-trust). */
+export function configDir(): string {
+  return process.env.HEMIUNU_CONFIG_DIR ?? join(homedir(), ".hemiunu");
+}
+
+// Load .env from the first place it exists: the user's config dir (installed
+// users), then Hemiunu's home (the install/repo dir), then the cwd. Node 24 builtin.
+function pickEnvFile(): string | undefined {
+  const home = process.env.HEMIUNU_HOME ?? process.cwd();
+  for (const p of [join(configDir(), ".env"), join(home, ".env"), join(process.cwd(), ".env")]) {
+    if (existsSync(p)) return p;
+  }
+  return undefined;
+}
+const ENV_FILE = pickEnvFile();
+if (ENV_FILE) {
   try {
-    process.loadEnvFile(ENV_PATH);
+    process.loadEnvFile(ENV_FILE);
   } catch {
     // ignore — env may already be populated by the shell
   }
+}
+
+/** True once a real (non-placeholder) API key is configured. */
+export function hasApiKey(): boolean {
+  const k = process.env.ANTHROPIC_API_KEY;
+  return !!k && k.trim().length > 0 && k !== PLACEHOLDER_KEY;
+}
+
+export interface UserEnv {
+  apiKey: string;
+  baseUrl?: string;
+  model?: string;
+  notionToken?: string;
+  tavilyKey?: string;
+}
+
+/**
+ * Write the user's keys to `~/.hemiunu/.env` and apply them to this process so
+ * the current run picks them up immediately. Used by the first-run setup flow.
+ */
+export function writeUserEnv(env: UserEnv): string {
+  const dir = configDir();
+  mkdirSync(dir, { recursive: true });
+  const baseUrl = env.baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? "https://models.thiga.co";
+  const lines = [`ANTHROPIC_BASE_URL=${baseUrl}`, `ANTHROPIC_API_KEY=${env.apiKey}`];
+  if (env.model) lines.push(`HEMIUNU_MODEL=${env.model}`);
+  if (env.notionToken) lines.push(`NOTION_TOKEN=${env.notionToken}`);
+  if (env.tavilyKey) lines.push(`TAVILY_API_KEY=${env.tavilyKey}`);
+  const path = join(dir, ".env");
+  writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
+
+  process.env.ANTHROPIC_BASE_URL = baseUrl;
+  process.env.ANTHROPIC_API_KEY = env.apiKey;
+  if (env.model) process.env.HEMIUNU_MODEL = env.model;
+  if (env.notionToken) process.env.NOTION_TOKEN = env.notionToken;
+  if (env.tavilyKey) process.env.TAVILY_API_KEY = env.tavilyKey;
+  return path;
 }
 
 export interface HemiunuConfig {

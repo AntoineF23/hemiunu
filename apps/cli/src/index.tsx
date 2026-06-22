@@ -1,7 +1,13 @@
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
-import { runTurn, REMEMBER_TOOL_ID, PARALLEL_TOOL_ID } from "@hemiunu/agent-core";
+import {
+  runTurn,
+  REMEMBER_TOOL_ID,
+  PARALLEL_TOOL_ID,
+  configDir,
+  hasApiKey,
+  writeUserEnv,
+} from "@hemiunu/agent-core";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
@@ -37,7 +43,7 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new   /clear   /compact   /models   /trust   /list   /resume <id>   /mcp   /exit";
+  "/new   /clear   /compact   /models   /setup   /trust   /list   /resume <id>   /mcp   /exit";
 
 // Compacting prompt (Hermes-style structured state) — improve over time.
 const COMPACT_PROMPT = `Compress the conversation so far into a compact brief that preserves all state needed to continue. If an earlier summary is present, fold it in and update it. Then stop.
@@ -715,7 +721,23 @@ function App({
     }
     if (cmd === "mcp") {
       const names = Object.keys(registry.mcpServers).join(", ") || "none";
-      return push({ kind: "note", text: `mcp connected: ${names}` });
+      const userMcp = join(configDir(), "mcp.json");
+      return push({
+        kind: "note",
+        text: `mcp connected: ${names}\nadd your own servers in ${userMcp} (merged over the defaults)`,
+      });
+    }
+    if (cmd === "setup") {
+      const set = (v?: string) => (v && v.trim() ? "✓" : "✗");
+      return push({
+        kind: "note",
+        text:
+          `config: ${join(configDir(), ".env")}\n` +
+          `  ANTHROPIC_API_KEY ${set(hasApiKey() ? "y" : "")}   ` +
+          `NOTION_TOKEN ${set(process.env.NOTION_TOKEN)}   ` +
+          `TAVILY_API_KEY ${set(process.env.TAVILY_API_KEY)}\n` +
+          `edit that file to change keys, then restart hemiunu.`,
+      });
     }
     if (cmd === "list") {
       const rows = store.listConversations();
@@ -871,18 +893,102 @@ function App({
   );
 }
 
+// --- first-run setup: collect keys without making the user edit a file ---
+
+interface SetupValues {
+  apiKey: string;
+  notionToken: string;
+  tavilyKey: string;
+}
+const SETUP_FIELDS: {
+  key: keyof SetupValues;
+  label: string;
+  hint: string;
+  mask?: boolean;
+  required?: boolean;
+}[] = [
+  { key: "apiKey", label: "API key", hint: "your proxy key — unlocks every model", mask: true, required: true },
+  { key: "notionToken", label: "Notion token", hint: "optional — press Enter to skip" },
+  { key: "tavilyKey", label: "Tavily key", hint: "optional (web search) — press Enter to skip" },
+];
+
+function Setup({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState(0);
+  const [value, setValue] = useState("");
+  const valuesRef = useRef<SetupValues>({ apiKey: "", notionToken: "", tavilyKey: "" });
+  const field = SETUP_FIELDS[step];
+
+  const submit = (raw: string) => {
+    const v = raw.trim();
+    if (field.required && !v) return; // a required field can't be skipped
+    valuesRef.current[field.key] = v;
+    setValue("");
+    if (step + 1 < SETUP_FIELDS.length) {
+      setStep(step + 1);
+    } else {
+      const vals = valuesRef.current;
+      writeUserEnv({
+        apiKey: vals.apiKey,
+        notionToken: vals.notionToken || undefined,
+        tavilyKey: vals.tavilyKey || undefined,
+      });
+      onDone();
+    }
+  };
+
+  return (
+    <Box flexDirection="column">
+      <Text color={SAND}>{LOGO}</Text>
+      <Box marginTop={1} marginLeft={3}>
+        <Text color={SAND} bold>Welcome to Hemiunu — let's get you set up.</Text>
+      </Box>
+      <Box marginTop={1} marginLeft={3}>
+        <Text>
+          <Text color={SAGE} bold>{`${field.label}: `}</Text>
+          <TextInput
+            value={value}
+            onChange={setValue}
+            onSubmit={submit}
+            mask={field.mask ? "•" : undefined}
+          />
+        </Text>
+      </Box>
+      <Box marginLeft={3}>
+        <Text dimColor>{`${field.hint}  ·  ${step + 1}/${SETUP_FIELDS.length}  ·  saved to ${join(configDir(), ".env")}`}</Text>
+      </Box>
+    </Box>
+  );
+}
+
+function runSetup(): Promise<void> {
+  return new Promise((resolve) => {
+    const { unmount } = render(
+      <Setup
+        onDone={() => {
+          unmount();
+          resolve();
+        }}
+      />,
+    );
+  });
+}
+
 async function main() {
   // Hemiunu's HOME (its config: soul.md, mcp.json, context/) is the install
   // dir when launched via the `hemiunu` command, else the current dir (running
   // from the repo). This is separate from the launch dir, which the agent reads
   // files from via the filesystem MCP (${CWD}) — so `hemiunu` works in any folder.
   const home = process.env.HEMIUNU_HOME ?? process.cwd();
-  // The agent's own state (conversations, folder-trust) lives in one global
-  // place — NOT in whatever folder you launch from.
-  const dataDir = join(homedir(), ".hemiunu");
+  // The user's config + state (keys, conversations, folder-trust) live in one
+  // place — NOT in the cloned code, so updates never clobber them.
+  const dataDir = configDir();
   mkdirSync(dataDir, { recursive: true });
+  // First run: if no key is configured, ask for it (and optional tokens) inline
+  // and write ~/.hemiunu/.env — no file editing required.
+  if (!hasApiKey()) await runSetup();
   const store = new ConversationStore(join(dataDir, "hemiunu.db"));
-  const registry = loadMcpRegistry(home);
+  // App default mcp.json + the user's own overlay (~/.hemiunu/mcp.json).
+  const registry = loadMcpRegistry(home, join(dataDir, "mcp.json"));
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
   // First run: seed each user's own (gitignored) user.md / memory.md from the
   // committed *.example templates, so a fresh clone starts with blank memory.

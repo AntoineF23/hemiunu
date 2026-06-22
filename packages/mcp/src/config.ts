@@ -69,14 +69,28 @@ function interpolateDeep<T>(node: T, missing: Set<string>): T {
  * Load mcp.json from the project root into SDK-ready server configs.
  * Servers are skipped if `disabled` or if any referenced ${ENV} var is unset.
  */
-export function loadMcpRegistry(root: string = process.cwd()): LoadedRegistry {
-  const path = join(root, "mcp.json");
+function readServers(path: string): Record<string, z.infer<typeof ServerConfig>> {
+  if (!existsSync(path)) return {};
+  return McpFile.parse(JSON.parse(readFileSync(path, "utf8"))).mcpServers;
+}
+
+/**
+ * Load the MCP registry from `<root>/mcp.json` (the app default), optionally
+ * merged with a user overlay (`userMcpPath`, e.g. `~/.hemiunu/mcp.json`). User
+ * entries override/extend the defaults by name — so updates to the app never
+ * clobber a user's own servers, and users add servers without touching the code.
+ */
+export function loadMcpRegistry(
+  root: string = process.cwd(),
+  userMcpPath?: string,
+): LoadedRegistry {
   const result: LoadedRegistry = { mcpServers: {}, toolPatterns: [], skipped: [] };
-  if (!existsSync(path)) return result;
+  const merged = {
+    ...readServers(join(root, "mcp.json")),
+    ...(userMcpPath ? readServers(userMcpPath) : {}),
+  };
 
-  const parsed = McpFile.parse(JSON.parse(readFileSync(path, "utf8")));
-
-  for (const [name, raw] of Object.entries(parsed.mcpServers)) {
+  for (const [name, raw] of Object.entries(merged)) {
     if (raw.disabled) {
       result.skipped.push({ name, reason: "disabled" });
       continue;
