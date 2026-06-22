@@ -1,0 +1,17 @@
+{
+  "name": "hemiunu",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.8.0",
+  "scripts": {
+    "dev": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/cli/src/index.tsx",
+    "smoke": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/eval/src/smoke.ts",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}
