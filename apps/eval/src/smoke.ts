@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runTurn, loadConfig, askModel, savePrototype } from "@hemiunu/agent-core";
+import { runTurn, loadConfig, askModel, savePrototype, pool } from "@hemiunu/agent-core";
 import {
   loadContext,
   buildSystemPrompt,
@@ -165,6 +165,25 @@ async function main() {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  await check("pool runs tasks concurrently, capped, and preserves order", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const delays = [40, 20, 30, 10, 25];
+    const t0 = Date.now();
+    const out = await pool(delays, 3, async (d, i) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, d));
+      active--;
+      return i;
+    });
+    const elapsed = Date.now() - t0;
+    assert(out.join(",") === "0,1,2,3,4", `order must be preserved, got ${out}`);
+    assert(maxActive > 1, "tasks should overlap (run concurrently)");
+    assert(maxActive <= 3, `concurrency cap of 3 should hold, saw ${maxActive}`);
+    assert(elapsed < 110, `concurrent run should beat the 125ms serial sum, took ${elapsed}ms`);
   });
 
   if (OFFLINE) return report();

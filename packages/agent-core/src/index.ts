@@ -21,3 +21,10 @@ export type {
   SavePrototypeOptions,
   SavedPrototype,
 } from "./prototype";
+export { createOrchestratorServer, PARALLEL_TOOL_ID, pool } from "./orchestrator";
+export {
+  runSubagent,
+  SUBAGENTS,
+  SUBAGENT_NAMES,
+} from "./subagents";
+export type { SubagentName, SubagentSpec, SubagentRunContext } from "./subagents";

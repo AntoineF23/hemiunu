@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { runTurn, REMEMBER_TOOL_ID } from "@hemiunu/agent-core";
+import { runTurn, REMEMBER_TOOL_ID, PARALLEL_TOOL_ID } from "@hemiunu/agent-core";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
@@ -522,7 +522,19 @@ function App({
               if (liveRef.current.trim()) push({ kind: "text", text: liveRef.current });
               liveRef.current = "";
               setLive("");
-              if (b.name === "Agent" || b.name === "Task") {
+              if (b.name === PARALLEL_TOOL_ID) {
+                const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
+                const summary = tasks
+                  .map((t: Record<string, unknown>) => String(t.label ?? t.agent ?? "task"))
+                  .join(", ");
+                push({
+                  kind: "tool",
+                  name: "parallel",
+                  input: `${tasks.length} task${tasks.length === 1 ? "" : "s"}${summary ? ` · ${clip(summary, 60)}` : ""}`,
+                  delegate: true,
+                });
+                setStatusLabel("parallel");
+              } else if (b.name === "Agent" || b.name === "Task") {
                 const who = String(b.input?.subagent_type ?? "subagent");
                 const desc = clip(String(b.input?.description ?? ""), 56);
                 // researcher runs on the cheap retrieval tier; others (e.g.
@@ -767,7 +779,9 @@ function App({
         ? "Researching"
         : statusLabel === "prototyping"
           ? "Prototyping"
-          : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
+          : statusLabel === "parallel"
+            ? "Orchestrating"
+            : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
 
   return (
     <Box flexDirection="column">

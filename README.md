@@ -34,6 +34,10 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
   assembles a brief from your sources, then a `prototyper` subagent generates a
   self-contained grayscale HTML wireframe into `prototypes/<slug>/` and opens it
   in your browser. Structure and flow first; the design system comes later.
+- **Parallel execution** — when a task splits into independent pieces, a
+  `parallel` tool fans them out across subagents concurrently (real code-level
+  fan-out, not the model's sequential dispatch), each in its own isolated
+  context, and merges the results. Genuinely parallel + no cross-contamination.
 - **File-based context construction** (Hermes-inspired): each turn the system
   prompt is assembled from `context/soul.md` (persona), `context/user.md`
   (learned user facts), and `context/memory.md` (durable notes). The agent
