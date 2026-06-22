@@ -17,6 +17,10 @@ import React, { useEffect, useRef, useState } from "react";
 const SAND = "#d7af87";
 const SAGE = "#87af87";
 
+// Retrieval tier the `researcher` subagent runs on (mirrors agent-core config).
+const RESEARCH_MODEL = process.env.HEMIUNU_MODEL_RESEARCH ?? "claude-sonnet-4.6";
+const shortModel = (m: string) => m.replace(/^claude-/, "");
+
 const LOGO = String.raw`
                                           _L/L
                                         _LT/l_L_
@@ -195,8 +199,8 @@ type Item =
   | { kind: "banner" }
   | { kind: "user"; text: string }
   | { kind: "text"; text: string }
-  | { kind: "tool"; name: string; input: string }
-  | { kind: "result"; text: string }
+  | { kind: "tool"; name: string; input: string; sub?: boolean; delegate?: boolean }
+  | { kind: "result"; text: string; sub?: boolean }
   | { kind: "perm"; text: string; ok: boolean }
   | { kind: "cost"; text: string }
   | { kind: "note"; text: string }
@@ -239,6 +243,26 @@ function ItemView({ item }: { item: Item }) {
         </Box>
       );
     case "tool":
+      // Delegation to a subagent — distinct glyph + the researcher's tier.
+      if (item.delegate)
+        return (
+          <Box marginTop={1}>
+            <Text>
+              <Text color={SAND} bold>{"⌂ "}</Text>
+              <Text color={SAND} bold>{prettyTool(item.name)}</Text>
+              <Text dimColor>{` ${item.input}`}</Text>
+            </Text>
+          </Box>
+        );
+      // A tool the researcher ran — indented under the delegation, dimmer.
+      if (item.sub)
+        return (
+          <Text dimColor>
+            {"    ⌕ "}
+            <Text color={SAGE}>{prettyTool(item.name)}</Text>
+            {` ${item.input}`}
+          </Text>
+        );
       return (
         <Box marginTop={1}>
           <Text>
@@ -253,7 +277,7 @@ function ItemView({ item }: { item: Item }) {
         </Box>
       );
     case "result":
-      return <Text dimColor>{`  ⎿ ${item.text}`}</Text>;
+      return <Text dimColor>{`${item.sub ? "      " : "  "}⎿ ${item.text}`}</Text>;
     case "perm":
       return (
         <Text>
@@ -485,8 +509,11 @@ function App({
         if (msg.type === "system" && msg.subtype === "init") {
           sessionId.current = msg.session_id;
         } else if (msg.type === "assistant") {
+          const sub = !!msg.parent_tool_use_id;
           for (const b of msg.message.content) {
             if (b.type === "text") {
+              // Suppress the researcher's own narration; only synthesis text shows.
+              if (sub) continue;
               fullText += b.text;
               liveRef.current += b.text;
               turnTokensRef.current += Math.ceil(b.text.length / 4);
@@ -495,18 +522,31 @@ function App({
               if (liveRef.current.trim()) push({ kind: "text", text: liveRef.current });
               liveRef.current = "";
               setLive("");
-              push({ kind: "tool", name: b.name, input: previewInput(b.input) });
-              setStatusLabel("running");
+              if (b.name === "Agent" || b.name === "Task") {
+                const who = String(b.input?.subagent_type ?? "subagent");
+                const desc = clip(String(b.input?.description ?? ""), 56);
+                push({
+                  kind: "tool",
+                  name: who,
+                  input: `${shortModel(RESEARCH_MODEL)}${desc ? ` · ${desc}` : ""}`,
+                  delegate: true,
+                });
+                setStatusLabel("researching");
+              } else {
+                push({ kind: "tool", name: b.name, input: previewInput(b.input), sub });
+                setStatusLabel(sub ? "researching" : "running");
+              }
             }
           }
         } else if (msg.type === "user") {
+          const sub = !!msg.parent_tool_use_id;
           for (const b of msg.message?.content ?? []) {
             if (b.type === "tool_result") {
               const t = resultText(b.content);
-              if (t) push({ kind: "result", text: clip(t, 200) });
+              if (t) push({ kind: "result", text: clip(t, 200), sub });
             }
           }
-          setStatusLabel("thinking");
+          setStatusLabel(sub ? "researching" : "thinking");
         } else if (msg.type === "result") {
           cost = msg.total_cost_usd ?? null;
           usage = msg.usage;
@@ -720,7 +760,9 @@ function App({
   const word =
     statusLabel === "compacting"
       ? "Compacting"
-      : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
+      : statusLabel === "researching"
+        ? "Researching"
+        : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
 
   return (
     <Box flexDirection="column">

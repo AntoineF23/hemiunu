@@ -36,8 +36,11 @@ Eight layers, each maps to a package.
 8. **Evaluation layer** — a headless harness that runs the agent against scenario fixtures and scores trajectories/outputs (assertions + LLM-as-judge), with regression tracking in Postgres.
 
 ### Model strategy (decided): Claude brain + others as tools, routed by subagent specialization
+
+> **BUILT (Slice 1, 2026-06-22):** the first specialized subagent — **`researcher`** — and **model tiers** are live. `agent-core` registers a `researcher` `AgentDefinition` scoped to the connected MCP source tools and pinned to a cheaper retrieval tier (`HEMIUNU_MODEL_RESEARCH`, default `claude-sonnet-4.6`); the main/synthesis loop runs on `HEMIUNU_MODEL` and delegates retrieval to it. soul.md steers delegation; the CLI surfaces it (`⌂ researcher · sonnet` + indented `⌕` source calls); a smoke check asserts delegation + grounding. Verified: subagents inherit the parent's MCP tools, and `canUseTool` still gates their tool calls (no permission gap). **Caveat — `claude-haiku-4.5` is NOT usable** as a tier through the proxy: the SDK always sends an `effort` param that haiku rejects (`thinking:'disabled'` doesn't suppress it). So the cheap tier is Sonnet until we can omit `effort` (SDK lever) or the proxy ignores it for haiku. **Next (Slice 2):** the `ask_model` tool for non-Claude models.
+
 - **Main loop stays Claude** (the engine is built around Anthropic tool-use/thinking — non-Claude main loops are fragile).
-- **Routing across Claude tiers is done by subagent specialization:** each specialized subagent is pinned to the right tier + effort, and the orchestrator routes by delegating. E.g. `extractor → claude-haiku` (cheap/mechanical), `analyst → claude-sonnet`, `architect → claude-opus, effort:'high'`. Set via `AgentDefinition.model` (`'inherit'` to reuse parent).
+- **Routing across Claude tiers is done by subagent specialization:** each specialized subagent is pinned to the right tier + effort, and the orchestrator routes by delegating. E.g. `extractor → claude-haiku` (cheap/mechanical — *currently blocked, see caveat above*), `analyst/researcher → claude-sonnet`, `architect → claude-opus, effort:'high'`. Set via `AgentDefinition.model` (`'inherit'` to reuse parent).
 - **Non-Claude models are exposed as tools, not as the brain:** a `tools` package wrapper (e.g. `ask_model({ model, prompt })`) calls other providers **through the LiteLLM proxy** (`models.thiga.co`) for specific subtasks; a Claude-driven agent decides when to call them. This gives multi-provider reach without destabilizing the agent loop.
 - **Model names must match what the LiteLLM proxy exposes**; the main agent must point at a Claude model there. `fallbackModel` + `effort` available per query/subagent.
 - **Design now, even in MVP:** `agent-core` treats `model` as a per-subagent parameter from day one (MVP uses a single Claude tier; tiers/tool-models are added without refactor).
@@ -87,7 +90,7 @@ product-agent/
 - **Model / effort**: `model: 'claude-opus-4-8'`, `fallbackModel`, `effort: 'high'`, `maxBudgetUsd`.
 - **Custom tool**: `tool(name, desc, zodSchema, handler, { annotations })` → bundle with `createSdkMcpServer({ name, version, tools })` → register as `mcpServers: { x: { type: 'sdk', name, instance } }`.
 - **Remote MCP w/ auth**: `mcpServers: { custom: { type: 'http', url, headers: { Authorization: 'Bearer <token>' } } }` (also `type: 'sse'`, `type: 'stdio'`).
-- **Subagents**: `agents: { researcher: { description, prompt, tools, model, mcpServers, skills, memory } }`; invoked via the `Agent` tool (add `Agent` to `allowedTools`). Track output via `parent_tool_use_id`.
+- **Subagents**: `agents: { researcher: { description, prompt, tools, model, mcpServers, skills, memory } }`. **Verified:** the delegate tool's canonical id is **`Task`** — add `"Task"` to the `tools` availability allowlist (the model emits the call as `Agent` with a `subagent_type` arg, which resolves to `Task`). Subagents inherit the parent's registered MCP tools (filter via `AgentDefinition.tools`); their tool calls still pass through `canUseTool`. Track subagent output via `parent_tool_use_id` on the streamed messages.
 - **Hooks**: `hooks: { PreToolUse, PostToolUse, SessionStart, SessionEnd, UserPromptSubmit, ... }` with `{ matcher, hooks: [cb] }`.
 - **Permissions**: `permissionMode` (`default|acceptEdits|plan|dontAsk|auto|bypassPermissions`), `allowedTools`, `disallowedTools`, and `canUseTool(toolName, input, opts)` returning `{ behavior: 'allow'|'deny', ... }`.
 - **Sessions**: capture `session_id` from the `system/init` message; `resume`, `continue`, `forkSession`; `listSessions`, `getSessionMessages`, `renameSession`, `tagSession`.
@@ -108,7 +111,7 @@ product-agent/
 
 **Phase 3 — MCP integration (SaaS first, then Auth0).** Connect one SaaS MCP, then one custom **HTTP MCP with a static bearer token**, then add the **Auth0 token broker** for per-user tokens. *Done when:* the agent reads real data from a protected custom server using the logged-in user's token.
 
-**Phase 4 — Subagents & governance.** Define `researcher` + `prototyper` subagents (model-specialized); add RBAC enforced via `canUseTool` + role→tool/MCP policy; add `PostToolUse` audit hook and `maxBudgetUsd`. *Done when:* a low-rights user is blocked from a restricted tool, with an audit entry.
+**Phase 4 — Subagents & governance.** Define `researcher` + `prototyper` subagents (model-specialized); add RBAC enforced via `canUseTool` + role→tool/MCP policy; add `PostToolUse` audit hook and `maxBudgetUsd`. *Done when:* a low-rights user is blocked from a restricted tool, with an audit entry. **Partial:** the `researcher` subagent + model tiers are built (see the BUILT note under Model strategy); `prototyper`, RBAC, audit hooks, and budget caps remain.
 
 **Phase 5 — Prototyping & deploy (two stages).**
   - *5a — Wireframes:* `prototyper` generates a low-fidelity Next.js wireframe, runs/tests it in **Vercel Sandbox**, deploys a preview into the **shared Vercel project**; iterate over multiple rounds from team feedback. *Done when:* "wireframe X" yields a live, iterable preview URL.

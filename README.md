@@ -21,6 +21,11 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
   filesystem, or anything you add to `mcp.json`) and searches them before
   answering. Every tool call is gated by a **yes / always / no** permission
   prompt (queued, arrow-key select, `Esc` to interrupt).
+- **Researcher subagent + model tiers** — for anything that needs looking
+  things up, the main model delegates retrieval to a `researcher` subagent
+  running on a **cheaper tier** (`HEMIUNU_MODEL_RESEARCH`, default Sonnet),
+  then synthesizes the findings on the main model. The CLI shows the
+  delegation (`⌂ researcher · sonnet`) and the subagent's source calls.
 - **File-based context construction** (Hermes-inspired): each turn the system
   prompt is assembled from `context/soul.md` (persona), `context/user.md`
   (learned user facts), and `context/memory.md` (durable notes). The agent
@@ -51,7 +56,8 @@ corepack pnpm dev         # launch the CLI
 | --- | --- |
 | `ANTHROPIC_BASE_URL` | Anthropic-compatible endpoint (the org LiteLLM proxy). |
 | `ANTHROPIC_API_KEY` | Key for that endpoint. **Required.** |
-| `HEMIUNU_MODEL` | Main model id, e.g. `claude-opus-4.8` / `claude-sonnet-4.6`. |
+| `HEMIUNU_MODEL` | Main / synthesis model id, e.g. `claude-opus-4.8` / `claude-sonnet-4.6`. |
+| `HEMIUNU_MODEL_RESEARCH` | Retrieval tier for the `researcher` subagent (default `claude-sonnet-4.6`). Haiku isn't supported — see note below. |
 | `HEMIUNU_THINKING_BUDGET` | Extended-thinking tokens. `0`/unset = disabled (cheaper, works everywhere). |
 | `HEMIUNU_CONTEXT_WINDOW` | Override the context window (for compaction). |
 | `HEMIUNU_COMPACT_THRESHOLD` | Fraction of the window that triggers auto-compaction (default `0.5`). |

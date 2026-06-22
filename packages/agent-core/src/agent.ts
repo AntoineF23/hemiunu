@@ -1,5 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentDefinition, Options } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig } from "./config";
 import { createMemoryServer } from "./tools";
 
@@ -8,11 +8,23 @@ const DEFAULT_SOUL =
   "You are Hemiunu, a product agent for a product team. Be professional and concise, with simple, precise vocabulary. If you lack information, say so in one line.";
 
 const MEMORY_TOOLS = "mcp__hemiunu-memory__*";
+/** Built-in tool the main loop uses to delegate to a subagent (resolved id is "Task"). */
+const DELEGATE_TOOL = "Task";
+
+/** System prompt for the `researcher` subagent (runs on the cheaper retrieval tier). */
+const RESEARCHER_PROMPT = `You are Hemiunu's research subagent. The coordinator delegates a research request to you; your job is to gather grounded information from the connected data sources so the coordinator can answer.
+
+- Search the available sources (Notion, local files, and any other connected MCP servers) thoroughly. Run several searches/reads as needed — don't stop at the first hit.
+- Return only what you actually found, each point attributed to its source (page title, file path, URL).
+- If the sources do not contain the answer, say so plainly. Never invent facts or fill gaps from general knowledge.
+- Output a concise findings brief (short bullets or sections) for the coordinator to synthesize. Do not address the end user directly.`;
 
 export interface RunTurnOptions {
   prompt: string;
-  /** Model override (defaults to config/env HEMIUNU_MODEL). */
+  /** Main / synthesis model override (defaults to config/env HEMIUNU_MODEL). */
   model?: string;
+  /** Retrieval-tier model for the researcher subagent (defaults to config/env HEMIUNU_MODEL_RESEARCH). */
+  researchModel?: string;
   /** System prompt, normally built from context/ (soul + user + memory). */
   systemPrompt?: string;
   /** Session id to resume a prior conversation. */
@@ -33,7 +45,33 @@ export interface RunTurnOptions {
  */
 export async function* runTurn(opts: RunTurnOptions) {
   const cfg = loadConfig();
-  const tools = [MEMORY_TOOLS, ...(opts.toolPatterns ?? [])];
+  const sourceTools = opts.toolPatterns ?? [];
+  // A researcher only earns its keep when there are sources to search. With
+  // none connected, the main loop just answers directly (still has memory).
+  const hasSources = sourceTools.length > 0;
+
+  // The source tools must be in the parent allowlist to exist in the session
+  // at all (so the subagent can inherit them); soul.md steers the main loop to
+  // delegate deep/multi-source work to the researcher rather than search itself.
+  const tools = [
+    MEMORY_TOOLS,
+    ...sourceTools,
+    ...(hasSources ? [DELEGATE_TOOL] : []),
+  ];
+
+  // Retrieval tier: the researcher runs on the cheaper model and is scoped to
+  // the source tools only — no memory writes, no nested delegation.
+  const agents: Record<string, AgentDefinition> | undefined = hasSources
+    ? {
+        researcher: {
+          description:
+            "Searches the connected data sources (Notion, local files, and any other connected MCP servers) and returns grounded findings with citations. Delegate any question that needs looking things up, or any non-trivial product/research question.",
+          prompt: RESEARCHER_PROMPT,
+          model: opts.researchModel ?? cfg.researchModel,
+          tools: sourceTools,
+        },
+      }
+    : undefined;
 
   const q = query({
     prompt: opts.prompt,
@@ -52,8 +90,10 @@ export async function* runTurn(opts: RunTurnOptions) {
         "hemiunu-memory": createMemoryServer(),
         ...(opts.mcpServers ?? {}),
       } as Options["mcpServers"],
+      ...(agents ? { agents } : {}),
       // Restrict the available toolset (default loads ~29 built-ins, whose
-      // schemas are billed every turn). Only our memory tool + enabled servers.
+      // schemas are billed every turn). Only our memory tool + enabled servers
+      // + the delegate tool when a researcher is available.
       tools,
       // With a permission callback, every tool use is gated (yes/always/no).
       // Without one, pre-approve our tools so non-interactive runs don't block.

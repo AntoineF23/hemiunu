@@ -175,6 +175,44 @@ async function main() {
     assert(/hemiunu/i.test(text), `expected the agent to call itself Hemiunu, got: ${text.slice(0, 120)}`);
   });
 
+  await check("delegates to the researcher subagent and grounds the answer", async () => {
+    // Give it a real source (this repo via the filesystem MCP) and a research
+    // question; expect it to delegate to `researcher` and answer from the file.
+    const mcpServers = {
+      filesystem: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", process.cwd()],
+      },
+    };
+    let delegated = false;
+    let text = "";
+    for await (const m of runTurn({
+      prompt:
+        "Research this project's README.md and tell me in one sentence what Hemiunu is. Ground it in the file.",
+      model: EVAL_MODEL,
+      researchModel: EVAL_MODEL,
+      mcpServers,
+      toolPatterns: ["mcp__filesystem__*"],
+    })) {
+      const msg = m as Record<string, any>;
+      if (msg.type === "assistant") {
+        for (const b of msg.message?.content ?? []) {
+          if (b.type === "tool_use" && (b.name === "Agent" || b.name === "Task") &&
+              b.input?.subagent_type === "researcher") {
+            delegated = true;
+          }
+        }
+      }
+      if (msg.type === "result") {
+        if (typeof msg.result === "string") text = msg.result;
+        if (typeof msg.total_cost_usd === "number") liveCost += msg.total_cost_usd;
+      }
+    }
+    assert(delegated, "expected the main loop to delegate to the researcher subagent");
+    assert(/product agent/i.test(text), `expected a grounded answer from the README, got: ${text.slice(0, 120)}`);
+  });
+
   console.log(`\n\x1b[2m  live turns cost ~$${liveCost.toFixed(4)}\x1b[0m`);
   report();
 }
