@@ -9,6 +9,7 @@ import {
   SUBAGENT_NAMES,
   subagentPrompt,
   type SubagentRunContext,
+  type SubagentEvent,
 } from "./subagents";
 
 /** Minimal default persona if context/soul.md is empty/missing. */
@@ -43,6 +44,8 @@ export interface RunTurnOptions {
   canUseTool?: Options["canUseTool"];
   /** Abort controller to stop the turn mid-flight (Esc to interrupt). */
   abortController?: AbortController;
+  /** Live progress from parallel subtasks (so the CLI can show what's running). */
+  onSubagentEvent?: (e: SubagentEvent) => void;
 }
 
 /**
@@ -103,6 +106,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     baseUrl: cfg.baseUrl,
     apiKey: cfg.apiKey,
     thinking: cfg.thinking,
+    onEvent: opts.onSubagentEvent,
   };
 
   const q = query({

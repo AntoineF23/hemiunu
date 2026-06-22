@@ -66,10 +66,16 @@ export function createOrchestratorServer(ctx: SubagentRunContext) {
     async ({ tasks }) => {
       const results = await pool(tasks, MAX_CONCURRENCY, async (t) => {
         const label = t.label ?? t.agent;
+        const agent = t.agent as SubagentName;
+        ctx.onEvent?.({ type: "task-start", label, agent });
         try {
-          const text = await runSubagent(t.agent as SubagentName, t.prompt, ctx);
+          const text = await runSubagent(agent, t.prompt, ctx, (tool) =>
+            ctx.onEvent?.({ type: "task-tool", label, tool }),
+          );
+          ctx.onEvent?.({ type: "task-done", label, agent, ok: true });
           return { label, agent: t.agent, text };
         } catch (e) {
+          ctx.onEvent?.({ type: "task-done", label, agent, ok: false });
           return {
             label,
             agent: t.agent,

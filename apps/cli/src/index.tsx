@@ -510,6 +510,17 @@ function App({
         mcpServers: activeServers,
         toolPatterns: activePatterns,
         abortController: ac,
+        // Live visibility into parallel subtasks (otherwise opaque).
+        onSubagentEvent: (e) => {
+          if (e.type === "task-start") {
+            push({ kind: "tool", name: e.label, input: `→ ${e.agent} · running`, sub: true });
+          } else if (e.type === "task-tool") {
+            push({ kind: "tool", name: `${e.label} · ${prettyTool(e.tool)}`, input: "", sub: true });
+          } else {
+            push({ kind: "result", text: `${e.label} ${e.ok ? "done" : "failed"}`, sub: true });
+          }
+          setStatusLabel("parallel");
+        },
       })) {
         const msg = m as any;
         if (msg.type === "system" && msg.subtype === "init") {

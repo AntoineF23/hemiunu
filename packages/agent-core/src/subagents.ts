@@ -85,6 +85,12 @@ export const SUBAGENTS: Record<SubagentName, SubagentSpec> = {
 
 export const SUBAGENT_NAMES = Object.keys(SUBAGENTS) as SubagentName[];
 
+/** Live progress emitted while parallel subtasks run, for CLI visibility. */
+export type SubagentEvent =
+  | { type: "task-start"; label: string; agent: SubagentName }
+  | { type: "task-tool"; label: string; tool: string }
+  | { type: "task-done"; label: string; agent: SubagentName; ok: boolean };
+
 /** Everything a subagent needs to run, resolved for the current turn. */
 export interface SubagentRunContext {
   /** Main / synthesis model. */
@@ -99,6 +105,8 @@ export interface SubagentRunContext {
   baseUrl: string | undefined;
   apiKey: string;
   thinking: Options["thinking"];
+  /** Live progress sink for parallel subtasks (CLI visibility). */
+  onEvent?: (e: SubagentEvent) => void;
 }
 
 function modelFor(spec: SubagentSpec, ctx: SubagentRunContext): string {
@@ -116,6 +124,7 @@ export async function runSubagent(
   name: SubagentName,
   prompt: string,
   ctx: SubagentRunContext,
+  onTool?: (toolName: string) => void,
 ): Promise<string> {
   const spec = SUBAGENTS[name];
   const tools = spec.tools(ctx.sourceTools);
@@ -137,7 +146,12 @@ export async function runSubagent(
       allowedTools: tools,
     },
   })) {
-    const msg = m as Record<string, unknown>;
+    const msg = m as Record<string, any>;
+    if (onTool && msg.type === "assistant") {
+      for (const b of msg.message?.content ?? []) {
+        if (b.type === "tool_use" && typeof b.name === "string") onTool(b.name);
+      }
+    }
     if (msg.type === "result" && typeof msg.result === "string") text = msg.result;
   }
   return text;

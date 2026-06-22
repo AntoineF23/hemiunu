@@ -30,4 +30,4 @@ export {
   SUBAGENTS,
   SUBAGENT_NAMES,
 } from "./subagents";
-export type { SubagentName, SubagentSpec, SubagentRunContext } from "./subagents";
+export type { SubagentName, SubagentSpec, SubagentRunContext, SubagentEvent } from "./subagents";
