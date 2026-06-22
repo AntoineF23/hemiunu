@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="384" viewBox="0 0 820 384" font-family="ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1813"/>
+      <stop offset="1" stop-color="#13100c"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="814" height="378" rx="16" fill="url(#bg)" stroke="#d7af87" stroke-opacity="0.28"/>
+
+  <!-- pyramid art, reproduced from the CLI banner, in sand -->
+  <text x="170" y="44" xml:space="preserve" font-size="12.5" fill="#d7af87">
+    <tspan x="170" y="44">                                          _L/L</tspan>
+    <tspan x="170" dy="15.5">                                        _LT/l_L_</tspan>
+    <tspan x="170" dy="15.5">                                      _LLl/L_T_lL_</tspan>
+    <tspan x="170" dy="15.5">                  _T/L              _LT|L/_|__L_|_L_</tspan>
+    <tspan x="170" dy="15.5">                _Ll/l_L_          _TL|_T/_L_|__T__|_l_</tspan>
+    <tspan x="170" dy="15.5">              _TLl/T_l|_L_      _LL|_Tl/_|__l___L__L_|L_</tspan>
+    <tspan x="170" dy="15.5">            _LT_L/L_|_L_l_L_  _'|_|_|T/_L_l__T _ l__|__|L_</tspan>
+    <tspan x="170" dy="15.5">          _Tl_L|/_|__|_|__T _LlT_|_Ll/_l_ _|__[ ]__|__|_l_L_</tspan>
+    <tspan x="170" dy="15.5">   jjs_ _LT_l_l/|__|__l_T _T_L|_|_|l/___|__ | _l__|_ |__|_T_L_  __</tspan>
+    <tspan x="170" dy="15.5"> </tspan>
+    <tspan x="170" dy="15.5">                          nn_r   nn_r                 __</tspan>
+    <tspan x="170" dy="15.5">                    __   /l(\   /l)\      nn_r</tspan>
+    <tspan x="170" dy="15.5">              __                         /\(\    __</tspan>
+  </text>
+
+  <!-- spinner triangles + wordmark -->
+  <text x="410" y="288" text-anchor="middle" font-size="17" fill="#d7af87" fill-opacity="0.85" letter-spacing="6">△ ◭ ▲ ◮</text>
+  <text x="410" y="332" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="38" font-weight="700" fill="#d7af87" letter-spacing="10">HEMIUNU</text>
+  <text x="410" y="360" text-anchor="middle" font-size="12.5" fill="#87af87" letter-spacing="1.5">product agent for product teams · built on the Claude Agent SDK</text>
+</svg>

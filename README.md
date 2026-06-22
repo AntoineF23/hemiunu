@@ -1,4 +1,8 @@
-# Hemiunu
+<div align="center">
+
+<img src="assets/hemiunu-banner.svg" alt="Hemiunu — product agent for product teams" width="760">
+
+</div>
 
 An organization-wide AI **Product Agent** for a product team, built on the
 [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk) (TypeScript).
