@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { copyFileSync } from "node:fs";
 
-import { runTurn, loadConfig } from "@hemiunu/agent-core";
+import { runTurn, loadConfig, askModel } from "@hemiunu/agent-core";
 import {
   loadContext,
   buildSystemPrompt,
@@ -211,6 +211,14 @@ async function main() {
     }
     assert(delegated, "expected the main loop to delegate to the researcher subagent");
     assert(/product agent/i.test(text), `expected a grounded answer from the README, got: ${text.slice(0, 120)}`);
+  });
+
+  await check("ask_model reaches a non-Claude model on the proxy", async () => {
+    const text = await askModel({
+      model: "gemini-2.5-flash",
+      prompt: "Reply with exactly: PONG",
+    });
+    assert(/pong/i.test(text), `expected PONG from gemini-2.5-flash, got: ${text.slice(0, 120)}`);
   });
 
   console.log(`\n\x1b[2m  live turns cost ~$${liveCost.toFixed(4)}\x1b[0m`);

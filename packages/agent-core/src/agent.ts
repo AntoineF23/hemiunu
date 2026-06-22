@@ -1,13 +1,15 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentDefinition, Options } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig } from "./config";
-import { createMemoryServer } from "./tools";
+import { createMemoryServer, createModelsServer } from "./tools";
 
 /** Minimal default persona if context/soul.md is empty/missing. */
 const DEFAULT_SOUL =
   "You are Hemiunu, a product agent for a product team. Be professional and concise, with simple, precise vocabulary. If you lack information, say so in one line.";
 
 const MEMORY_TOOLS = "mcp__hemiunu-memory__*";
+/** ask_model — one-shot calls to non-Claude models on the proxy. */
+const MODEL_TOOLS = "mcp__hemiunu-models__*";
 /** Built-in tool the main loop uses to delegate to a subagent (resolved id is "Task"). */
 const DELEGATE_TOOL = "Task";
 
@@ -55,6 +57,7 @@ export async function* runTurn(opts: RunTurnOptions) {
   // delegate deep/multi-source work to the researcher rather than search itself.
   const tools = [
     MEMORY_TOOLS,
+    MODEL_TOOLS,
     ...sourceTools,
     ...(hasSources ? [DELEGATE_TOOL] : []),
   ];
@@ -88,6 +91,7 @@ export async function* runTurn(opts: RunTurnOptions) {
       } as Record<string, string>,
       mcpServers: {
         "hemiunu-memory": createMemoryServer(),
+        "hemiunu-models": createModelsServer(),
         ...(opts.mcpServers ?? {}),
       } as Options["mcpServers"],
       ...(agents ? { agents } : {}),

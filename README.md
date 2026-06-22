@@ -26,6 +26,10 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
   running on a **cheaper tier** (`HEMIUNU_MODEL_RESEARCH`, default Sonnet),
   then synthesizes the findings on the main model. The CLI shows the
   delegation (`⌂ researcher · sonnet`) and the subagent's source calls.
+- **Other models as tools** — an `ask_model` tool lets the Claude agent
+  consult any non-Claude model on the proxy (Gemini, GPT, Grok, DeepSeek,
+  Qwen, …) for a second opinion or a specialized subtask, then integrate the
+  result. Claude stays the brain; other models are tools it calls.
 - **File-based context construction** (Hermes-inspired): each turn the system
   prompt is assembled from `context/soul.md` (persona), `context/user.md`
   (learned user facts), and `context/memory.md` (durable notes). The agent
