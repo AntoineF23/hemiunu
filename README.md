@@ -52,7 +52,28 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
 - **Runtime model switching** via `/models` (lists the Claude models your key
   exposes on the proxy).
 
-## Setup
+## Install
+
+One line (requires **Node 24+**):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh | bash
+```
+
+This clones Hemiunu to `~/.hemiunu/app`, installs dependencies, and puts the
+`hemiunu` command on your PATH. Then add your key to `~/.hemiunu/app/.env` and run:
+
+```bash
+hemiunu
+```
+
+Re-run the same command any time to update. Hemiunu's own config (`soul.md`,
+`mcp.json`, `.env`) is read from the install dir, while file access (the
+filesystem MCP) and folder-trust follow the directory you launch it in — so
+`hemiunu` in a project lets the agent read *that* project, with its brain
+coming from the install.
+
+## Setup from source
 
 Requires Node 24+ (uses the built-in `node:sqlite`). pnpm via Corepack.
 
@@ -60,29 +81,8 @@ Requires Node 24+ (uses the built-in `node:sqlite`). pnpm via Corepack.
 corepack pnpm install
 cp .env.example .env      # then fill in your key (see below)
 corepack pnpm dev         # launch the CLI (from the repo)
+corepack pnpm link --global   # optional: expose the `hemiunu` command
 ```
-
-### The `hemiunu` command
-
-To launch with a single word from any folder — like `claude` — install the
-`hemiunu` command once:
-
-```bash
-corepack pnpm link --global    # registers `hemiunu` on your PATH
-# or, if pnpm's global bin isn't on PATH:
-ln -s "$PWD/bin/hemiunu.mjs" /usr/local/bin/hemiunu
-```
-
-Then, from anywhere:
-
-```bash
-hemiunu
-```
-
-Hemiunu's own config (`soul.md`, `mcp.json`, `.env`) is read from where it's
-installed, while file access (the filesystem MCP) and folder-trust follow the
-directory you launch it in — so `hemiunu` in a project lets the agent read
-*that* project, with its brain coming from the install.
 
 ### Configuration (`.env`)
 
