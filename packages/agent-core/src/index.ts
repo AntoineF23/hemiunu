@@ -10,3 +10,14 @@ export {
   askModel,
 } from "./tools";
 export type { AskModelOptions } from "./tools";
+export {
+  createPrototypeServer,
+  SAVE_PROTOTYPE_TOOL_ID,
+  savePrototype,
+  slugify,
+} from "./prototype";
+export type {
+  PrototypeFile,
+  SavePrototypeOptions,
+  SavedPrototype,
+} from "./prototype";

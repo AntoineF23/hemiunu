@@ -525,13 +525,16 @@ function App({
               if (b.name === "Agent" || b.name === "Task") {
                 const who = String(b.input?.subagent_type ?? "subagent");
                 const desc = clip(String(b.input?.description ?? ""), 56);
+                // researcher runs on the cheap retrieval tier; others (e.g.
+                // prototyper) on the main model.
+                const subModel = who === "researcher" ? RESEARCH_MODEL : model;
                 push({
                   kind: "tool",
                   name: who,
-                  input: `${shortModel(RESEARCH_MODEL)}${desc ? ` · ${desc}` : ""}`,
+                  input: `${shortModel(subModel)}${desc ? ` · ${desc}` : ""}`,
                   delegate: true,
                 });
-                setStatusLabel("researching");
+                setStatusLabel(who === "prototyper" ? "prototyping" : "researching");
               } else {
                 push({ kind: "tool", name: b.name, input: previewInput(b.input), sub });
                 setStatusLabel(sub ? "researching" : "running");
@@ -762,7 +765,9 @@ function App({
       ? "Compacting"
       : statusLabel === "researching"
         ? "Researching"
-        : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
+        : statusLabel === "prototyping"
+          ? "Prototyping"
+          : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
 
   return (
     <Box flexDirection="column">

@@ -30,6 +30,10 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
   consult any non-Claude model on the proxy (Gemini, GPT, Grok, DeepSeek,
   Qwen, …) for a second opinion or a specialized subtask, then integrate the
   result. Claude stays the brain; other models are tools it calls.
+- **Wireframes (low-fi)** — ask Hemiunu to mock up a screen or flow and it
+  assembles a brief from your sources, then a `prototyper` subagent generates a
+  self-contained grayscale HTML wireframe into `prototypes/<slug>/` and opens it
+  in your browser. Structure and flow first; the design system comes later.
 - **File-based context construction** (Hermes-inspired): each turn the system
   prompt is assembled from `context/soul.md` (persona), `context/user.md`
   (learned user facts), and `context/memory.md` (durable notes). The agent

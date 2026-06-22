@@ -9,14 +9,12 @@
  * prove the engine end-to-end, then a couple of lightweight behavioural evals.
  * Exits non-zero if any check fails, so it doubles as a CI/pre-push gate.
  */
-import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { copyFileSync } from "node:fs";
-
-import { runTurn, loadConfig, askModel } from "@hemiunu/agent-core";
+import { runTurn, loadConfig, askModel, savePrototype } from "@hemiunu/agent-core";
 import {
   loadContext,
   buildSystemPrompt,
@@ -139,6 +137,31 @@ async function main() {
       const user = loadContext(root).user;
       assert(!/^- \S/m.test(user), `seeded user.md should carry no learned facts, got: ${user.slice(0, 80)}`);
       assert(buildSystemPrompt(loadContext(root)).includes("Hemiunu"), "persona still wires through on a fresh clone");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await check("savePrototype writes into the sandbox and blocks path traversal", () => {
+    const root = mkdtempSync(join(tmpdir(), "hemiunu-proto-"));
+    try {
+      const saved = savePrototype({
+        slug: "My Test Screen!",
+        files: [{ path: "index.html", content: "<!doctype html><title>x</title>" }],
+        root,
+      });
+      assert(!!saved.indexPath && existsSync(saved.indexPath), "index.html should be written");
+      assert(
+        saved.dir.includes(join("prototypes", "my-test-screen")),
+        `slug should be sanitized to kebab-case, got: ${saved.dir}`,
+      );
+      let threw = false;
+      try {
+        savePrototype({ slug: "esc", files: [{ path: "../../escape.html", content: "x" }], root });
+      } catch {
+        threw = true;
+      }
+      assert(threw, "writing outside the prototype sandbox must throw");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

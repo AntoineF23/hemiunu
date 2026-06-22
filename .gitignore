@@ -13,3 +13,6 @@ dist/
 # first run. The repo ships only the empty templates.
 context/user.md
 context/memory.md
+
+# generated wireframes / prototypes (agent output, not source)
+prototypes/

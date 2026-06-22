@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentDefinition, Options } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig } from "./config";
 import { createMemoryServer, createModelsServer } from "./tools";
+import { createPrototypeServer } from "./prototype";
 
 /** Minimal default persona if context/soul.md is empty/missing. */
 const DEFAULT_SOUL =
@@ -10,6 +11,8 @@ const DEFAULT_SOUL =
 const MEMORY_TOOLS = "mcp__hemiunu-memory__*";
 /** ask_model — one-shot calls to non-Claude models on the proxy. */
 const MODEL_TOOLS = "mcp__hemiunu-models__*";
+/** save_prototype — writes a wireframe into the prototypes/ sandbox. */
+const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
 /** Built-in tool the main loop uses to delegate to a subagent (resolved id is "Task"). */
 const DELEGATE_TOOL = "Task";
 
@@ -20,6 +23,17 @@ const RESEARCHER_PROMPT = `You are Hemiunu's research subagent. The coordinator 
 - Return only what you actually found, each point attributed to its source (page title, file path, URL).
 - If the sources do not contain the answer, say so plainly. Never invent facts or fill gaps from general knowledge.
 - Output a concise findings brief (short bullets or sections) for the coordinator to synthesize. Do not address the end user directly.`;
+
+/** System prompt for the `prototyper` subagent (generates low-fi HTML wireframes). */
+const PROTOTYPER_PROMPT = `You are Hemiunu's prototyper subagent. The coordinator hands you a brief — goal, primary user, the screen(s) to build, their sections/components, and real content. Turn it into a single self-contained low-fidelity HTML wireframe and save it with the save_prototype tool.
+
+Rules:
+- LOW-FIDELITY ONLY: grayscale (white/greys/black text), system font, no brand colours, no images (use labelled placeholder boxes). The goal is structure and flow, not visual design.
+- Use REAL content from the brief — real labels, headings, field names, sample rows — never lorem ipsum.
+- One self-contained index.html: all CSS inline in a <style> tag. NO external requests — no CDNs, fonts, images, or JS frameworks. Plain fl/grid CSS for layout is fine.
+- Represent rich components as simple bordered boxes with a label (e.g. a chart → a box labelled "Line chart: paid net adds over time"; a table → a box with a few header cells and sample rows). Show key states (empty/loading) only if the brief calls for them.
+- Build only the screen(s) in the brief. Add small annotation notes sparingly where they aid understanding.
+- Save via save_prototype with a kebab-case slug and an index.html file. Then tell the coordinator in one or two lines what you built and the saved path. Do not address the end user directly.`;
 
 export interface RunTurnOptions {
   prompt: string;
@@ -52,29 +66,40 @@ export async function* runTurn(opts: RunTurnOptions) {
   // none connected, the main loop just answers directly (still has memory).
   const hasSources = sourceTools.length > 0;
 
-  // The source tools must be in the parent allowlist to exist in the session
-  // at all (so the subagent can inherit them); soul.md steers the main loop to
-  // delegate deep/multi-source work to the researcher rather than search itself.
+  // Subagent tools must also be in the parent allowlist to exist in the session
+  // (so subagents can inherit them); soul.md steers the main loop to delegate
+  // rather than do the heavy work itself. The `prototyper` is always available;
+  // the `researcher` only when there are sources to search.
   const tools = [
     MEMORY_TOOLS,
     MODEL_TOOLS,
+    PROTOTYPE_TOOLS,
     ...sourceTools,
-    ...(hasSources ? [DELEGATE_TOOL] : []),
+    DELEGATE_TOOL,
   ];
 
-  // Retrieval tier: the researcher runs on the cheaper model and is scoped to
-  // the source tools only — no memory writes, no nested delegation.
-  const agents: Record<string, AgentDefinition> | undefined = hasSources
-    ? {
-        researcher: {
-          description:
-            "Searches the connected data sources (Notion, local files, and any other connected MCP servers) and returns grounded findings with citations. Delegate any question that needs looking things up, or any non-trivial product/research question.",
-          prompt: RESEARCHER_PROMPT,
-          model: opts.researchModel ?? cfg.researchModel,
-          tools: sourceTools,
-        },
-      }
-    : undefined;
+  const agents: Record<string, AgentDefinition> = {
+    // Generation tier: runs on the main/synthesis model; scoped to the
+    // prototype writer only — it works from the brief, not from sources.
+    prototyper: {
+      description:
+        "Turns a brief (goal, user, screens, sections, components, content) into a self-contained low-fidelity HTML wireframe and saves it. Delegate once you have a clear brief and the user wants something built/visualised.",
+      prompt: PROTOTYPER_PROMPT,
+      model: opts.model ?? cfg.model,
+      tools: [PROTOTYPE_TOOLS],
+    },
+  };
+  if (hasSources) {
+    // Retrieval tier: the researcher runs on the cheaper model, scoped to the
+    // source tools only — no memory writes, no nested delegation.
+    agents.researcher = {
+      description:
+        "Searches the connected data sources (Notion, local files, and any other connected MCP servers) and returns grounded findings with citations. Delegate any question that needs looking things up, or any non-trivial product/research question.",
+      prompt: RESEARCHER_PROMPT,
+      model: opts.researchModel ?? cfg.researchModel,
+      tools: sourceTools,
+    };
+  }
 
   const q = query({
     prompt: opts.prompt,
@@ -92,12 +117,13 @@ export async function* runTurn(opts: RunTurnOptions) {
       mcpServers: {
         "hemiunu-memory": createMemoryServer(),
         "hemiunu-models": createModelsServer(),
+        "hemiunu-prototype": createPrototypeServer(),
         ...(opts.mcpServers ?? {}),
       } as Options["mcpServers"],
-      ...(agents ? { agents } : {}),
+      agents,
       // Restrict the available toolset (default loads ~29 built-ins, whose
-      // schemas are billed every turn). Only our memory tool + enabled servers
-      // + the delegate tool when a researcher is available.
+      // schemas are billed every turn). Only our in-process tools + enabled
+      // source servers + the delegate tool for subagents.
       tools,
       // With a permission callback, every tool use is gated (yes/always/no).
       // Without one, pre-approve our tools so non-interactive runs don't block.
