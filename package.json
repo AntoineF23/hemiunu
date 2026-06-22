@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.8.0",
+  "bin": { "hemiunu": "bin/hemiunu.mjs" },
   "scripts": {
     "dev": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/cli/src/index.tsx",
     "smoke": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/eval/src/smoke.ts",

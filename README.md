@@ -59,8 +59,30 @@ Requires Node 24+ (uses the built-in `node:sqlite`). pnpm via Corepack.
 ```bash
 corepack pnpm install
 cp .env.example .env      # then fill in your key (see below)
-corepack pnpm dev         # launch the CLI
+corepack pnpm dev         # launch the CLI (from the repo)
 ```
+
+### The `hemiunu` command
+
+To launch with a single word from any folder — like `claude` — install the
+`hemiunu` command once:
+
+```bash
+corepack pnpm link --global    # registers `hemiunu` on your PATH
+# or, if pnpm's global bin isn't on PATH:
+ln -s "$PWD/bin/hemiunu.mjs" /usr/local/bin/hemiunu
+```
+
+Then, from anywhere:
+
+```bash
+hemiunu
+```
+
+Hemiunu's own config (`soul.md`, `mcp.json`, `.env`) is read from where it's
+installed, while file access (the filesystem MCP) and folder-trust follow the
+directory you launch it in — so `hemiunu` in a project lets the agent read
+*that* project, with its brain coming from the install.
 
 ### Configuration (`.env`)
 

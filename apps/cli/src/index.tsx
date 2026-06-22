@@ -872,18 +872,22 @@ function App({
 }
 
 async function main() {
+  // Hemiunu's HOME (its config: soul.md, mcp.json, context/) is the install
+  // dir when launched via the `hemiunu` command, else the current dir (running
+  // from the repo). This is separate from the launch dir, which the agent reads
+  // files from via the filesystem MCP (${CWD}) — so `hemiunu` works in any folder.
+  const home = process.env.HEMIUNU_HOME ?? process.cwd();
   // The agent's own state (conversations, folder-trust) lives in one global
-  // place — NOT in whatever folder you launch from. File access stays scoped
-  // to the launch dir via the filesystem MCP (${CWD}).
+  // place — NOT in whatever folder you launch from.
   const dataDir = join(homedir(), ".hemiunu");
   mkdirSync(dataDir, { recursive: true });
   const store = new ConversationStore(join(dataDir, "hemiunu.db"));
-  const registry = loadMcpRegistry();
+  const registry = loadMcpRegistry(home);
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
   // First run: seed each user's own (gitignored) user.md / memory.md from the
   // committed *.example templates, so a fresh clone starts with blank memory.
-  seedContextFiles();
-  const systemPrompt = buildSystemPrompt(loadContext());
+  seedContextFiles(home);
+  const systemPrompt = buildSystemPrompt(loadContext(home));
 
   const handle: { clear: () => void } = { clear: () => {} };
   const app = render(

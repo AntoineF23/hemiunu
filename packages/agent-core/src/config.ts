@@ -1,10 +1,13 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 
-// Load .env from the current working directory if present (Node 24 builtin).
-if (existsSync(".env")) {
+// Load .env from Hemiunu's home (the install dir, set by the `hemiunu` launcher)
+// when present, else the current directory (running from the repo). Node 24 builtin.
+const ENV_PATH = join(process.env.HEMIUNU_HOME ?? process.cwd(), ".env");
+if (existsSync(ENV_PATH)) {
   try {
-    process.loadEnvFile(".env");
+    process.loadEnvFile(ENV_PATH);
   } catch {
     // ignore — env may already be populated by the shell
   }
