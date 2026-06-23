@@ -1,5 +1,7 @@
 export { runTurn } from "./agent";
 export type { RunTurnOptions } from "./agent";
+export { withWorkspace, currentWorkspace } from "./workspace-context";
+export type { WorkspaceContext } from "./workspace-context";
 export { loadConfig, configDir, hasApiKey, writeUserEnv } from "./config";
 export type { HemiunuConfig, UserEnv } from "./config";
 export {

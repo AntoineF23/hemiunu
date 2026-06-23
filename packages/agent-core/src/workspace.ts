@@ -11,6 +11,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import { configDir } from "./config";
 import { normalizeRepo, resolveRepo } from "./github";
+import { currentWorkspace } from "./workspace-context";
 
 /**
  * Per-team local working copy for FAST iteration (localhost dev server, slice 2)
@@ -54,7 +55,10 @@ export function setLocalSession(id: string): void {
 
 /** The local (no-team) session workspace folder. */
 export function localWorkspaceDir(): string {
-  return join(configDir(), "tmp", "local", localSessionId);
+  // A turn bound to a no-team workspace carries its own session id, so several
+  // local sessions stay isolated; outside a turn, fall back to the run default.
+  const id = currentWorkspace()?.localSessionId ?? localSessionId;
+  return join(configDir(), "tmp", "local", id);
 }
 
 /**

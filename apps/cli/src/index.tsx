@@ -637,6 +637,9 @@ function App({
         mcpServers: activeServers,
         toolPatterns: activePatterns,
         abortController: ac,
+        // Pin this turn to the team it started in, so its file/GitHub tools
+        // target that repo even if the foreground team is switched mid-turn.
+        workspace: { repo: currentProjectRef.current || null },
         // Live visibility into parallel subtasks (otherwise opaque).
         onSubagentEvent: (e) => {
           if (e.type === "task-start") {
@@ -834,6 +837,7 @@ function App({
         mcpServers: activeServers,
         toolPatterns: activePatterns,
         abortController: ac,
+        workspace: { repo: currentProjectRef.current || null },
       })) {
         const msg = m as any;
         if (msg.type === "assistant")

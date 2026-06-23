@@ -32,6 +32,9 @@ import {
   prototypePath,
   upsertUserEnv,
   resolveGithubToken,
+  resolveRepo,
+  activeProtoDir,
+  withWorkspace,
   addTeam,
   switchTeam,
   setCurrentTeam,
@@ -408,6 +411,48 @@ async function main() {
       // legacy { repo } migrates to the new shape.
       writeFileSync(join(dir, "team.json"), JSON.stringify({ repo: "Acme/legacy" }));
       assert(currentTeam() === "Acme/legacy", "legacy single-repo config migrates");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      if (prevRepo === undefined) delete process.env.HEMIUNU_PROTOTYPE_REPO;
+      else process.env.HEMIUNU_PROTOTYPE_REPO = prevRepo;
+    }
+  });
+
+  await check("workspace binding: a turn's repo is isolated from the global team & concurrent turns", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const prevRepo = process.env.HEMIUNU_PROTOTYPE_REPO;
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = dir;
+      delete process.env.HEMIUNU_PROTOTYPE_REPO; // env override must not mask the binding
+      addTeam("Acme/alpha"); // global selection
+      assert(resolveRepo() === "Acme/alpha", "outside a turn, resolveRepo uses the global team");
+
+      // A turn bound to a different repo sees ITS repo, not the global one.
+      withWorkspace({ repo: "Acme/beta" }, () => {
+        assert(resolveRepo() === "Acme/beta", "binding overrides the global selection");
+        assert(activeProtoDir().endsWith(join("Acme", "beta")), "activeProtoDir follows the binding");
+      });
+      // A no-team binding means local, even while a global team is set.
+      withWorkspace({ repo: null }, () => {
+        assert(resolveRepo() === undefined, "a null binding means no-team (local)");
+      });
+      // The binding doesn't leak out.
+      assert(resolveRepo() === "Acme/alpha", "the global selection is intact after the turn");
+
+      // Two concurrent turns must each keep their own repo across awaits — the
+      // core guarantee that makes running several teams at once safe.
+      const seen: string[] = [];
+      const turn = (repo: string) =>
+        withWorkspace({ repo }, async () => {
+          await new Promise((r) => setTimeout(r, repo === "Acme/beta" ? 5 : 15));
+          seen.push(`${repo}=${resolveRepo()}`);
+        });
+      await Promise.all([turn("Acme/beta"), turn("Acme/gamma")]);
+      assert(seen.includes("Acme/beta=Acme/beta"), "beta turn kept its repo across the await");
+      assert(seen.includes("Acme/gamma=Acme/gamma"), "gamma turn kept its repo across the await");
     } finally {
       rmSync(dir, { recursive: true, force: true });
       if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;

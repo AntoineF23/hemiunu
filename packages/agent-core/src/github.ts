@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "./config";
+import { currentWorkspace } from "./workspace-context";
 
 /**
  * Thin GitHub layer for the prototype team-knowledge path. It lets the agent
@@ -290,12 +291,19 @@ export function cycleTeam(direction: 1 | -1 = 1): string | null {
 }
 
 /**
- * Resolve the active repo (`owner/name`): an explicit env override, else the
- * current team. Undefined means "no team" — work locally.
+ * Resolve the active repo (`owner/name`): an explicit env override, else this
+ * turn's bound workspace (when running inside a turn — see workspace-context),
+ * else the persisted current team. Undefined means "no team" — work locally.
+ *
+ * The turn binding takes precedence over the global selection so that, when
+ * several teams run concurrently, each turn's tools target its OWN repo even if
+ * the foreground selection has since changed.
  */
 export function resolveRepo(): string | undefined {
   const env = process.env.HEMIUNU_PROTOTYPE_REPO?.trim();
   if (env) return normalizeRepo(env);
+  const ws = currentWorkspace();
+  if (ws) return ws.repo ? normalizeRepo(ws.repo) : undefined;
   return currentTeam();
 }
 

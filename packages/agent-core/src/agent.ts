@@ -9,6 +9,7 @@ import { createPrototypeKnowledgeServer, PROTOTYPE_KNOWLEDGE_TOOLS } from "./pro
 import { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 import { createShareServer, SHARE_TOOLS } from "./share";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
+import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
   SUBAGENTS,
   SUBAGENT_NAMES,
@@ -51,6 +52,13 @@ export interface RunTurnOptions {
   abortController?: AbortController;
   /** Live progress from parallel subtasks (so the CLI can show what's running). */
   onSubagentEvent?: (e: SubagentEvent) => void;
+  /**
+   * Pin this turn to one team/repo for its whole life. The agent's file/GitHub
+   * tools resolve against this binding (not the global current team), so several
+   * teams can run concurrently without writing to each other's repo. Omit to use
+   * the persisted global selection (single-session behavior).
+   */
+  workspace?: WorkspaceContext;
 }
 
 /**
@@ -123,7 +131,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     onEvent: opts.onSubagentEvent,
   };
 
-  const q = query({
+  const queryOptions = {
     prompt: opts.prompt,
     options: {
       model,
@@ -153,9 +161,56 @@ export async function* runTurn(opts: RunTurnOptions) {
       ...(opts.abortController ? { abortController: opts.abortController } : {}),
       ...(opts.resume ? { resume: opts.resume } : {}),
     },
+  } as Parameters<typeof query>[0];
+
+  // Drive the query inside this turn's workspace binding and relay messages out
+  // through a queue. The relay matters: an async generator's body resumes in the
+  // CALLER's async context on each `.next()`, which would drop the binding. By
+  // starting query() (and its whole internal agent loop, where the in-process
+  // tool handlers run) synchronously inside withWorkspace(), every tool callback
+  // inherits THIS turn's repo — even while another team's turn runs concurrently.
+  if (!opts.workspace) {
+    const q = query(queryOptions);
+    for await (const message of q) yield message;
+    return;
+  }
+
+  const buffer: unknown[] = [];
+  let done = false;
+  let failure: unknown;
+  let signal: Promise<void>;
+  let fire: () => void = () => {};
+  const reset = () => {
+    signal = new Promise<void>((r) => (fire = r));
+  };
+  reset();
+  const wake = () => {
+    const f = fire;
+    reset();
+    f();
+  };
+
+  withWorkspace(opts.workspace, () => {
+    void (async () => {
+      try {
+        for await (const message of query(queryOptions)) {
+          buffer.push(message);
+          wake();
+        }
+      } catch (e) {
+        failure = e;
+      } finally {
+        done = true;
+        wake();
+      }
+    })();
   });
 
-  for await (const message of q) {
-    yield message;
+  while (true) {
+    const waiter = signal!; // capture before draining, so a push can't slip past
+    while (buffer.length) yield buffer.shift();
+    if (failure) throw failure;
+    if (done) return;
+    await waiter;
   }
 }
