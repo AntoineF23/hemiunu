@@ -61,7 +61,7 @@ export interface SavedSkill {
 /** Built-in CLI command names a skill may not shadow. */
 const RESERVED = new Set([
   "new", "clear", "compact", "models", "setup", "trust", "list", "resume",
-  "mcp", "help", "exit", "quit", "skills", "skill", "github", "team", "team-new", "restore",
+  "mcp", "help", "exit", "quit", "skills", "skill", "github", "vercel", "team", "team-new", "restore",
 ]);
 
 /** The per-user skills directory. */

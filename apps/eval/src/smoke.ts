@@ -46,6 +46,8 @@ import {
   startPreview,
   stopPreview,
   previewStatus,
+  commitAndPush,
+  resolveVercelToken,
 } from "@hemiunu/agent-core";
 import { execFileSync } from "node:child_process";
 import {
@@ -496,6 +498,56 @@ async function main() {
     } finally {
       stopPreview();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  await check("share: commitAndPush commits & pushes to the remote", async () => {
+    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-share-"));
+    const bare = mkdtempSync(join(tmpdir(), "hemiunu-bare-"));
+    const seed = mkdtempSync(join(tmpdir(), "hemiunu-seed-"));
+    const verify = mkdtempSync(join(tmpdir(), "hemiunu-verify-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = cfg;
+      g(["init", "--bare", "-b", "main"], bare);
+      // seed the bare remote with one commit
+      g(["clone", bare, seed], tmpdir());
+      writeFileSync(join(seed, "index.html"), "<h1>v1</h1>");
+      g(["config", "user.email", "t@t.co"], seed);
+      g(["config", "user.name", "t"], seed);
+      g(["add", "."], seed);
+      g(["commit", "-qm", "v1"], seed);
+      g(["push", "origin", "HEAD:main"], seed);
+
+      // clone into the managed workspace, change a file, push to main
+      const r = await ensureWorkspace("acme/proto", { cloneUrl: bare });
+      assert(r.action === "cloned", `should clone, got ${r.action} ${r.note ?? ""}`);
+      writeFileSync(join(r.path, "index.html"), "<h1>v2 from agent</h1>");
+      const pr = await commitAndPush("acme/proto", { message: "v2", login: "tester", toMain: true });
+      assert(pr.ok, `push should succeed: ${pr.note}`);
+
+      // the remote received it
+      g(["clone", bare, verify], tmpdir());
+      assert(
+        readFileSync(join(verify, "index.html"), "utf8").includes("v2 from agent"),
+        "remote should have the pushed change",
+      );
+    } finally {
+      for (const d of [cfg, bare, seed, verify]) rmSync(d, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+    }
+  });
+
+  await check("vercel: token resolves from env (login bypass)", () => {
+    const prev = process.env.VERCEL_TOKEN;
+    try {
+      process.env.VERCEL_TOKEN = "vt_test";
+      assert(resolveVercelToken() === "vt_test", "VERCEL_TOKEN should resolve");
+    } finally {
+      if (prev === undefined) delete process.env.VERCEL_TOKEN;
+      else process.env.VERCEL_TOKEN = prev;
     }
   });
 

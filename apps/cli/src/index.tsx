@@ -26,6 +26,8 @@ import {
   listTrash,
   restoreTrash,
   stopPreview,
+  resolveVercelToken,
+  vercelLoggedIn,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import { loadMcpRegistry } from "@hemiunu/mcp";
@@ -63,7 +65,7 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new  /clear  /compact  /models  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /team  /team-new  /restore  /exit";
+  "/new  /clear  /compact  /models  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -78,6 +80,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "mcp", desc: "show connected MCP servers" },
   { name: "skills", desc: "list saved skills" },
   { name: "github", desc: "sign in to GitHub (remembered)" },
+  { name: "vercel", desc: "connect Vercel (for sharing)" },
   { name: "team", desc: "switch team (feature/repo)" },
   { name: "team-new", desc: "new feature → creates a private repo + switch" },
   { name: "restore", desc: "recover files from the recycle bin" },
@@ -980,6 +983,19 @@ function App({
         });
       }
       return;
+    }
+    if (cmd === "vercel") {
+      const token = rest.join(" ").trim();
+      if (token) {
+        const path = upsertUserEnv("VERCEL_TOKEN", token);
+        return push({ kind: "note", text: `· Vercel token saved to ${path}` });
+      }
+      if (resolveVercelToken()) return push({ kind: "note", text: "· Vercel: token configured" });
+      if (vercelLoggedIn()) return push({ kind: "note", text: "· Vercel: logged in via the CLI" });
+      return push({
+        kind: "note",
+        text: "· Vercel not connected — /vercel <token> (create one at vercel.com/account/tokens), or run `vercel login`",
+      });
     }
     if (cmd === "restore") {
       const id = rest.join(" ").trim();

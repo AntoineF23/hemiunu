@@ -78,6 +78,11 @@ export {
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
 export { startPreview, stopPreview, previewStatus } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
+export { commitAndPush } from "./workspace";
+export type { PushResult } from "./workspace";
+export { createShareServer, SHARE_TOOLS } from "./share";
+export { resolveVercelToken, vercelLoggedIn, vercelDeploy } from "./vercel";
+export type { DeployResult } from "./vercel";
 export {
   runSubagent,
   subagentPrompt,

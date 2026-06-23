@@ -241,10 +241,50 @@ export async function ensureWorkspace(repo: string, opts: EnsureOptions = {}): P
   return { path, action: moved ? "reset" : "synced", binned };
 }
 
+export interface PushResult {
+  ok: boolean;
+  branch?: string;
+  note: string;
+}
+
+/**
+ * Stage, commit, and push the current workspace. `toMain` pushes the default
+ * branch (the "done" action — the caller then discards the workspace); otherwise
+ * it pushes a checkpoint branch you can review/preview. Identity is the
+ * signed-in GitHub user; auth uses the token (omit for a local remote in tests).
+ */
+export async function commitAndPush(
+  repo: string,
+  opts: { message: string; token?: string; login?: string; toMain?: boolean; branch?: string },
+): Promise<PushResult> {
+  const path = workspacePath(repo);
+  if (!existsSync(path)) return { ok: false, note: "No local workspace — run iterate first." };
+  const def = (await gitOut(["rev-parse", "--abbrev-ref", "HEAD"], path)) || "main";
+  const branch = opts.toMain ? def : (opts.branch ?? `hemiunu/${stamp()}`);
+  if (!opts.toMain) await git(["checkout", "-B", branch], { cwd: path });
+
+  await git(["add", "-A"], { cwd: path });
+  const dirty = (await gitOut(["status", "--porcelain"], path)).length > 0;
+  if (dirty) {
+    const ident = [
+      "-c",
+      `user.name=${opts.login ?? "Hemiunu"}`,
+      "-c",
+      `user.email=${opts.login ? `${opts.login}@users.noreply.github.com` : "hemiunu@users.noreply.github.com"}`,
+    ];
+    const c = await git([...ident, "commit", "-m", opts.message], { cwd: path });
+    if (!c.ok) return { ok: false, branch, note: `commit failed: ${c.stderr.trim().slice(0, 200)}` };
+  }
+
+  const p = await git(["push", "-u", "origin", `HEAD:${branch}`], { cwd: path, token: opts.token });
+  if (!p.ok) return { ok: false, branch, note: `push failed: ${p.stderr.trim().slice(0, 200)}` };
+  return { ok: true, branch, note: dirty ? `committed and pushed to ${branch}` : `pushed ${branch} (nothing new)` };
+}
+
 /**
  * Send a team's checkout to the recycle bin and remove it from the workspace
- * area (used after a push to main — slice 3). Returns the bin entry, or "" if
- * there was nothing to remove.
+ * area (used after a push to main). Returns the bin entry, or "" if there was
+ * nothing to remove.
  */
 export function discardWorkspace(repo: string, reason = "removed after push to main"): string {
   const path = workspacePath(repo);
