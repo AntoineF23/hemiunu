@@ -645,17 +645,15 @@ function App({
       store.addMessage(sid, "assistant", fullText, cost);
     }
 
-    // Auto-compact when context crosses the threshold (Hermes-style).
+    // Auto-compact when context crosses the threshold (Hermes-style). Done
+    // silently in the background — no note and no summary shown; only an
+    // explicit /compact surfaces the result.
     if (!skipAuto && ctxTokens >= ctxWindow * COMPACT_AT) {
-      push({
-        kind: "note",
-        text: `✦ Context at ${Math.round((ctxTokens / ctxWindow) * 100)}% — compacting…`,
-      });
-      await runCompact();
+      await runCompact({ silent: true });
     }
   }
 
-  async function runCompact() {
+  async function runCompact({ silent = false }: { silent?: boolean } = {}) {
     turnStartRef.current = Date.now();
     turnTokensRef.current = 0;
     setBusy(true);
@@ -682,7 +680,9 @@ function App({
             }
       }
     } catch (e) {
-      push({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+      // A silent (auto) compaction stays quiet on failure too — context just
+      // isn't reset this turn, and it'll retry next turn.
+      if (!silent) push({ kind: "error", text: e instanceof Error ? e.message : String(e) });
     } finally {
       abortRef.current = null;
       setBusy(false);
@@ -692,12 +692,17 @@ function App({
       sessionId.current = undefined; // drop the long session; continue from summary
       justCompactedRef.current = true; // don't auto-compact again next turn
       setCtx(0);
-      setEpoch((e) => e + 1);
-      setItems([
-        { kind: "banner" },
-        { kind: "note", text: "✦ Context compacted — continuing from this summary:" },
-        { kind: "text", text: summary.trim() },
-      ]);
+      // Only an explicit /compact shows the result. Auto-compaction is silent:
+      // the screen is left as-is, just the model's context is reset behind it.
+      if (!silent) {
+        setEpoch((e) => e + 1);
+        // Keep the banner out — it's a mid-session continuation, not a fresh
+        // start, so re-showing the logo is just noise.
+        setItems([
+          { kind: "note", text: "✦ Context compacted — continuing from this summary:" },
+          { kind: "text", text: summary.trim() },
+        ]);
+      }
     }
   }
 
