@@ -5,35 +5,21 @@ import { configDir } from "./config";
 import { PROVIDER_NAMES, resolveProvider } from "./providers";
 
 /**
- * In-process MCP server exposing the `remember` tool. Notes are routed by target
- * to the same paths loadContext reads from, so memory is consistent across
- * sessions:
- * - 'user'   → the GLOBAL per-user memory (user.md in `userRoot`, ~/.hemiunu),
- *   carried into every project.
- * - 'memory' → THIS project's notes (HEMIUNU.md in `projectRoot`, the launch
- *   folder), scoped to the folder you're working in.
+ * In-process MCP server exposing the `remember` tool — for GLOBAL facts about
+ * the USER only (role, team, stable preferences). Always written to user.md in
+ * the agent's core (~/.hemiunu), shared across every project, NEVER the launch
+ * folder. Facts about the current feature/project/product do NOT belong here —
+ * those go to the team's PROTOTYPE.md via add_prototype_note.
  */
-export function createMemoryServer(
-  roots: { userRoot?: string; projectRoot?: string } = {},
-) {
-  const userRoot = roots.userRoot ?? configDir();
-  const projectRoot = roots.projectRoot ?? process.cwd();
+export function createMemoryServer(userRoot: string = configDir()) {
   const rememberTool = tool(
     "remember",
-    "Save a durable note for future sessions. Use target 'user' for facts about the USER that hold across all their projects (role, team, preferences). Use 'memory' for facts about the CURRENT project/folder (its product context, decisions, workflows) — these are saved to a HEMIUNU.md in this folder, like a project memory file.",
-    { target: z.enum(["user", "memory"]), note: z.string() },
-    async ({ target, note }) => {
-      remember(target, note, { userRoot, projectRoot });
+    "Save a durable fact about the USER (their role, team, stable preferences) — global, kept across ALL their projects. Do NOT use this for facts about the current feature/project/product (target users, decisions, research findings) — use add_prototype_note for those, so they stay with the right feature.",
+    { note: z.string() },
+    async ({ note }) => {
+      remember(note, userRoot);
       return {
-        content: [
-          {
-            type: "text",
-            text:
-              target === "user"
-                ? "Saved to your global user memory."
-                : "Saved to this project's HEMIUNU.md.",
-          },
-        ],
+        content: [{ type: "text", text: "Saved to your global user memory." }],
       };
     },
     { annotations: { title: "Remember", readOnlyHint: false } },
