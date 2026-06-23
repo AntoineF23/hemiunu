@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 
 /**
  * Deploy a prototype to a shareable Vercel URL via the Vercel CLI — used only
@@ -21,6 +21,24 @@ export function vercelLoggedIn(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Run the Vercel CLI's interactive, browser-based login (no token). It needs the
+ * real terminal, so the caller must hand it the TTY (the CLI pauses its TUI).
+ * The session is remembered machine-wide, so this is a once-ever step. Resolves
+ * true if the user ends up logged in.
+ */
+export function vercelLogin(): Promise<boolean> {
+  return new Promise((res) => {
+    try {
+      const proc = spawn("vercel", ["login"], { stdio: "inherit" });
+      proc.on("exit", () => res(vercelLoggedIn()));
+      proc.on("error", () => res(false));
+    } catch {
+      res(false);
+    }
+  });
 }
 
 export type DeployResult = { url: string } | { error: string; needsLogin?: boolean; notInstalled?: boolean };

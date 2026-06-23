@@ -28,6 +28,7 @@ import {
   stopPreview,
   resolveVercelToken,
   vercelLoggedIn,
+  vercelLogin,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import { loadMcpRegistry } from "@hemiunu/mcp";
@@ -407,6 +408,7 @@ function App({
   const [team, setTeam] = useState<string | undefined>(() => resolveRepo());
   const [device, setDevice] = useState<{ userCode: string; url: string } | null>(null);
   const githubLoginCancel = useRef(false);
+  const [paused, setPaused] = useState(false); // hand the terminal to an interactive child (vercel login)
 
   // Detect a local filesystem server (it grants access to the launch folder).
   const fsName = Object.keys(registry.mcpServers).find(
@@ -870,6 +872,22 @@ function App({
     });
   }
 
+  // Connect Vercel with its own browser login (no token) — needs the real
+  // terminal, so pause the TUI (render nothing) while `vercel login` runs, then
+  // resume with all state intact. Remembered machine-wide, so it's a one-time step.
+  async function connectVercel() {
+    setPaused(true);
+    await sleep(80); // let Ink render an empty frame and drop raw mode
+    try {
+      (process.stdin as NodeJS.ReadStream & { setRawMode?: (m: boolean) => void }).setRawMode?.(false);
+    } catch {
+      // ignore — Ink manages raw mode; this is best-effort
+    }
+    const ok = await vercelLogin();
+    setPaused(false);
+    push({ kind: "note", text: ok ? "· connected to Vercel" : "· Vercel sign-in was cancelled or didn't complete" });
+  }
+
   function handleCommand(text: string) {
     const [cmd, ...rest] = text.slice(1).split(" ");
     if (cmd === "exit" || cmd === "quit") return exit();
@@ -985,17 +1003,17 @@ function App({
       return;
     }
     if (cmd === "vercel") {
-      const token = rest.join(" ").trim();
-      if (token) {
-        const path = upsertUserEnv("VERCEL_TOKEN", token);
+      const arg = rest.join(" ").trim();
+      // A pasted token is still supported as a power-user/CI fallback.
+      if (arg && arg !== "login") {
+        const path = upsertUserEnv("VERCEL_TOKEN", arg);
         return push({ kind: "note", text: `· Vercel token saved to ${path}` });
       }
-      if (resolveVercelToken()) return push({ kind: "note", text: "· Vercel: token configured" });
-      if (vercelLoggedIn()) return push({ kind: "note", text: "· Vercel: logged in via the CLI" });
-      return push({
-        kind: "note",
-        text: "· Vercel not connected — /vercel <token> (create one at vercel.com/account/tokens), or run `vercel login`",
-      });
+      if (arg !== "login" && (resolveVercelToken() || vercelLoggedIn())) {
+        return push({ kind: "note", text: "· Vercel: connected" });
+      }
+      void connectVercel(); // browser login, no token, remembered machine-wide
+      return;
     }
     if (cmd === "restore") {
       const id = rest.join(" ").trim();
@@ -1071,7 +1089,7 @@ function App({
   }
 
   // --- slash-command menu: a live list of commands + skills while typing "/" ---
-  const inputActive = !busy && !permission && !picker && !device;
+  const inputActive = !busy && !permission && !picker && !device && !paused;
   const slashToken =
     inputActive && value.startsWith("/") && !value.includes(" ")
       ? value.slice(1).toLowerCase()
@@ -1149,7 +1167,7 @@ function App({
       }
       if (busy && key.escape) abortRef.current?.abort();
     },
-    { isActive: busy || !!permission || !!picker || !!device },
+    { isActive: !paused && (busy || !!permission || !!picker || !!device) },
   );
 
   // While the slash menu is open: ↑/↓ move the highlight, Tab completes it.
@@ -1207,6 +1225,10 @@ function App({
           : statusLabel === "parallel"
             ? "Orchestrating"
             : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
+
+  // While paused, render nothing so an interactive child (vercel login) owns the
+  // terminal; state is preserved and the full UI returns on resume.
+  if (paused) return null;
 
   return (
     <Box flexDirection="column">

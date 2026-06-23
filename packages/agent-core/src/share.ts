@@ -57,7 +57,7 @@ export function createShareServer() {
       if (r.notInstalled) return text(r.error);
       if (r.needsLogin)
         return text(
-          "Not connected to Vercel. Ask the user to run /vercel <token> (recommended — no browser) or `vercel login`, then try again.",
+          "Not connected to Vercel. Ask the user to run /vercel — it signs in through the browser once (no token) and is remembered. Then try again.",
         );
       return text(`Deploy failed: ${r.error}`);
     },
