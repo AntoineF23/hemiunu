@@ -72,7 +72,7 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new  /clear  /compact  /models  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
+  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -80,6 +80,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "clear", desc: "clear context and the screen" },
   { name: "compact", desc: "summarise & compact the context" },
   { name: "models", desc: "switch the model" },
+  { name: "settings", desc: "view all settings (model, team, connections…)" },
   { name: "setup", desc: "show config & keys" },
   { name: "trust", desc: "toggle file access for this folder" },
   { name: "list", desc: "list saved conversations" },
@@ -903,9 +904,10 @@ function App({
         setPicker(null);
         if (v && v !== model) {
           setModel(v);
+          upsertUserEnv("HEMIUNU_MODEL", v); // remember it for next launch
           sessionId.current = undefined; // fresh session for the new model
           setCtx(0);
-          push({ kind: "note", text: `· model set to ${v}` });
+          push({ kind: "note", text: `· model set to ${v} (saved)` });
         }
       },
     });
@@ -1009,6 +1011,28 @@ function App({
           `NOTION_TOKEN ${set(process.env.NOTION_TOKEN)}   ` +
           `TAVILY_API_KEY ${set(process.env.TAVILY_API_KEY)}\n` +
           `edit that file to change keys, then restart hemiunu.`,
+      });
+    }
+    if (cmd === "settings") {
+      const yn = (v: boolean) => (v ? "✓" : "✗");
+      const teamNow = currentTeam() ?? "none (local)";
+      const ghOn = !!resolveGithubToken();
+      const vcOn = !!resolveVercelToken() || vercelLoggedIn();
+      const trust = fsTrust === true ? "allowed" : fsTrust === false ? "disabled" : "not set";
+      const servers = Object.keys(registry.mcpServers).join(", ") || "none";
+      return push({
+        kind: "note",
+        text:
+          `Settings  (saved across sessions in ${configDir()})\n` +
+          `  model            ${model}            → /models (saved)\n` +
+          `  research model   ${RESEARCH_MODEL}   → HEMIUNU_MODEL_RESEARCH in .env\n` +
+          `  team             ${teamNow}          → /team · shift+tab (saved)\n` +
+          `  GitHub           ${ghOn ? "connected" : "not connected"}   → /github\n` +
+          `  Vercel           ${vcOn ? "connected" : "not connected"}   → /vercel\n` +
+          `  file access      ${trust} (this folder)   → /trust\n` +
+          `  MCP servers      ${servers}   → /mcp\n` +
+          `  keys             ANTHROPIC ${yn(hasApiKey())}  NOTION ${yn(!!process.env.NOTION_TOKEN)}  TAVILY ${yn(!!process.env.TAVILY_API_KEY)}   → /setup\n` +
+          `  thinking budget  ${process.env.HEMIUNU_THINKING_BUDGET ?? "0"}   context window ${process.env.HEMIUNU_CONTEXT_WINDOW ?? "auto"}   → .env`,
       });
     }
     if (cmd === "list") {
