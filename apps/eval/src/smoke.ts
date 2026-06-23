@@ -48,6 +48,8 @@ import {
   previewStatus,
   commitAndPush,
   resolveVercelToken,
+  setControlHandler,
+  requestControl,
 } from "@hemiunu/agent-core";
 import { execFileSync } from "node:child_process";
 import {
@@ -549,6 +551,18 @@ async function main() {
       if (prev === undefined) delete process.env.VERCEL_TOKEN;
       else process.env.VERCEL_TOKEN = prev;
     }
+  });
+
+  await check("control bridge: requestControl routes to the registered handler", async () => {
+    try {
+      setControlHandler(async (e) => (e.type === "create-team" ? `made ${e.name}` : `switched ${e.repo}`));
+      assert((await requestControl({ type: "create-team", name: "foo" })) === "made foo", "should route create");
+      assert((await requestControl({ type: "switch-team", repo: "a/b" })) === "switched a/b", "should route switch");
+    } finally {
+      setControlHandler(null);
+    }
+    const none = await requestControl({ type: "switch-team", repo: "a/b" });
+    assert(/no interactive session/i.test(none), `no handler → message, got: ${none}`);
   });
 
   if (OFFLINE) return report();

@@ -85,6 +85,8 @@ export type { PushResult } from "./workspace";
 export { createShareServer, SHARE_TOOLS } from "./share";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
+export { setControlHandler, requestControl } from "./control";
+export type { ControlEvent } from "./control";
 export {
   runSubagent,
   subagentPrompt,

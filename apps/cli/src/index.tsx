@@ -32,6 +32,7 @@ import {
   resolveVercelToken,
   vercelLoggedIn,
   vercelLogin,
+  setControlHandler,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import { loadMcpRegistry } from "@hemiunu/mcp";
@@ -516,6 +517,32 @@ function App({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Let the agent drive team create/switch (no-team onboarding) via the control
+  // bridge, so the footer + conversation + workspace stay consistent.
+  useEffect(() => {
+    setControlHandler(async (e) => {
+      if (e.type === "create-team") {
+        const token = resolveGithubToken();
+        if (!token) return "Not signed in to GitHub — ask the user to run /github first.";
+        const r = await createRepo(token, e.name, { private: true });
+        if ("error" in r) return `Couldn't create the repo: ${r.error}`;
+        const repo = addTeam(r.repo);
+        adoptTeam(repo);
+        push({ kind: "note", text: `· created ${repo} (private) — now your team` });
+        return `Created ${repo} (private) and set it as the current team.`;
+      }
+      const repo = normalizeRepo(e.repo);
+      if (!listTeams().includes(repo)) {
+        return `'${repo}' isn't one of the user's teams — use create_team, or they can add it with /team-new ${repo}.`;
+      }
+      adoptTeam(repo);
+      push({ kind: "note", text: `· team set to ${repo}` });
+      return `Now working in ${repo}.`;
+    });
+    return () => setControlHandler(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // System prompt = soul/user/memory + connected sources (active) + skills + compacted summary.
   const effectiveSystem = () => {
     const names = Object.keys(activeServers);
@@ -755,6 +782,15 @@ function App({
       ],
     );
     setEpoch((e) => e + 1);
+  }
+
+  // Set the current team WITHOUT resetting the conversation — used by the
+  // no-team onboarding flow to promote the ongoing chat into a team and continue.
+  function adoptTeam(repo: string) {
+    setCurrentTeam(repo);
+    currentProjectRef.current = repo;
+    setTeam(repo);
+    setTeams(listTeams());
   }
 
   async function runCompact({ silent = false }: { silent?: boolean } = {}) {

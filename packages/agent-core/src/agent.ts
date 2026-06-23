@@ -8,6 +8,7 @@ import { createSkillsServer, SKILL_TOOLS } from "./skills";
 import { createPrototypeKnowledgeServer, PROTOTYPE_KNOWLEDGE_TOOLS } from "./prototypes";
 import { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 import { createShareServer, SHARE_TOOLS } from "./share";
+import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
 import {
   SUBAGENTS,
   SUBAGENT_NAMES,
@@ -77,6 +78,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     PROTOTYPE_KNOWLEDGE_TOOLS,
     WORKSPACE_TOOLS,
     SHARE_TOOLS,
+    TEAM_CONTROL_TOOLS,
     ...sourceTools,
     DELEGATE_TOOL,
   ];
@@ -137,6 +139,8 @@ export async function* runTurn(opts: RunTurnOptions) {
       mcpServers: {
         ...baseServers,
         "hemiunu-orchestrator": createOrchestratorServer(subagentCtx),
+        // Main-loop only: lets the agent create/switch teams via the CLI.
+        "hemiunu-team-control": createTeamControlServer(),
       } as Options["mcpServers"],
       agents,
       // Restrict the available toolset (default loads ~29 built-ins, whose
