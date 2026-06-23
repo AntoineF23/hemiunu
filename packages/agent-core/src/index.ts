@@ -80,7 +80,7 @@ export {
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
 export { startPreview, stopPreview, previewStatus } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
-export { commitAndPush } from "./workspace";
+export { commitAndPush, migrateLocalIntoTeam } from "./workspace";
 export type { PushResult } from "./workspace";
 export { createShareServer, SHARE_TOOLS } from "./share";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";

@@ -47,6 +47,7 @@ import {
   stopPreview,
   previewStatus,
   commitAndPush,
+  migrateLocalIntoTeam,
   resolveVercelToken,
   setControlHandler,
   requestControl,
@@ -550,6 +551,50 @@ async function main() {
     } finally {
       if (prev === undefined) delete process.env.VERCEL_TOKEN;
       else process.env.VERCEL_TOKEN = prev;
+    }
+  });
+
+  await check("migrate: local prototype work is pushed into a new team repo", async () => {
+    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-mcfg-"));
+    const bare = mkdtempSync(join(tmpdir(), "hemiunu-mbare-"));
+    const seed = mkdtempSync(join(tmpdir(), "hemiunu-mseed-"));
+    const local = mkdtempSync(join(tmpdir(), "hemiunu-mlocal-"));
+    const verify = mkdtempSync(join(tmpdir(), "hemiunu-mver-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = cfg;
+      g(["init", "--bare", "-b", "main"], bare);
+      g(["clone", bare, seed], tmpdir());
+      writeFileSync(join(seed, "README.md"), "init");
+      g(["config", "user.email", "t@t.co"], seed);
+      g(["config", "user.name", "t"], seed);
+      g(["add", "."], seed);
+      g(["commit", "-qm", "init"], seed);
+      g(["push", "origin", "HEAD:main"], seed);
+
+      // local (no-team) prototype work in the launch folder
+      mkdirSync(join(local, "prototypes", "spark"), { recursive: true });
+      writeFileSync(join(local, "prototypes", "spark", "index.html"), "<h1>spark</h1>");
+      writeFileSync(join(local, "PROTOTYPE.md"), "# Spark");
+
+      const mig = await migrateLocalIntoTeam("acme/spark", { cwd: local, cloneUrl: bare });
+      assert(mig.pushed, `should push: ${mig.note}`);
+      assert(
+        mig.migrated.includes("prototypes/") && mig.migrated.includes("PROTOTYPE.md"),
+        `should migrate both, got: ${mig.migrated.join(",")}`,
+      );
+
+      g(["clone", bare, verify], tmpdir());
+      assert(
+        readFileSync(join(verify, "prototypes", "spark", "index.html"), "utf8").includes("spark"),
+        "remote should have the migrated prototype",
+      );
+      assert(existsSync(join(verify, "PROTOTYPE.md")), "remote should have PROTOTYPE.md");
+    } finally {
+      for (const d of [cfg, bare, seed, local, verify]) rmSync(d, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
     }
   });
 

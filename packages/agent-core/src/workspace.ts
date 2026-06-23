@@ -282,6 +282,47 @@ export async function commitAndPush(
 }
 
 /**
+ * Carry local (no-team) prototype work into a freshly-created team repo: clone
+ * the repo, copy the launch folder's PROTOTYPE.md and prototypes/ into the
+ * workspace, and push to main — so creating a team instantly brings the local
+ * work along instead of starting fresh. Returns what was migrated.
+ */
+export async function migrateLocalIntoTeam(
+  repo: string,
+  opts: { token?: string; login?: string; cwd?: string; cloneUrl?: string } = {},
+): Promise<{ migrated: string[]; pushed: boolean; note: string }> {
+  const cwd = opts.cwd ?? process.cwd();
+  const synced = await ensureWorkspace(repo, { token: opts.token, cloneUrl: opts.cloneUrl });
+  if (synced.action === "failed") return { migrated: [], pushed: false, note: synced.note ?? "sync failed" };
+  const dir = synced.path;
+  const skip = (s: string) => {
+    const b = basename(s);
+    return b !== "node_modules" && b !== ".git";
+  };
+
+  const migrated: string[] = [];
+  const proto = join(cwd, "PROTOTYPE.md");
+  if (existsSync(proto)) {
+    cpSync(proto, join(dir, "PROTOTYPE.md"));
+    migrated.push("PROTOTYPE.md");
+  }
+  const protos = join(cwd, "prototypes");
+  if (existsSync(protos)) {
+    cpSync(protos, join(dir, "prototypes"), { recursive: true, filter: skip });
+    migrated.push("prototypes/");
+  }
+  if (!migrated.length) return { migrated: [], pushed: false, note: "no local work to migrate" };
+
+  const pr = await commitAndPush(repo, {
+    message: "Import local prototype work",
+    token: opts.token,
+    login: opts.login,
+    toMain: true,
+  });
+  return { migrated, pushed: pr.ok, note: pr.note };
+}
+
+/**
  * Send a team's checkout to the recycle bin and remove it from the workspace
  * area (used after a push to main). Returns the bin entry, or "" if there was
  * nothing to remove.

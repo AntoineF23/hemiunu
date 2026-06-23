@@ -21,6 +21,7 @@ import {
   createRepo,
   repoExists,
   pruneTeams,
+  migrateLocalIntoTeam,
   normalizeRepo,
   githubViewer,
   githubClientId,
@@ -522,14 +523,7 @@ function App({
   useEffect(() => {
     setControlHandler(async (e) => {
       if (e.type === "create-team") {
-        const token = resolveGithubToken();
-        if (!token) return "Not signed in to GitHub — ask the user to run /github first.";
-        const r = await createRepo(token, e.name, { private: true });
-        if ("error" in r) return `Couldn't create the repo: ${r.error}`;
-        const repo = addTeam(r.repo);
-        adoptTeam(repo);
-        push({ kind: "note", text: `· created ${repo} (private) — now your team` });
-        return `Created ${repo} (private) and set it as the current team.`;
+        return await createAndAdoptTeam(e.name);
       }
       const repo = normalizeRepo(e.repo);
       if (!listTeams().includes(repo)) {
@@ -791,6 +785,34 @@ function App({
     currentProjectRef.current = repo;
     setTeam(repo);
     setTeams(listTeams());
+  }
+
+  // Create a private repo for the current work, push any LOCAL prototype work
+  // into it, and adopt it as the team — all without resetting the conversation
+  // or redrawing the banner. Pushes a progress note; returns a summary string.
+  async function createAndAdoptTeam(name: string): Promise<string> {
+    const token = resolveGithubToken();
+    if (!token) {
+      const m = "Not signed in to GitHub — run /github first.";
+      push({ kind: "note", text: `· ${m}` });
+      return m;
+    }
+    push({ kind: "note", text: `· creating private repo ${name}…` });
+    const r = await createRepo(token, name, { private: true });
+    if ("error" in r) {
+      const m = `couldn't create repo: ${r.error}`;
+      push({ kind: "error", text: m });
+      return m;
+    }
+    const repo = addTeam(r.repo);
+    const login = (await githubViewer(token)) ?? undefined;
+    const mig = await migrateLocalIntoTeam(repo, { token, login });
+    adoptTeam(repo);
+    const summary = mig.migrated.length
+      ? `created ${repo} (private) and pushed your local work (${mig.migrated.join(", ")})${mig.pushed ? "" : ` — note: ${mig.note}`}`
+      : `created ${repo} (private)`;
+    push({ kind: "note", text: `· ${summary} — now your team` });
+    return summary;
   }
 
   async function runCompact({ silent = false }: { silent?: boolean } = {}) {
@@ -1109,23 +1131,15 @@ function App({
           if (await repoExists(token, repo)) {
             addTeam(repo);
             setTeams(listTeams());
-            switchProject(repo);
-            push({ kind: "note", text: `· added team ${repo} — switched to it` });
+            adoptTeam(repo); // keep the conversation; no banner reset
+            push({ kind: "note", text: `· added team ${repo} — now your team` });
           } else {
             push({ kind: "error", text: `couldn't find ${repo} on GitHub (or you don't have access)` });
           }
         })();
         return;
       }
-      push({ kind: "note", text: `· creating private repo ${arg}…` });
-      void (async () => {
-        const r = await createRepo(token, arg, { private: true });
-        if ("error" in r) return push({ kind: "error", text: `couldn't create repo: ${r.error}` });
-        const repo = addTeam(r.repo);
-        setTeams(listTeams());
-        switchProject(repo);
-        push({ kind: "note", text: `· created ${repo} (private) — switched to it` });
-      })();
+      void createAndAdoptTeam(arg); // create + migrate local work + adopt (no reset)
       return;
     }
     if (cmd === "team") {
