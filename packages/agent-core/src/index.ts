@@ -25,6 +25,16 @@ export type {
 } from "./prototype";
 export { createOrchestratorServer, PARALLEL_TOOL_ID, pool } from "./orchestrator";
 export {
+  loadSkills,
+  loadSkill,
+  saveSkill,
+  expandSkill,
+  skillsDir,
+  createSkillsServer,
+  SKILL_TOOLS,
+} from "./skills";
+export type { Skill, SkillMeta, SaveSkillOptions, SavedSkill } from "./skills";
+export {
   runSubagent,
   subagentPrompt,
   SUBAGENTS,

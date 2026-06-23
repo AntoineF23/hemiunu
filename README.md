@@ -127,7 +127,35 @@ access; the decision is remembered per folder. `/trust` re-opens it.
 ## Slash commands
 
 `/new` `/clear` `/compact` `/models` `/setup` `/trust` `/list` `/resume`
-`/mcp` `/help` `/exit`
+`/mcp` `/skills` `/help` `/exit`
+
+## Skills
+
+**Skills** are reusable, saved procedures — each a Markdown file in the canonical
+Claude `SKILL.md` structure (YAML frontmatter + instruction body), stored
+per-user in `~/.hemiunu/skills/` so they persist across every session and
+project.
+
+```md
+---
+name: weekly-report
+description: Draft the weekly product status report from Notion updates.
+argument-hint: "[week]"
+---
+Gather this week's updates from Notion (delegate to the researcher), then write a
+concise status report covering shipped / in-progress / blocked, scoped to:
+$ARGUMENTS
+```
+
+- **Run one** with its slash command: `/weekly-report Q3` (the body becomes the
+  turn's prompt; `$ARGUMENTS` / `$1`, `$2`… are filled from what you type).
+- **Discover** — `/skills` lists what you have. The `description` of each skill
+  is surfaced to the agent (metadata only), so it can recognise when a request
+  matches a skill and follow it; the full body is loaded only when it runs.
+- **Create / edit two ways:** (1) ask the agent ("save a skill that…") and it
+  writes the file via its `save_skill` tool; or (2) edit the `.md` directly —
+  changes take effect on the next run, no restart. Both flat `skills/<name>.md`
+  and bundled `skills/<name>/SKILL.md` forms work.
 
 ## Smoke / eval harness
 

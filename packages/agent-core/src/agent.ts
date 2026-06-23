@@ -4,6 +4,7 @@ import { loadConfig } from "./config";
 import { createMemoryServer, createModelsServer } from "./tools";
 import { createPrototypeServer } from "./prototype";
 import { createOrchestratorServer } from "./orchestrator";
+import { createSkillsServer, SKILL_TOOLS } from "./skills";
 import {
   SUBAGENTS,
   SUBAGENT_NAMES,
@@ -69,6 +70,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     MODEL_TOOLS,
     PROTOTYPE_TOOLS,
     ORCHESTRATOR_TOOLS,
+    SKILL_TOOLS,
     ...sourceTools,
     DELEGATE_TOOL,
   ];
@@ -95,6 +97,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     "hemiunu-memory": createMemoryServer(),
     "hemiunu-models": createModelsServer(),
     "hemiunu-prototype": createPrototypeServer(),
+    "hemiunu-skills": createSkillsServer(),
     ...(opts.mcpServers ?? {}),
   } as Options["mcpServers"];
 

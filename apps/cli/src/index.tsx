@@ -7,6 +7,9 @@ import {
   configDir,
   hasApiKey,
   writeUserEnv,
+  loadSkills,
+  loadSkill,
+  expandSkill,
 } from "@hemiunu/agent-core";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 import {
@@ -43,7 +46,26 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new   /clear   /compact   /models   /setup   /trust   /list   /resume <id>   /mcp   /exit";
+  "/new   /clear   /compact   /models   /setup   /trust   /list   /resume <id>   /mcp   /skills   /exit";
+
+// Built-in commands, with one-line descriptions for the slash menu.
+const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
+  { name: "new", desc: "start a new conversation" },
+  { name: "clear", desc: "clear context and the screen" },
+  { name: "compact", desc: "summarise & compact the context" },
+  { name: "models", desc: "switch the model" },
+  { name: "setup", desc: "show config & keys" },
+  { name: "trust", desc: "toggle file access for this folder" },
+  { name: "list", desc: "list saved conversations" },
+  { name: "resume", desc: "resume a conversation by id" },
+  { name: "mcp", desc: "show connected MCP servers" },
+  { name: "skills", desc: "list saved skills" },
+  { name: "help", desc: "show all commands" },
+  { name: "exit", desc: "quit Hemiunu" },
+];
+
+// How many slash-menu rows are visible at once (the window scrolls past this).
+const SLASH_MENU_ROWS = 8;
 
 // Compacting prompt (Hermes-style structured state) — improve over time.
 const COMPACT_PROMPT = `Compress the conversation so far into a compact brief that preserves all state needed to continue. If an earlier summary is present, fold it in and update it. Then stop.
@@ -342,6 +364,8 @@ function App({
     options: string[];
     onChoice: (v: string | null) => void;
   } | null>(null);
+  const [skills, setSkills] = useState(() => loadSkills());
+  const [cmdSel, setCmdSel] = useState(0); // highlighted row in the slash menu
 
   // Detect a local filesystem server (it grants access to the launch folder).
   const fsName = Object.keys(registry.mcpServers).find(
@@ -421,16 +445,25 @@ function App({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // System prompt = soul/user/memory + connected sources (active) + compacted summary.
+  // System prompt = soul/user/memory + connected sources (active) + skills + compacted summary.
   const effectiveSystem = () => {
     const names = Object.keys(activeServers);
     const sources = names.length
       ? `\n\n## Connected data sources\nThese tools/data sources are connected right now: ${names.join(", ")}. When asked about anything you can't answer from general knowledge, search them before responding, and ground your answer in what you find.`
       : "";
+    // Surface saved skills (name + description only — progressive disclosure) so
+    // the agent can discover when one applies. Read fresh so newly-saved skills
+    // appear without a restart. The full body is loaded only when a skill runs.
+    const skills = loadSkills();
+    const skillList = skills.length
+      ? `\n\n## Skills (saved, reusable procedures)\nThe user has saved skills, runnable as /<name>. When a request clearly matches a skill's description, follow that skill: read its full instructions with the get_skill tool and carry them out. Don't force a skill when none fits. Available:\n${skills
+          .map((s) => `- /${s.name} — ${s.description || "(no description)"}`)
+          .join("\n")}`
+      : "";
     const summary = compactedRef.current
       ? `\n\n## Summary of earlier conversation (compacted)\n${compactedRef.current}`
       : "";
-    return systemPrompt + sources + summary;
+    return systemPrompt + sources + skillList + summary;
   };
 
   // Permission gate: queued so concurrent requests ask one menu at a time.
@@ -768,13 +801,71 @@ function App({
       sessionId.current = id;
       return push({ kind: "note", text: `· resumed ${id.slice(0, 8)} (${msgs.length} messages)` });
     }
-    push({ kind: "note", text: `· unknown command: /${cmd}` });
+    if (cmd === "skills") {
+      const skills = loadSkills();
+      if (!skills.length)
+        return push({
+          kind: "note",
+          text: `· no skills yet — ask me to create one, or add a .md in ${join(configDir(), "skills")}`,
+        });
+      return push({
+        kind: "note",
+        text: skills.map((s) => `/${s.name}  —  ${s.description || "(no description)"}`).join("\n"),
+      });
+    }
+    // Not a built-in: is it a saved skill? Read fresh so file edits apply now.
+    const skill = loadSkill(cmd);
+    if (skill) {
+      push({ kind: "note", text: `· running skill /${skill.name}` });
+      return void runUserTurn(expandSkill(skill, rest.join(" ")));
+    }
+    push({ kind: "note", text: `· unknown command: /${cmd} (/skills to list saved skills)` });
   }
 
+  // --- slash-command menu: a live list of commands + skills while typing "/" ---
+  const inputActive = !busy && !permission && !picker;
+  const slashToken =
+    inputActive && value.startsWith("/") && !value.includes(" ")
+      ? value.slice(1).toLowerCase()
+      : null;
+  const slashItems =
+    slashToken !== null
+      ? [
+          ...BUILTIN_COMMANDS.map((c) => ({ name: c.name, desc: c.desc, skill: false })),
+          ...skills.map((s) => ({ name: s.name, desc: s.description || "skill", skill: true })),
+        ].filter((c) => c.name.toLowerCase().startsWith(slashToken))
+      : [];
+  const showMenu = slashItems.length > 0;
+  const menuSel = Math.min(cmdSel, Math.max(0, slashItems.length - 1));
+  // Scroll the visible window so the highlighted row stays in view.
+  const menuStart =
+    slashItems.length <= SLASH_MENU_ROWS
+      ? 0
+      : Math.max(
+          0,
+          Math.min(
+            menuSel - Math.floor(SLASH_MENU_ROWS / 2),
+            slashItems.length - SLASH_MENU_ROWS,
+          ),
+        );
+
+  // Keep the highlight on the top match as the filter narrows; refresh the
+  // skills list whenever the user enters slash mode (picks up newly-saved ones).
+  useEffect(() => setCmdSel(0), [slashToken]);
+  const inSlash = value.startsWith("/");
+  useEffect(() => {
+    if (inSlash) setSkills(loadSkills());
+  }, [inSlash]);
+
   const onSubmit = (v: string) => {
-    const text = v.trim();
+    let text = v.trim();
     setValue("");
+    setCmdSel(0);
     if (!text) return;
+    // With the menu open, Enter runs the highlighted command/skill.
+    if (showMenu && text.startsWith("/") && !text.includes(" ")) {
+      text = `/${slashItems[menuSel].name}`;
+    }
     if (text.startsWith("/")) handleCommand(text);
     else void runUserTurn(text);
   };
@@ -800,6 +891,22 @@ function App({
       if (busy && key.escape) abortRef.current?.abort();
     },
     { isActive: busy || !!permission || !!picker },
+  );
+
+  // While the slash menu is open: ↑/↓ move the highlight, Tab completes it.
+  // (TextInput ignores arrows/Tab, so normal typing is unaffected.)
+  useInput(
+    (_input, key) => {
+      const n = slashItems.length;
+      if (!n) return;
+      if (key.upArrow) setCmdSel((s) => (Math.min(s, n - 1) - 1 + n) % n);
+      else if (key.downArrow) setCmdSel((s) => (Math.min(s, n - 1) + 1) % n);
+      else if (key.tab) {
+        setValue(`/${slashItems[menuSel].name} `);
+        setCmdSel(0);
+      }
+    },
+    { isActive: showMenu },
   );
 
   const ctxStr = ctx
@@ -877,6 +984,27 @@ function App({
               {opt}
             </Text>
           ))}
+        </Box>
+      ) : null}
+
+      {showMenu ? (
+        <Box flexDirection="column" marginTop={1}>
+          {menuStart > 0 ? <Text dimColor>{`  ↑ ${menuStart} more`}</Text> : null}
+          {slashItems.slice(menuStart, menuStart + SLASH_MENU_ROWS).map((it, i) => {
+            const idx = menuStart + i;
+            return (
+              <Text key={it.name} color={idx === menuSel ? SAGE : undefined} dimColor={idx !== menuSel}>
+                {idx === menuSel ? "❯ " : "  "}
+                <Text color={idx === menuSel ? SAGE : SAND} bold>{`/${it.name}`}</Text>
+                {it.skill ? <Text dimColor>{"  · skill"}</Text> : null}
+                <Text dimColor>{`  —  ${it.desc}`}</Text>
+              </Text>
+            );
+          })}
+          {slashItems.length - (menuStart + SLASH_MENU_ROWS) > 0 ? (
+            <Text dimColor>{`  ↓ ${slashItems.length - (menuStart + SLASH_MENU_ROWS)} more`}</Text>
+          ) : null}
+          <Text dimColor>{"  ↑/↓ select · Tab complete · Enter run"}</Text>
         </Box>
       ) : null}
 

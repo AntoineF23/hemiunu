@@ -23,6 +23,10 @@ import {
   subagentPrompt,
   writeUserEnv,
   hasApiKey,
+  saveSkill,
+  loadSkills,
+  loadSkill,
+  expandSkill,
 } from "@hemiunu/agent-core";
 import {
   loadContext,
@@ -266,6 +270,44 @@ async function main() {
     } finally {
       if (prev === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = prev;
+    }
+  });
+
+  await check("skills: save, list, load, expand $ARGUMENTS, reject reserved names", () => {
+    const root = mkdtempSync(join(tmpdir(), "hemiunu-skills-"));
+    try {
+      const saved = saveSkill({
+        name: "Weekly Report!",
+        description: "Draft the weekly status report.",
+        body: "Write a status report for $ARGUMENTS.",
+        root,
+      });
+      assert(saved.name === "weekly-report", `name should be slugified, got: ${saved.name}`);
+
+      const list = loadSkills(root);
+      assert(list.some((s) => s.name === "weekly-report"), "saved skill should be listed");
+      assert(
+        list[0].description === "Draft the weekly status report.",
+        "frontmatter description should round-trip",
+      );
+
+      const skill = loadSkill("weekly-report", root);
+      assert(!!skill && /status report/.test(skill.body), "skill body should load");
+      const expanded = expandSkill(skill!, "Q3 churn");
+      assert(
+        expanded === "Write a status report for Q3 churn.",
+        `$ARGUMENTS should expand, got: ${expanded}`,
+      );
+
+      let threw = false;
+      try {
+        saveSkill({ name: "clear", description: "x", body: "y", root });
+      } catch {
+        threw = true;
+      }
+      assert(threw, "a reserved command name must be rejected");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
