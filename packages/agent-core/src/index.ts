@@ -34,6 +34,37 @@ export {
   SKILL_TOOLS,
 } from "./skills";
 export type { Skill, SkillMeta, SaveSkillOptions, SavedSkill } from "./skills";
+export { upsertUserEnv } from "./config";
+export { parseFrontmatter, renderFrontmatter } from "./frontmatter";
+export {
+  resolveGithubToken,
+  resolveRepo,
+  normalizeRepo,
+  githubViewer,
+  githubClientId,
+  requestDeviceCode,
+  pollDeviceToken,
+  loadTeams,
+  listTeams,
+  currentTeam,
+  addTeam,
+  switchTeam,
+  setCurrentTeam,
+  cycleTeam,
+  createRepo,
+} from "./github";
+export type { TeamsConfig, DeviceCode, DevicePoll } from "./github";
+export {
+  addPrototypeNote,
+  getPrototypeKnowledge,
+  updatePrototype,
+  appendKnowledge,
+  prototypePath,
+  createPrototypeKnowledgeServer,
+  PROTOTYPE_FILE,
+  PROTOTYPE_KNOWLEDGE_TOOLS,
+} from "./prototypes";
+export type { NoteKind } from "./prototypes";
 export {
   runSubagent,
   subagentPrompt,

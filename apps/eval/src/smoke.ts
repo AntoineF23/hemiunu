@@ -27,6 +27,19 @@ import {
   loadSkills,
   loadSkill,
   expandSkill,
+  appendKnowledge,
+  normalizeRepo,
+  prototypePath,
+  upsertUserEnv,
+  resolveGithubToken,
+  addTeam,
+  switchTeam,
+  setCurrentTeam,
+  cycleTeam,
+  listTeams,
+  currentTeam,
+  githubClientId,
+  requestDeviceCode,
 } from "@hemiunu/agent-core";
 import {
   loadContext,
@@ -89,13 +102,12 @@ async function main() {
     assert(cfg.apiKey.length > 0, "ANTHROPIC_API_KEY should be set");
   });
 
-  await check("context builds the system prompt from soul/user/memory", () => {
+  await check("context builds the system prompt from soul + global user memory", () => {
     const ctx = loadContext();
     assert(ctx.soul.length > 0, "soul.md should not be empty");
     const sys = buildSystemPrompt(ctx);
     assert(/hemiunu/i.test(sys), "system prompt should name Hemiunu");
     if (ctx.user) assert(sys.includes(ctx.user), "user facts should be included");
-    if (ctx.memory) assert(sys.includes(ctx.memory), "durable memory should be included");
   });
 
   await check("MCP registry parses mcp.json into tool patterns", () => {
@@ -124,21 +136,14 @@ async function main() {
     }
   });
 
-  await check("remember() routes 'user' globally and 'memory' to the project", () => {
+  await check("remember() writes a user-global note (never the launch folder)", () => {
     const userRoot = mkdtempSync(join(tmpdir(), "hemiunu-user-"));
-    const projectRoot = mkdtempSync(join(tmpdir(), "hemiunu-proj-"));
     try {
-      remember("user", "A user fact.", { userRoot, projectRoot });
-      remember("memory", "A project fact.", { userRoot, projectRoot });
-      // 'user' → the global user.md in the user data dir.
+      remember("A user fact.", userRoot);
       const user = readFileSync(join(userRoot, "user.md"), "utf8");
-      assert(user.includes("A user fact."), "user note should land in the global user.md");
-      // 'memory' → HEMIUNU.md at the project (launch folder) root.
-      const project = readFileSync(join(projectRoot, "HEMIUNU.md"), "utf8");
-      assert(project.includes("A project fact."), "project note should land in HEMIUNU.md");
+      assert(user.includes("A user fact."), "note should land in the global user.md");
     } finally {
       rmSync(userRoot, { recursive: true, force: true });
-      rmSync(projectRoot, { recursive: true, force: true });
     }
   });
 
@@ -308,6 +313,121 @@ async function main() {
       assert(threw, "a reserved command name must be rejected");
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await check("prototype knowledge: appendKnowledge builds & appends sections", () => {
+    // From scratch → frontmatter + a Decisions section.
+    const v1 = appendKnowledge(null, "Churn Dashboard", "decision", "Tabs over wizard.", "antoine", "2026-06-23");
+    assert(/title: Churn Dashboard/.test(v1), `should set a title, got:\n${v1}`);
+    assert(/feature: churn-dashboard/.test(v1), "should set the feature slug");
+    assert(/## Decisions\n- 2026-06-23 \(antoine\): Tabs over wizard\./.test(v1), `decision should be appended, got:\n${v1}`);
+
+    // Append a question → new section, existing one preserved, checkbox bullet.
+    const v2 = appendKnowledge(v1, "churn-dashboard", "question", "Empty state range?", "marie", "2026-06-24");
+    assert(/## Decisions\n- 2026-06-23 \(antoine\): Tabs over wizard\./.test(v2), "prior decision preserved");
+    assert(/## Open questions\n- \[ \] Empty state range\? \(marie, 2026-06-24\)/.test(v2), `question appended as a checkbox, got:\n${v2}`);
+    assert(/updated: 2026-06-24/.test(v2), "updated date should advance");
+
+    // A second decision lands under the existing Decisions heading.
+    const v3 = appendKnowledge(v2, "churn-dashboard", "decision", "Add cohort filter.", "antoine", "2026-06-25");
+    const decBlock = v3.slice(v3.indexOf("## Decisions"));
+    assert(/Tabs over wizard[\s\S]*Add cohort filter\./.test(decBlock), "second decision appends under Decisions");
+  });
+
+  await check("github helpers: repo normalize + path + token resolution", () => {
+    assert(normalizeRepo("https://github.com/Acme/proto.git") === "Acme/proto", "https url should normalize");
+    assert(normalizeRepo("git@github.com:Acme/proto.git") === "Acme/proto", "ssh url should normalize");
+    assert(prototypePath() === "PROTOTYPE.md", `knowledge file should be at the repo root, got ${prototypePath()}`);
+
+    // Explicit env token takes precedence and is found without a network call.
+    const prev = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = "ghp_smoke";
+    try {
+      assert(resolveGithubToken() === "ghp_smoke", "env token should resolve");
+    } finally {
+      if (prev === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prev;
+    }
+  });
+
+  await check("upsertUserEnv adds & updates a key without clobbering others", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-env-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const prevTok = process.env.GITHUB_TOKEN;
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = dir;
+      writeFileSync(join(dir, ".env"), "ANTHROPIC_API_KEY=sk-keep\n");
+      upsertUserEnv("GITHUB_TOKEN", "ghp_one");
+      let env = readFileSync(join(dir, ".env"), "utf8");
+      assert(/ANTHROPIC_API_KEY=sk-keep/.test(env), "existing key must be preserved");
+      assert(/GITHUB_TOKEN=ghp_one/.test(env), "new key should be added");
+      upsertUserEnv("GITHUB_TOKEN", "ghp_two");
+      env = readFileSync(join(dir, ".env"), "utf8");
+      assert(/GITHUB_TOKEN=ghp_two/.test(env) && !/ghp_one/.test(env), "key should be updated in place");
+      assert((env.match(/GITHUB_TOKEN=/g) ?? []).length === 1, "no duplicate key lines");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      if (prevTok === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prevTok;
+    }
+  });
+
+  await check("teams: add, switch, cycle (persisted, legacy-migrated)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-team-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const prevRepo = process.env.HEMIUNU_PROTOTYPE_REPO;
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = dir;
+      delete process.env.HEMIUNU_PROTOTYPE_REPO;
+      assert(listTeams().length === 0, "starts with no teams");
+      addTeam("https://github.com/Acme/alpha.git");
+      addTeam("Acme/beta");
+      assert(JSON.stringify(listTeams()) === '["Acme/alpha","Acme/beta"]', `two teams, got ${listTeams()}`);
+      assert(currentTeam() === "Acme/beta", "the latest added becomes current");
+      // The cycle ring includes a "no team" slot: beta → (no team) → alpha → beta.
+      assert(cycleTeam() === "", "cycles past the last team to 'no team' (local)");
+      assert(currentTeam() === undefined, "'no team' means undefined (local)");
+      assert(cycleTeam() === "Acme/alpha", "then on to the first team");
+      assert(switchTeam("Acme/beta") === true, "switch to an existing team");
+      assert(currentTeam() === "Acme/beta", "current reflects the switch");
+      assert(switchTeam("Acme/nope") === false, "switching to an unknown team fails");
+      setCurrentTeam(null);
+      assert(currentTeam() === undefined, "setCurrentTeam(null) selects no team");
+      // legacy { repo } migrates to the new shape.
+      writeFileSync(join(dir, "team.json"), JSON.stringify({ repo: "Acme/legacy" }));
+      assert(currentTeam() === "Acme/legacy", "legacy single-repo config migrates");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      if (prevRepo === undefined) delete process.env.HEMIUNU_PROTOTYPE_REPO;
+      else process.env.HEMIUNU_PROTOTYPE_REPO = prevRepo;
+    }
+  });
+
+  await check("github device flow: client-id resolution + refuses without one", async () => {
+    const prev = process.env.HEMIUNU_GITHUB_CLIENT_ID;
+    try {
+      delete process.env.HEMIUNU_GITHUB_CLIENT_ID;
+      // No env and no shipped default → no client id → requestDeviceCode throws
+      // BEFORE any network call.
+      if (!githubClientId()) {
+        let threw = false;
+        try {
+          await requestDeviceCode();
+        } catch {
+          threw = true;
+        }
+        assert(threw, "device flow must refuse without a client id (no network call)");
+      }
+      process.env.HEMIUNU_GITHUB_CLIENT_ID = "Iv1.smoketest";
+      assert(githubClientId() === "Iv1.smoketest", "env client id should resolve");
+    } finally {
+      if (prev === undefined) delete process.env.HEMIUNU_GITHUB_CLIENT_ID;
+      else process.env.HEMIUNU_GITHUB_CLIENT_ID = prev;
     }
   });
 

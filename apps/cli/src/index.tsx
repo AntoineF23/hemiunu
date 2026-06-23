@@ -7,10 +7,24 @@ import {
   configDir,
   hasApiKey,
   writeUserEnv,
+  upsertUserEnv,
   loadSkills,
   loadSkill,
   expandSkill,
+  resolveGithubToken,
+  resolveRepo,
+  addTeam,
+  cycleTeam,
+  listTeams,
+  currentTeam,
+  setCurrentTeam,
+  createRepo,
+  githubViewer,
+  githubClientId,
+  requestDeviceCode,
+  pollDeviceToken,
 } from "@hemiunu/agent-core";
+import { spawn } from "node:child_process";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
@@ -46,7 +60,7 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new   /clear   /compact   /models   /setup   /trust   /list   /resume <id>   /mcp   /skills   /exit";
+  "/new  /clear  /compact  /models  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /team  /team-new  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -60,6 +74,9 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "resume", desc: "resume a conversation by id" },
   { name: "mcp", desc: "show connected MCP servers" },
   { name: "skills", desc: "list saved skills" },
+  { name: "github", desc: "sign in to GitHub (remembered)" },
+  { name: "team", desc: "switch team (feature/repo)" },
+  { name: "team-new", desc: "new feature → creates a private repo + switch" },
   { name: "help", desc: "show all commands" },
   { name: "exit", desc: "quit Hemiunu" },
 ];
@@ -137,6 +154,19 @@ function fmtElapsed(ms: number): string {
 
 function tokfmt(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Open a URL in the OS default browser (best-effort). */
+function openUrl(url: string): void {
+  const cmd =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  try {
+    spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+  } catch {
+    // best effort — the URL is shown in the prompt regardless
+  }
 }
 
 type PermValue = "yes" | "always" | "no";
@@ -366,6 +396,10 @@ function App({
   } | null>(null);
   const [skills, setSkills] = useState(() => loadSkills());
   const [cmdSel, setCmdSel] = useState(0); // highlighted row in the slash menu
+  const [teams, setTeams] = useState<string[]>(() => listTeams());
+  const [team, setTeam] = useState<string | undefined>(() => resolveRepo());
+  const [device, setDevice] = useState<{ userCode: string; url: string } | null>(null);
+  const githubLoginCancel = useRef(false);
 
   // Detect a local filesystem server (it grants access to the launch folder).
   const fsName = Object.keys(registry.mcpServers).find(
@@ -399,6 +433,13 @@ function App({
   const permChain = useRef<Promise<unknown>>(Promise.resolve());
   const compactedRef = useRef(""); // summary injected after /compact
   const justCompactedRef = useRef(false); // skip auto-compact the turn right after one
+  // Each project (= team/repo) keeps its own foreground context; switching swaps
+  // the whole lot. The active project lives in the React state/refs above; the
+  // others are parked here, keyed by repo.
+  const workspaces = useRef(
+    new Map<string, { items: Item[]; sessionId?: string; compacted: string; ctx: number; cost: number }>(),
+  );
+  const currentProjectRef = useRef<string | undefined>(resolveRepo());
   const turnStartRef = useRef(0); // ms timestamp when the current turn began
   const turnTokensRef = useRef(0); // estimated output tokens this turn
   const [, setTick] = useState(0); // drives the live status-line animation
@@ -653,6 +694,38 @@ function App({
     }
   }
 
+  // Switch the foreground project: park the current context and restore the
+  // target's (scrollback, conversation/session, compaction, context, cost). A
+  // never-seen project starts fresh. The footer reflects the new project.
+  function switchProject(target: string | null) {
+    const key = target ?? ""; // "" = no team / local
+    const fromKey = currentProjectRef.current ?? "";
+    if (key === fromKey) return;
+    workspaces.current.set(fromKey, {
+      items,
+      sessionId: sessionId.current,
+      compacted: compactedRef.current,
+      ctx,
+      cost: sessionCost,
+    });
+    setCurrentTeam(target); // persist so the agent's tools follow the selection
+    const ws = workspaces.current.get(key);
+    currentProjectRef.current = key;
+    setTeam(target ?? undefined);
+    sessionId.current = ws?.sessionId;
+    compactedRef.current = ws?.compacted ?? "";
+    justCompactedRef.current = false;
+    setCtx(ws?.ctx ?? 0);
+    setSessionCost(ws?.cost ?? 0);
+    setItems(
+      ws?.items ?? [
+        { kind: "banner" },
+        { kind: "note", text: target ? `· team ${target}` : "· no team — working locally" },
+      ],
+    );
+    setEpoch((e) => e + 1);
+  }
+
   async function runCompact({ silent = false }: { silent?: boolean } = {}) {
     turnStartRef.current = Date.now();
     turnTokensRef.current = 0;
@@ -748,6 +821,47 @@ function App({
     });
   }
 
+  // Connect a GitHub account via OAuth device flow — entirely in the CLI, no
+  // `gh` and no hand-made token. Shows a code + URL, opens the browser, polls
+  // until the user authorizes, then saves the token (remembered).
+  async function startGithubLogin() {
+    githubLoginCancel.current = false;
+    let dc: Awaited<ReturnType<typeof requestDeviceCode>>;
+    try {
+      dc = await requestDeviceCode();
+    } catch (e) {
+      return push({ kind: "error", text: `GitHub sign-in: ${e instanceof Error ? e.message : String(e)}` });
+    }
+    setDevice({ userCode: dc.userCode, url: dc.verificationUri });
+    openUrl(dc.verificationUri);
+
+    let interval = dc.interval;
+    const deadline = Date.now() + dc.expiresIn * 1000;
+    while (!githubLoginCancel.current && Date.now() < deadline) {
+      await sleep(interval * 1000);
+      if (githubLoginCancel.current) break;
+      const poll = await pollDeviceToken(dc.deviceCode);
+      if (poll.status === "authorized") {
+        const login = await githubViewer(poll.token);
+        upsertUserEnv("GITHUB_TOKEN", poll.token);
+        setDevice(null);
+        return push({ kind: "note", text: `· signed in to GitHub as ${login ?? "you"} (saved)` });
+      }
+      if (poll.status === "slow_down") {
+        interval = poll.interval;
+      } else if (poll.status === "error") {
+        setDevice(null);
+        return push({ kind: "error", text: `GitHub sign-in: ${poll.message}` });
+      }
+      // "pending" → keep polling
+    }
+    setDevice(null);
+    push({
+      kind: "note",
+      text: githubLoginCancel.current ? "· GitHub sign-in cancelled" : "· GitHub sign-in timed out — /github to retry",
+    });
+  }
+
   function handleCommand(text: string) {
     const [cmd, ...rest] = text.slice(1).split(" ");
     if (cmd === "exit" || cmd === "quit") return exit();
@@ -818,6 +932,94 @@ function App({
         text: skills.map((s) => `/${s.name}  —  ${s.description || "(no description)"}`).join("\n"),
       });
     }
+    if (cmd === "github") {
+      const token = rest.join(" ").trim();
+      // Explicit token paste (fallback) → verify + save.
+      if (token) {
+        void (async () => {
+          const login = await githubViewer(token);
+          if (!login)
+            return push({
+              kind: "error",
+              text: "that token didn't work — make sure it has repo contents read/write, then /github <token>",
+            });
+          const path = upsertUserEnv("GITHUB_TOKEN", token);
+          push({ kind: "note", text: `· signed in to GitHub as ${login} (saved to ${path})` });
+        })();
+        return;
+      }
+      // Already connected? report who.
+      const existing = resolveGithubToken();
+      if (existing) {
+        void (async () => {
+          const login = await githubViewer(existing);
+          push({
+            kind: "note",
+            text: login
+              ? `· signed in to GitHub as ${login}`
+              : "· a GitHub token is set but was rejected — run /github <token> with a valid one",
+          });
+        })();
+        return;
+      }
+      // Not connected: prefer the in-CLI device flow; fall back to a pasted token.
+      if (githubClientId()) {
+        void startGithubLogin();
+      } else {
+        push({
+          kind: "note",
+          text:
+            "· not signed in to GitHub.\n" +
+            "  device sign-in isn't configured (no OAuth client id) — paste a token instead:\n" +
+            "  create a fine-grained token (repo contents: read & write) and run /github <token>.",
+        });
+      }
+      return;
+    }
+    if (cmd === "team-new") {
+      const name = rest.join(" ").trim();
+      if (!name)
+        return push({
+          kind: "note",
+          text: "· usage: /team-new <name>  (creates a private repo and switches to it)",
+        });
+      const token = resolveGithubToken();
+      if (!token) return push({ kind: "note", text: "· sign in first with /github" });
+      push({ kind: "note", text: `· creating private repo ${name}…` });
+      void (async () => {
+        const r = await createRepo(token, name, { private: true });
+        if ("error" in r) return push({ kind: "error", text: `couldn't create repo: ${r.error}` });
+        const repo = addTeam(r.repo);
+        setTeams(listTeams());
+        switchProject(repo);
+        push({ kind: "note", text: `· created ${repo} (private) — switched to it` });
+      })();
+      return;
+    }
+    if (cmd === "team") {
+      const arg = rest.join(" ").trim();
+      // No arg → open the team switcher (arrow-select). Shift+Tab cycles too.
+      // "No team" is always an option → work locally.
+      if (!arg) {
+        const NONE = "○ No team (work locally)";
+        const options = [NONE, ...listTeams()];
+        const cur = currentTeam();
+        setSel(cur ? Math.max(0, options.indexOf(cur)) : 0);
+        setPicker({
+          title: "Switch team  (↑/↓ · Enter · Esc)",
+          options,
+          onChoice: (v) => {
+            setPicker(null);
+            if (v !== null) switchProject(v === NONE ? null : v);
+          },
+        });
+        return;
+      }
+      const repo = addTeam(arg);
+      setTeams(listTeams());
+      switchProject(repo);
+      return push({ kind: "note", text: `· switched to team ${repo}` });
+    }
     // Not a built-in: is it a saved skill? Read fresh so file edits apply now.
     const skill = loadSkill(cmd);
     if (skill) {
@@ -828,7 +1030,7 @@ function App({
   }
 
   // --- slash-command menu: a live list of commands + skills while typing "/" ---
-  const inputActive = !busy && !permission && !picker;
+  const inputActive = !busy && !permission && !picker && !device;
   const slashToken =
     inputActive && value.startsWith("/") && !value.includes(" ")
       ? value.slice(1).toLowerCase()
@@ -863,14 +1065,21 @@ function App({
   }, [inSlash]);
 
   const onSubmit = (v: string) => {
-    let text = v.trim();
+    const text = v.trim();
+    if (!text) {
+      setValue("");
+      return;
+    }
+    // With the menu open, Enter ACCEPTS the highlighted command into the input
+    // (like Tab) rather than running it — so the user can add arguments first
+    // (e.g. /team-new <name>). Run it with a second Enter once it's typed out.
+    if (showMenu) {
+      setValue(`/${slashItems[menuSel].name} `);
+      setCmdSel(0);
+      return;
+    }
     setValue("");
     setCmdSel(0);
-    if (!text) return;
-    // With the menu open, Enter runs the highlighted command/skill.
-    if (showMenu && text.startsWith("/") && !text.includes(" ")) {
-      text = `/${slashItems[menuSel].name}`;
-    }
     if (text.startsWith("/")) handleCommand(text);
     else void runUserTurn(text);
   };
@@ -893,9 +1102,13 @@ function App({
         else if (key.escape) picker.onChoice(null);
         return;
       }
+      if (device && key.escape) {
+        githubLoginCancel.current = true;
+        return;
+      }
       if (busy && key.escape) abortRef.current?.abort();
     },
-    { isActive: busy || !!permission || !!picker },
+    { isActive: busy || !!permission || !!picker || !!device },
   );
 
   // While the slash menu is open: ↑/↓ move the highlight, Tab completes it.
@@ -906,7 +1119,7 @@ function App({
       if (!n) return;
       if (key.upArrow) setCmdSel((s) => (Math.min(s, n - 1) - 1 + n) % n);
       else if (key.downArrow) setCmdSel((s) => (Math.min(s, n - 1) + 1) % n);
-      else if (key.tab) {
+      else if (key.tab && !key.shift) {
         setValue(`/${slashItems[menuSel].name} `);
         setCmdSel(0);
       }
@@ -914,9 +1127,32 @@ function App({
     { isActive: showMenu },
   );
 
+  // Shift+Tab cycles between teams (a team ≈ one prototype repo). TextInput
+  // ignores shift+tab, so this works even while typing or with the menu open.
+  useInput(
+    (_input, key) => {
+      if (key.tab && key.shift) {
+        const next = cycleTeam(); // "" = no team, repo = a team, null = none to cycle
+        // Switch silently — the footer already shows the current selection. Only
+        // speak up when there's nothing to cycle to.
+        if (next === null)
+          push({ kind: "note", text: "· no teams yet — /team-new <name> to create one" });
+        else switchProject(next === "" ? null : next);
+      }
+    },
+    { isActive: inputActive },
+  );
+
   const ctxStr = ctx
     ? `ctx ${kfmt(ctx)}/${kfmt(ctxWindow)} (${Math.round((ctx / ctxWindow) * 100)}%)`
     : `ctx ${kfmt(ctxWindow)}`;
+
+  // Current team shown under the chat (a team ≈ one prototype repo).
+  const teamShort = team ? (team.split("/")[1] ?? team) : null;
+  const teamIdx = team ? teams.indexOf(team) : -1;
+  const teamLabel = teamShort
+    ? `⌂ ${teamShort}${teams.length > 1 && teamIdx >= 0 ? ` ${teamIdx + 1}/${teams.length}` : ""}`
+    : "⌂ no team";
 
   const elapsed = busy ? Date.now() - turnStartRef.current : 0;
   const frame = PYRAMID[Math.floor(elapsed / 160) % PYRAMID.length];
@@ -1009,11 +1245,26 @@ function App({
           {slashItems.length - (menuStart + SLASH_MENU_ROWS) > 0 ? (
             <Text dimColor>{`  ↓ ${slashItems.length - (menuStart + SLASH_MENU_ROWS)} more`}</Text>
           ) : null}
-          <Text dimColor>{"  ↑/↓ select · Tab complete · Enter run"}</Text>
+          <Text dimColor>{"  ↑/↓ select · Tab/Enter insert · Enter again to run"}</Text>
         </Box>
       ) : null}
 
-      {!busy && !permission && !picker ? (
+      {device ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text>
+            <Text color={SAGE}>{"⌂ "}</Text>
+            <Text color={SAND} bold>Connect GitHub</Text>
+          </Text>
+          <Text dimColor>{"  1. opening "}<Text color={SAGE}>{device.url}</Text>{" in your browser"}</Text>
+          <Text>
+            {"  2. enter this code:  "}
+            <Text color={SAND} bold>{device.userCode}</Text>
+          </Text>
+          <Text dimColor>{"  waiting for you to authorize…  (Esc to cancel)"}</Text>
+        </Box>
+      ) : null}
+
+      {inputActive ? (
         <Box
           marginTop={1}
           borderStyle="single"
@@ -1034,7 +1285,9 @@ function App({
       ) : null}
 
       <Box marginTop={1}>
-        <Text color={SAGE}>{` ${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
+        <Text color={SAND} bold>{teamLabel}</Text>
+        <Text color={SAGE}>{`  ${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
+        {teams.length >= 1 ? <Text dimColor>{"  · ⇧⇥ team"}</Text> : null}
       </Box>
     </Box>
   );
@@ -1140,11 +1393,12 @@ async function main() {
   // App default mcp.json + the user's own overlay (~/.hemiunu/mcp.json).
   const registry = loadMcpRegistry(home, join(dataDir, "mcp.json"));
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
-  // Context comes from three homes: soul.md ships with the app (home); the
-  // global user.md lives in the user data dir (~/.hemiunu); the per-project
-  // HEMIUNU.md lives in the launch folder (cwd). First run seeds the global
-  // user.md from the committed template; project memory is created lazily.
-  const contextRoots = { appRoot: home, userRoot: dataDir, projectRoot: process.cwd() };
+  // Context: soul.md ships with the app (home); the global user.md lives in the
+  // user data dir (~/.hemiunu). First run seeds user.md from the committed
+  // template. Feature/project memory is NOT here — it's the team's PROTOTYPE.md
+  // (team repo, or a local file only when no team), so nothing is written into
+  // an unrelated launch folder.
+  const contextRoots = { appRoot: home, userRoot: dataDir };
   seedContextFiles(contextRoots);
   const systemPrompt = buildSystemPrompt(loadContext(contextRoots));
 

@@ -157,6 +157,43 @@ $ARGUMENTS
   changes take effect on the next run, no restart. Both flat `skills/<name>.md`
   and bundled `skills/<name>/SKILL.md` forms work.
 
+## Teams & prototype knowledge
+
+A **team = a feature = a repo** (1:1). The current team is shown under the chat;
+**Shift+Tab** cycles between teams, `/team` opens a switcher, and `/team
+<owner/repo>` adds/switches one. To start a new feature, **`/team-new <name>`**
+creates a fresh **private** repo named after it and switches in (`/team-new
+org/<name>` for an org). Each team carries its own conversation + context, so
+several features can be in flight at once.
+
+Every feature has a living **`PROTOTYPE.md` at its repo root** — the feature's
+brief and memory (goal, primary user, research findings + sources, decisions,
+open questions). The agent maintains it **proactively** (like `remember`): as it
+learns durable things about the feature it appends them, and reorganizes the doc
+when useful — all straight through the GitHub API, so it (or a teammate) can
+enrich a feature **without cloning the repo**.
+
+### Connect GitHub
+
+Run **`/github`** — the agent connects your account via GitHub's OAuth **device
+flow** (no `gh` install, no hand-made token): it shows a short code, opens
+`github.com/login/device`, and once you authorize it saves the token to
+`~/.hemiunu/.env` and never asks again. `/github` alone shows who you're signed
+in as. (Fallback: `/github <token>` with a fine-grained PAT that has *Contents:
+read & write* on the repo.)
+
+Device sign-in needs a one-time **GitHub OAuth App** (its client id is public):
+
+1. GitHub → *Settings → Developer settings → OAuth Apps → New OAuth App*.
+2. Any name/homepage; the callback URL is unused by device flow (put the homepage).
+3. After creating, tick **Enable Device Flow**, and copy the **Client ID**.
+4. Provide it to Hemiunu: set `HEMIUNU_GITHUB_CLIENT_ID` in `~/.hemiunu/.env`
+   (or paste it into `DEFAULT_GITHUB_CLIENT_ID` in `packages/agent-core/src/github.ts`
+   to ship it for everyone).
+
+The device flow grants the classic `repo` scope (covers Contents read/write on
+the user's private repos).
+
 ## Smoke / eval harness
 
 A tiny harness gates the MVP end-to-end:
