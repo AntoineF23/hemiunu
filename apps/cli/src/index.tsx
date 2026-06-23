@@ -1387,7 +1387,7 @@ function App({
       <Box marginTop={1}>
         <Text color={SAND} bold>{teamLabel}</Text>
         <Text color={SAGE}>{`  ${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
-        {teams.length >= 1 ? <Text dimColor>{"  · ⇧⇥ team"}</Text> : null}
+        {teams.length >= 1 ? <Text dimColor>{"  · shift+tab: switch team"}</Text> : null}
       </Box>
     </Box>
   );
