@@ -1459,10 +1459,12 @@ function App({
         </Box>
       ) : null}
 
-      <Box marginTop={1}>
-        <Text color={SAND} bold>{teamLabel}</Text>
-        <Text color={SAGE}>{`  ${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
-        {teams.length >= 1 ? <Text dimColor>{"  · shift+tab: switch team"}</Text> : null}
+      <Box flexDirection="column" marginTop={1}>
+        <Text>
+          <Text color={SAND} bold>{teamLabel}</Text>
+          {teams.length >= 1 ? <Text dimColor>{"  · shift+tab to switch"}</Text> : null}
+        </Text>
+        <Text color={SAGE}>{`${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
       </Box>
     </Box>
   );
