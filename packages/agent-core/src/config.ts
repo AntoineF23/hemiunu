@@ -1,7 +1,7 @@
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 
 const PLACEHOLDER_KEY = "sk-your-litellm-key-here";
 
@@ -10,22 +10,52 @@ export function configDir(): string {
   return process.env.HEMIUNU_CONFIG_DIR ?? join(homedir(), ".hemiunu");
 }
 
-// Load .env from the first place it exists: the user's config dir (installed
-// users), then Hemiunu's home (the install/repo dir), then the cwd. Node 24 builtin.
-function pickEnvFile(): string | undefined {
+// Load .env from EVERY place it may live — the user's config dir (~/.hemiunu),
+// Hemiunu's home (install/repo dir), and the cwd — in that precedence order.
+// Earlier files (and the real shell environment) win: a var already set is never
+// overwritten. This matters because per-user secrets (e.g. a GitHub token saved
+// to ~/.hemiunu/.env) must coexist with a repo-local .env that holds other keys,
+// rather than one file shadowing the other.
+function loadEnvFiles(): void {
   const home = process.env.HEMIUNU_HOME ?? process.cwd();
-  for (const p of [join(configDir(), ".env"), join(home, ".env"), join(process.cwd(), ".env")]) {
-    if (existsSync(p)) return p;
+  const files = [join(configDir(), ".env"), join(home, ".env"), join(process.cwd(), ".env")];
+  const seen = new Set<string>();
+  for (const path of files) {
+    if (seen.has(path) || !existsSync(path)) continue;
+    seen.add(path);
+    try {
+      for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+        const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+        if (!m) continue; // blank line or comment
+        const key = m[1];
+        let val = m[2];
+        if (/^"[\s\S]*"$/.test(val) || /^'[\s\S]*'$/.test(val)) val = val.slice(1, -1);
+        if (process.env[key] === undefined) process.env[key] = val;
+      }
+    } catch {
+      // ignore — env may already be populated by the shell
+    }
   }
-  return undefined;
 }
-const ENV_FILE = pickEnvFile();
-if (ENV_FILE) {
-  try {
-    process.loadEnvFile(ENV_FILE);
-  } catch {
-    // ignore — env may already be populated by the shell
-  }
+loadEnvFiles();
+
+/**
+ * Create or update a single var in the per-user `~/.hemiunu/.env`, preserving the
+ * rest of the file, and apply it to this process immediately. Used to remember
+ * credentials (e.g. a GitHub token) so the user is asked only once.
+ */
+export function upsertUserEnv(key: string, value: string): string {
+  const dir = configDir();
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, ".env");
+  const lines = existsSync(path) ? readFileSync(path, "utf8").split(/\r?\n/) : [];
+  const re = new RegExp(`^\\s*${key}\\s*=`);
+  let found = false;
+  const next = lines.map((l) => (re.test(l) ? ((found = true), `${key}=${value}`) : l));
+  if (!found) next.push(`${key}=${value}`);
+  writeFileSync(path, `${next.join("\n").replace(/\n+$/, "")}\n`, "utf8");
+  process.env[key] = value;
+  return path;
 }
 
 /** True once a real (non-placeholder) API key is configured. */
