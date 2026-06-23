@@ -162,12 +162,23 @@ $ARGUMENTS
 
 ## Teams & prototype knowledge
 
-A **team = a feature = a repo** (1:1). The current team is shown under the chat;
-**Shift+Tab** cycles between teams, `/team` opens a switcher, and `/team
-<owner/repo>` adds/switches one. To start a new feature, **`/team-new <name>`**
-creates a fresh **private** repo named after it and switches in (`/team-new
-org/<name>` for an org). Each team carries its own conversation + context, so
-several features can be in flight at once.
+A **team = a feature = a repo** (1:1). **One team per terminal:** on launch
+Hemiunu asks which team to work on (skipped on a fresh install — you start local
+and it offers to create one). To work on **several teams at once, open another
+terminal** and pick a different team there — each is its own isolated session,
+pinned to its own repo, so they never step on each other.
+
+```bash
+hemiunu                 # pick a team interactively
+hemiunu owner/repo      # start on that team (added if new)
+hemiunu local           # start with no team (local iteration)
+```
+
+The current team is shown under the chat. Within a terminal, **Shift+Tab**
+switches teams sequentially, `/team` opens a switcher, and `/team <owner/repo>`
+adds/switches one. To start a new feature, **`/team-new <name>`** creates a fresh
+**private** repo named after it and switches in (`/team-new org/<name>` for an
+org). Each team carries its own conversation + context.
 
 Every feature has a living **`PROTOTYPE.md` at its repo root** — the feature's
 brief and memory (goal, primary user, research findings + sources, decisions,

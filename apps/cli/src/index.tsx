@@ -12,7 +12,6 @@ import {
   loadSkill,
   expandSkill,
   resolveGithubToken,
-  resolveRepo,
   addTeam,
   cycleTeam,
   listTeams,
@@ -381,12 +380,16 @@ function App({
   registry,
   systemPrompt,
   initialModel,
+  initialTeam,
   onClear,
 }: {
   store: ConversationStore;
   registry: ReturnType<typeof loadMcpRegistry>;
   systemPrompt: string;
   initialModel: string;
+  /** Team chosen at launch ("owner/repo"), or null for no-team/local. Pins this
+   *  process in-memory, so a second terminal on another team can't change it. */
+  initialTeam: string | null;
   onClear: () => void;
 }) {
   const { exit } = useApp();
@@ -412,7 +415,7 @@ function App({
   const [skills, setSkills] = useState(() => loadSkills());
   const [cmdSel, setCmdSel] = useState(0); // highlighted row in the slash menu
   const [teams, setTeams] = useState<string[]>(() => listTeams());
-  const [team, setTeam] = useState<string | undefined>(() => resolveRepo());
+  const [team, setTeam] = useState<string | undefined>(initialTeam ?? undefined);
   const [device, setDevice] = useState<{ userCode: string; url: string } | null>(null);
   const githubLoginCancel = useRef(false);
   const [paused, setPaused] = useState(false); // hand the terminal to an interactive child (vercel login)
@@ -455,7 +458,7 @@ function App({
   const workspaces = useRef(
     new Map<string, { items: Item[]; sessionId?: string; compacted: string; ctx: number; cost: number }>(),
   );
-  const currentProjectRef = useRef<string | undefined>(resolveRepo());
+  const currentProjectRef = useRef<string | undefined>(initialTeam ?? undefined);
   const turnStartRef = useRef(0); // ms timestamp when the current turn began
   const turnTokensRef = useRef(0); // estimated output tokens this turn
   const [, setTick] = useState(0); // drives the live status-line animation
@@ -1557,6 +1560,93 @@ function runSetup(): Promise<void> {
   });
 }
 
+// Launch-time "which team?" picker. One team per terminal — pick here, and for
+// parallel work just open another terminal and pick a different team. Arrow to
+// move, Enter to choose. The first option is "work locally (no team)".
+function LaunchPicker({
+  teams,
+  current,
+  onChoice,
+}: {
+  teams: string[];
+  current: string | null;
+  onChoice: (team: string | null) => void;
+}) {
+  const options: { label: string; value: string | null }[] = [
+    { label: "Work locally (no team)", value: null },
+    ...teams.map((t) => ({ label: t, value: t })),
+  ];
+  const initial = Math.max(
+    0,
+    options.findIndex((o) => o.value === current),
+  );
+  const [sel, setSel] = useState(initial);
+  useInput((_input, key) => {
+    const n = options.length;
+    if (key.upArrow) setSel((s) => (s - 1 + n) % n);
+    else if (key.downArrow) setSel((s) => (s + 1) % n);
+    else if (key.return) onChoice(options[sel].value);
+  });
+  return (
+    <Box flexDirection="column">
+      <Text color={SAND}>{LOGO}</Text>
+      <Box marginTop={1} marginLeft={3} flexDirection="column">
+        <Text color={SAND} bold>Which team do you want to work on?</Text>
+        <Text dimColor>{"Open another terminal to work on a second team in parallel."}</Text>
+      </Box>
+      <Box marginTop={1} marginLeft={3} flexDirection="column">
+        {options.map((o, i) => (
+          <Text key={o.value ?? "local"} color={i === sel ? SAGE : undefined} dimColor={i !== sel}>
+            {i === sel ? "❯ " : "  "}
+            {o.label}
+          </Text>
+        ))}
+      </Box>
+      <Box marginLeft={3} marginTop={1}>
+        <Text dimColor>{"↑/↓ select · Enter to start"}</Text>
+      </Box>
+    </Box>
+  );
+}
+
+function runLaunchPicker(teams: string[], current: string | null): Promise<string | null> {
+  return new Promise((resolve) => {
+    const { unmount } = render(
+      <LaunchPicker
+        teams={teams}
+        current={current}
+        onChoice={(team) => {
+          unmount();
+          resolve(team);
+        }}
+      />,
+    );
+  });
+}
+
+/**
+ * Resolve the team to start in. A CLI arg pins it non-interactively (handy for
+ * opening a second terminal already on another team):
+ *   hemiunu                 → pick interactively (if any teams exist)
+ *   hemiunu owner/repo       → start on that team (added if new)
+ *   hemiunu local | none     → start with no team (local)
+ * With no arg and no teams yet, start local (the onboarding flow takes over).
+ */
+async function resolveStartTeam(): Promise<string | null> {
+  const arg = process.argv.slice(2).find((a) => !a.startsWith("-"));
+  if (arg) {
+    const a = arg.trim().toLowerCase();
+    if (a === "local" || a === "none") return null;
+    if (arg.includes("/")) return addTeam(arg); // normalizes + selects + persists
+    // A bare name: match a known team by its repo name, else treat as local.
+    const match = listTeams().find((t) => (t.split("/")[1] ?? t).toLowerCase() === a);
+    return match ?? null;
+  }
+  const teams = listTeams();
+  if (!teams.length) return null; // fresh user → local; onboarding offers a team
+  return runLaunchPicker(teams, currentTeam() ?? null);
+}
+
 async function main() {
   // Hemiunu's HOME (its config: soul.md, mcp.json, context/) is the install
   // dir when launched via the `hemiunu` command, else the current dir (running
@@ -1572,6 +1662,12 @@ async function main() {
   // First run: if no key is configured, ask for it (and optional tokens) inline
   // and write ~/.hemiunu/.env — no file editing required.
   if (!hasApiKey()) await runSetup();
+  // Pick the team for this terminal (one team per process). Pin it in-memory
+  // and persist it as the next-launch default — the running session resolves its
+  // repo from this pin (not the shared team.json), so a second terminal on a
+  // different team can't change it underneath us.
+  const startTeam = await resolveStartTeam();
+  setCurrentTeam(startTeam);
   const store = new ConversationStore(join(dataDir, "hemiunu.db"));
   // App default mcp.json + the user's own overlay (~/.hemiunu/mcp.json).
   const registry = loadMcpRegistry(home, join(dataDir, "mcp.json"));
@@ -1592,6 +1688,7 @@ async function main() {
       registry={registry}
       systemPrompt={systemPrompt}
       initialModel={model}
+      initialTeam={startTeam}
       onClear={() => handle.clear()}
     />,
   );
