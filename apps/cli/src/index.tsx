@@ -23,6 +23,8 @@ import {
   githubClientId,
   requestDeviceCode,
   pollDeviceToken,
+  listTrash,
+  restoreTrash,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import { loadMcpRegistry } from "@hemiunu/mcp";
@@ -60,7 +62,7 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new  /clear  /compact  /models  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /team  /team-new  /exit";
+  "/new  /clear  /compact  /models  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /team  /team-new  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -77,6 +79,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "github", desc: "sign in to GitHub (remembered)" },
   { name: "team", desc: "switch team (feature/repo)" },
   { name: "team-new", desc: "new feature → creates a private repo + switch" },
+  { name: "restore", desc: "recover files from the recycle bin" },
   { name: "help", desc: "show all commands" },
   { name: "exit", desc: "quit Hemiunu" },
 ];
@@ -975,6 +978,26 @@ function App({
         });
       }
       return;
+    }
+    if (cmd === "restore") {
+      const id = rest.join(" ").trim();
+      const entries = listTrash();
+      if (!id) {
+        if (!entries.length) return push({ kind: "note", text: "· recycle bin is empty" });
+        return push({
+          kind: "note",
+          text:
+            "recycle bin (newest first):\n" +
+            entries.map((e) => `  ${e.id}\n    ${e.repo} · ${e.reason}`).join("\n") +
+            "\n/restore <id> to recover its files",
+        });
+      }
+      try {
+        const dest = restoreTrash(id);
+        return push({ kind: "note", text: `· restored to ${dest}` });
+      } catch (e) {
+        return push({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+      }
     }
     if (cmd === "team-new") {
       const name = rest.join(" ").trim();

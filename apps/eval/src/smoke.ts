@@ -40,7 +40,11 @@ import {
   currentTeam,
   githubClientId,
   requestDeviceCode,
+  ensureWorkspace,
+  listTrash,
+  restoreTrash,
 } from "@hemiunu/agent-core";
+import { execFileSync } from "node:child_process";
 import {
   loadContext,
   buildSystemPrompt,
@@ -428,6 +432,51 @@ async function main() {
     } finally {
       if (prev === undefined) delete process.env.HEMIUNU_GITHUB_CLIENT_ID;
       else process.env.HEMIUNU_GITHUB_CLIENT_ID = prev;
+    }
+  });
+
+  await check("workspace: clone, sync-to-latest, bin discarded edits, restore", async () => {
+    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
+    const remote = mkdtempSync(join(tmpdir(), "hemiunu-remote-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = cfg;
+      // A local "remote" repo with one commit on main (no network).
+      g(["init", "-q", "-b", "main"], remote);
+      g(["config", "user.email", "t@t.co"], remote);
+      g(["config", "user.name", "t"], remote);
+      writeFileSync(join(remote, "index.html"), "<h1>v1</h1>");
+      g(["add", "."], remote);
+      g(["commit", "-qm", "v1"], remote);
+
+      // First iterate → clone the latest.
+      let r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
+      assert(r.action === "cloned", `should clone, got ${r.action} ${r.note ?? ""}`);
+      assert(readFileSync(join(r.path, "index.html"), "utf8").includes("v1"), "cloned content");
+
+      // Make a local edit AND advance the remote → reset to latest, snapshot the edit.
+      writeFileSync(join(r.path, "index.html"), "<h1>my local edit</h1>");
+      writeFileSync(join(remote, "index.html"), "<h1>v2</h1>");
+      g(["commit", "-aqm", "v2"], remote);
+      r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
+      assert(r.action === "reset", `should reset to latest, got ${r.action} ${r.note ?? ""}`);
+      assert(readFileSync(join(r.path, "index.html"), "utf8").includes("v2"), "workspace now at latest");
+      assert(!!r.binned, "discarded edits should be snapshotted to the recycle bin");
+
+      // The bin holds the forgotten edit; restore recovers it.
+      const entries = listTrash();
+      assert(entries.length >= 1, "recycle bin should have an entry");
+      const dest = restoreTrash(entries[0].id);
+      assert(
+        readFileSync(join(dest, "index.html"), "utf8").includes("my local edit"),
+        "restore should recover the un-pushed edit",
+      );
+    } finally {
+      rmSync(cfg, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
     }
   });
 

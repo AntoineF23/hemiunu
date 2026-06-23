@@ -66,6 +66,17 @@ export {
 } from "./prototypes";
 export type { NoteKind } from "./prototypes";
 export {
+  ensureWorkspace,
+  discardWorkspace,
+  binWorkspace,
+  listTrash,
+  restoreTrash,
+  workspacePath,
+  workspacesRoot,
+  trashRoot,
+} from "./workspace";
+export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
+export {
   runSubagent,
   subagentPrompt,
   SUBAGENTS,
