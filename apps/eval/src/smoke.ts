@@ -43,6 +43,9 @@ import {
   ensureWorkspace,
   listTrash,
   restoreTrash,
+  startPreview,
+  stopPreview,
+  previewStatus,
 } from "@hemiunu/agent-core";
 import { execFileSync } from "node:child_process";
 import {
@@ -477,6 +480,22 @@ async function main() {
       rmSync(remote, { recursive: true, force: true });
       if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
       else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+    }
+  });
+
+  await check("preview: static server serves the workspace on localhost", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-prev-"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<h1>hello preview</h1>");
+      const r = await startPreview("acme/proto", dir); // no package.json → static server
+      assert(!("error" in r), `preview should start, got ${JSON.stringify(r)}`);
+      const url = (r as { url: string }).url;
+      const body = await (await fetch(url)).text();
+      assert(body.includes("hello preview"), `should serve index.html, got: ${body.slice(0, 60)}`);
+      assert(previewStatus()?.url === url, "status should report the running preview");
+    } finally {
+      stopPreview();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

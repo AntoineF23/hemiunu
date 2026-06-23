@@ -25,6 +25,7 @@ import {
   pollDeviceToken,
   listTrash,
   restoreTrash,
+  stopPreview,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import { loadMcpRegistry } from "@hemiunu/mcp";
@@ -704,6 +705,7 @@ function App({
     const key = target ?? ""; // "" = no team / local
     const fromKey = currentProjectRef.current ?? "";
     if (key === fromKey) return;
+    stopPreview(); // the previous team's localhost preview is no longer current
     workspaces.current.set(fromKey, {
       items,
       sessionId: sessionId.current,
@@ -1437,6 +1439,7 @@ async function main() {
   );
   handle.clear = () => app.clear();
   await app.waitUntilExit();
+  stopPreview(); // tear down any running localhost preview
   store.close();
 }
 

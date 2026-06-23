@@ -6,6 +6,7 @@ import { createPrototypeServer } from "./prototype";
 import { createOrchestratorServer } from "./orchestrator";
 import { createSkillsServer, SKILL_TOOLS } from "./skills";
 import { createPrototypeKnowledgeServer, PROTOTYPE_KNOWLEDGE_TOOLS } from "./prototypes";
+import { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 import {
   SUBAGENTS,
   SUBAGENT_NAMES,
@@ -73,6 +74,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     ORCHESTRATOR_TOOLS,
     SKILL_TOOLS,
     PROTOTYPE_KNOWLEDGE_TOOLS,
+    WORKSPACE_TOOLS,
     ...sourceTools,
     DELEGATE_TOOL,
   ];
@@ -101,6 +103,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     "hemiunu-prototype": createPrototypeServer(),
     "hemiunu-skills": createSkillsServer(),
     "hemiunu-prototype-knowledge": createPrototypeKnowledgeServer(),
+    "hemiunu-workspace": createWorkspaceServer(),
     ...(opts.mcpServers ?? {}),
   } as Options["mcpServers"];
 

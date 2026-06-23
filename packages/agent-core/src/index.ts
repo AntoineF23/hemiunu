@@ -76,6 +76,8 @@ export {
   trashRoot,
 } from "./workspace";
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
+export { startPreview, stopPreview, previewStatus } from "./preview";
+export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 export {
   runSubagent,
   subagentPrompt,
