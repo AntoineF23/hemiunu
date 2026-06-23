@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
@@ -11,6 +11,7 @@ import {
   resolveRepo,
 } from "./github";
 import { slugify } from "./prototype";
+import { localWorkspaceDir } from "./workspace";
 
 /**
  * Team-knowledge layer. A team = a feature = a repo (1:1), so each repo carries
@@ -126,7 +127,7 @@ function featureName(repo: string): string {
 // With no team selected, knowledge is kept in a local PROTOTYPE.md in the launch
 // folder, so work isn't lost; the agent suggests creating a team to push later.
 function localPath(): string {
-  return join(process.cwd(), PROTOTYPE_FILE);
+  return join(localWorkspaceDir(), PROTOTYPE_FILE);
 }
 function readLocal(): string | null {
   return existsSync(localPath()) ? readFileSync(localPath(), "utf8") : null;
@@ -146,7 +147,8 @@ export async function addPrototypeNote(
   const repo = opts?.repo ?? resolveRepo();
   const date = todayISO();
   if (!repo) {
-    const next = appendKnowledge(readLocal(), basename(process.cwd()) || "project", kind, text, "you", date);
+    const next = appendKnowledge(readLocal(), "prototype", kind, text, "you", date);
+    mkdirSync(localWorkspaceDir(), { recursive: true });
     writeFileSync(localPath(), next, "utf8");
     return `Saved ${kind} to ./PROTOTYPE.md (local — not pushed). ${LOCAL_HINT}`;
   }
@@ -198,7 +200,8 @@ export async function updatePrototype(content: string, opts?: RemoteOpts): Promi
   if (!repo) {
     const cur = readLocal();
     const meta = { ...(cur ? parseFrontmatter(cur).meta : {}), ...provided.meta };
-    writeFileSync(localPath(), withFrontmatter(meta, basename(process.cwd()) || "project", date, provided.body || content.trim()), "utf8");
+    mkdirSync(localWorkspaceDir(), { recursive: true });
+    writeFileSync(localPath(), withFrontmatter(meta, "prototype", date, provided.body || content.trim()), "utf8");
     return `Updated ./PROTOTYPE.md (local). ${LOCAL_HINT}`;
   }
   const token = opts?.token ?? resolveGithubToken();

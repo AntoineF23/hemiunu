@@ -29,6 +29,7 @@ import {
   pollDeviceToken,
   listTrash,
   restoreTrash,
+  setLocalSession,
   stopPreview,
   resolveVercelToken,
   vercelLoggedIn,
@@ -1536,6 +1537,8 @@ async function main() {
   // place — NOT in the cloned code, so updates never clobber them.
   const dataDir = configDir();
   mkdirSync(dataDir, { recursive: true });
+  // A per-run id for the local (no-team) workspace folder under ~/.hemiunu/tmp/local.
+  setLocalSession(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
   // First run: if no key is configured, ask for it (and optional tokens) inline
   // and write ~/.hemiunu/.env — no file editing required.
   if (!hasApiKey()) await runSetup();

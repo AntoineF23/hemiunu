@@ -184,28 +184,25 @@ async function main() {
     }
   });
 
-  await check("savePrototype writes into the sandbox and blocks path traversal", () => {
-    const root = mkdtempSync(join(tmpdir(), "hemiunu-proto-"));
+  await check("savePrototype writes files FLAT into the dir and blocks traversal", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-proto-"));
     try {
       const saved = savePrototype({
-        slug: "My Test Screen!",
+        dir,
         files: [{ path: "index.html", content: "<!doctype html><title>x</title>" }],
-        root,
       });
-      assert(!!saved.indexPath && existsSync(saved.indexPath), "index.html should be written");
-      assert(
-        saved.dir.includes(join("prototypes", "my-test-screen")),
-        `slug should be sanitized to kebab-case, got: ${saved.dir}`,
-      );
+      // index.html sits at the dir root (same level as PROTOTYPE.md would).
+      assert(saved.indexPath === join(dir, "index.html"), `index.html should be at the root, got: ${saved.indexPath}`);
+      assert(existsSync(join(dir, "index.html")), "index.html should be written");
       let threw = false;
       try {
-        savePrototype({ slug: "esc", files: [{ path: "../../escape.html", content: "x" }], root });
+        savePrototype({ dir, files: [{ path: "../../escape.html", content: "x" }] });
       } catch {
         threw = true;
       }
-      assert(threw, "writing outside the prototype sandbox must throw");
+      assert(threw, "writing outside the prototype dir must throw");
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 
@@ -573,24 +570,24 @@ async function main() {
       g(["commit", "-qm", "init"], seed);
       g(["push", "origin", "HEAD:main"], seed);
 
-      // local (no-team) prototype work in the launch folder
-      mkdirSync(join(local, "prototypes", "spark"), { recursive: true });
-      writeFileSync(join(local, "prototypes", "spark", "index.html"), "<h1>spark</h1>");
+      // local (no-team) prototype work — FLAT: index.html + PROTOTYPE.md at root
+      writeFileSync(join(local, "index.html"), "<h1>spark</h1>");
       writeFileSync(join(local, "PROTOTYPE.md"), "# Spark");
 
       const mig = await migrateLocalIntoTeam("acme/spark", { cwd: local, cloneUrl: bare });
       assert(mig.pushed, `should push: ${mig.note}`);
       assert(
-        mig.migrated.includes("prototypes/") && mig.migrated.includes("PROTOTYPE.md"),
+        mig.migrated.includes("index.html") && mig.migrated.includes("PROTOTYPE.md"),
         `should migrate both, got: ${mig.migrated.join(",")}`,
       );
 
       g(["clone", bare, verify], tmpdir());
+      // both land at the repo root, same level
       assert(
-        readFileSync(join(verify, "prototypes", "spark", "index.html"), "utf8").includes("spark"),
-        "remote should have the migrated prototype",
+        readFileSync(join(verify, "index.html"), "utf8").includes("spark"),
+        "remote should have index.html at the root",
       );
-      assert(existsSync(join(verify, "PROTOTYPE.md")), "remote should have PROTOTYPE.md");
+      assert(existsSync(join(verify, "PROTOTYPE.md")), "remote should have PROTOTYPE.md at the root");
     } finally {
       for (const d of [cfg, bare, seed, local, verify]) rmSync(d, { recursive: true, force: true });
       if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;

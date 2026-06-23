@@ -76,6 +76,9 @@ export {
   workspacePath,
   workspacesRoot,
   trashRoot,
+  setLocalSession,
+  localWorkspaceDir,
+  activeProtoDir,
 } from "./workspace";
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
 export { startPreview, stopPreview, previewStatus } from "./preview";

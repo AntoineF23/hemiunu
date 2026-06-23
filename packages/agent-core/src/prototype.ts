@@ -1,20 +1,20 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { activeProtoDir } from "./workspace";
 
 export interface PrototypeFile {
-  /** Path relative to the prototype folder, e.g. "index.html". */
+  /** Path relative to the prototype dir, e.g. "index.html". */
   path: string;
   content: string;
 }
 
 export interface SavePrototypeOptions {
-  slug: string;
   files: PrototypeFile[];
-  /** Root the `prototypes/` dir lives under (defaults to the launch dir). */
-  root?: string;
+  /** Dir to write into (flat). Defaults to the active prototype dir. */
+  dir?: string;
 }
 
 export interface SavedPrototype {
@@ -37,16 +37,17 @@ export function slugify(s: string): string {
 }
 
 /**
- * Write prototype files under `<root>/prototypes/<slug>/`. Every target path is
- * resolved and confined to that sandbox — a `path` that tries to escape (via
- * `..` or an absolute path) throws rather than writing outside it.
+ * Write prototype files FLAT into the active prototype dir (the team workspace
+ * or the local session folder) — so the prototype and PROTOTYPE.md sit at the
+ * same level. Every target path is confined to that dir; a `path` that tries to
+ * escape (via `..` or an absolute path) throws.
  */
 export function savePrototype({
-  slug,
   files,
-  root = process.cwd(),
+  dir = activeProtoDir(),
 }: SavePrototypeOptions): SavedPrototype {
-  const baseDir = join(root, "prototypes", slugify(slug));
+  const baseDir = dir;
+  mkdirSync(baseDir, { recursive: true });
   const written: string[] = [];
   for (const f of files) {
     const target = resolve(baseDir, f.path);
@@ -91,25 +92,22 @@ function openInBrowser(target: string): void {
 export function createPrototypeServer() {
   const saveTool = tool(
     "save_prototype",
-    "Write a self-contained wireframe/prototype to prototypes/<slug>/ and open it in the browser. Pass one or more files by relative path and include an index.html entry point. Use for low-fi HTML wireframes grounded in the brief — grayscale boxes, real labels/content, no brand styling.",
+    "Write a self-contained wireframe/prototype into the current prototype workspace (flat — index.html at the root, alongside PROTOTYPE.md) and open it in the browser. Pass one or more files by relative path including an index.html entry point. Use for low-fi HTML wireframes grounded in the brief — grayscale boxes, real labels/content, no brand styling.",
     {
-      slug: z
-        .string()
-        .describe("Short kebab-case name for this prototype, e.g. 'churn-dashboard'."),
       files: z
         .array(
           z.object({
             path: z
               .string()
-              .describe("Path relative to the prototype folder, e.g. 'index.html'."),
+              .describe("Path relative to the prototype root, e.g. 'index.html' or 'assets/app.css'."),
             content: z.string().describe("Full file contents."),
           }),
         )
         .describe("Files to write. Include an index.html entry point."),
     },
-    async ({ slug, files }) => {
+    async ({ files }) => {
       try {
-        const saved = savePrototype({ slug, files });
+        const saved = savePrototype({ files });
         if (saved.indexPath) openInBrowser(saved.indexPath);
         return {
           content: [

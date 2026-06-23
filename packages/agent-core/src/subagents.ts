@@ -61,7 +61,7 @@ Rules:
 - One self-contained index.html: all CSS inline in a <style> tag. NO external requests — no CDNs, fonts, images, or JS frameworks. Plain fl/grid CSS for layout is fine.
 - Represent rich components as simple bordered boxes with a label (e.g. a chart → a box labelled "Line chart: paid net adds over time"; a table → a box with a few header cells and sample rows). Show key states (empty/loading) only if the brief calls for them.
 - Build only the screen(s) in the brief. Add small annotation notes sparingly where they aid understanding.
-- Save via save_prototype with a kebab-case slug and an index.html file. Then tell the coordinator in one or two lines what you built and the saved path. Do not address the end user directly.`;
+- Save via save_prototype with an index.html entry point (and any assets); files are written flat into the prototype workspace, alongside PROTOTYPE.md. Then tell the coordinator in one or two lines what you built and the saved path. Do not address the end user directly.`;
 
 export interface SubagentSpec {
   description: string;

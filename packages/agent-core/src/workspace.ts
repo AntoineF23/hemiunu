@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { configDir } from "./config";
-import { normalizeRepo } from "./github";
+import { normalizeRepo, resolveRepo } from "./github";
 
 /**
  * Per-team local working copy for FAST iteration (localhost dev server, slice 2)
@@ -37,6 +37,34 @@ export function workspacePath(repo: string): string {
 
 export function trashRoot(): string {
   return join(configDir(), "trash");
+}
+
+// --- local (no-team) session workspace --------------------------------------
+// When there's no team, prototype work lives in a per-session folder under
+// ~/.hemiunu/tmp/local/<sessionId> (flat: PROTOTYPE.md + the prototype files at
+// the same level), so it never touches the launch folder and migrates cleanly
+// into a repo when the user creates a team.
+
+let localSessionId = "default";
+
+/** Set the id for this run's local (no-team) workspace folder. */
+export function setLocalSession(id: string): void {
+  localSessionId = id?.trim() || "default";
+}
+
+/** The local (no-team) session workspace folder. */
+export function localWorkspaceDir(): string {
+  return join(configDir(), "tmp", "local", localSessionId);
+}
+
+/**
+ * The active prototype working directory — flat at its root. The team's checkout
+ * when a team is selected, else the local session folder. This is where the
+ * prototyper writes, where PROTOTYPE.md lives locally, and what the preview serves.
+ */
+export function activeProtoDir(): string {
+  const repo = resolveRepo();
+  return repo ? workspacePath(repo) : localWorkspaceDir();
 }
 
 // --- low-level git -----------------------------------------------------------
@@ -291,27 +319,20 @@ export async function migrateLocalIntoTeam(
   repo: string,
   opts: { token?: string; login?: string; cwd?: string; cloneUrl?: string } = {},
 ): Promise<{ migrated: string[]; pushed: boolean; note: string }> {
-  const cwd = opts.cwd ?? process.cwd();
+  const src = opts.cwd ?? localWorkspaceDir();
   const synced = await ensureWorkspace(repo, { token: opts.token, cloneUrl: opts.cloneUrl });
   if (synced.action === "failed") return { migrated: [], pushed: false, note: synced.note ?? "sync failed" };
   const dir = synced.path;
+  if (!existsSync(src)) return { migrated: [], pushed: false, note: "no local work to migrate" };
   const skip = (s: string) => {
     const b = basename(s);
     return b !== "node_modules" && b !== ".git";
   };
-
-  const migrated: string[] = [];
-  const proto = join(cwd, "PROTOTYPE.md");
-  if (existsSync(proto)) {
-    cpSync(proto, join(dir, "PROTOTYPE.md"));
-    migrated.push("PROTOTYPE.md");
-  }
-  const protos = join(cwd, "prototypes");
-  if (existsSync(protos)) {
-    cpSync(protos, join(dir, "prototypes"), { recursive: true, filter: skip });
-    migrated.push("prototypes/");
-  }
-  if (!migrated.length) return { migrated: [], pushed: false, note: "no local work to migrate" };
+  // Copy the local session folder's contents FLAT into the repo root, so the
+  // prototype files and PROTOTYPE.md end up at the same level.
+  const entries = readdirSync(src).filter((n) => n !== ".git" && n !== "node_modules");
+  if (!entries.length) return { migrated: [], pushed: false, note: "no local work to migrate" };
+  cpSync(src, dir, { recursive: true, filter: skip });
 
   const pr = await commitAndPush(repo, {
     message: "Import local prototype work",
@@ -319,7 +340,7 @@ export async function migrateLocalIntoTeam(
     login: opts.login,
     toMain: true,
   });
-  return { migrated, pushed: pr.ok, note: pr.note };
+  return { migrated: entries, pushed: pr.ok, note: pr.note };
 }
 
 /**
