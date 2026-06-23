@@ -241,6 +241,38 @@ export function setCurrentTeam(repo: string | null): void {
   saveTeams(cfg);
 }
 
+/** Whether a repo exists and is accessible to the token (false on 404/403/401). */
+export async function repoExists(token: string, repo: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API}/repos/${normalizeRepo(repo)}`, { headers: apiHeaders(token) });
+    if (res.ok) return true;
+    if (res.status === 404 || res.status === 403 || res.status === 401) return false;
+    return true; // transient (5xx/other) → keep, don't prune on uncertainty
+  } catch {
+    return true; // network error → keep
+  }
+}
+
+/**
+ * Drop saved teams whose repos no longer exist / aren't accessible to the user,
+ * and clear the current selection if it was removed. Returns the removed repos.
+ */
+export async function pruneTeams(token: string): Promise<string[]> {
+  const cfg = loadTeams();
+  if (!cfg.teams.length) return [];
+  const kept: string[] = [];
+  const removed: string[] = [];
+  for (const repo of cfg.teams) {
+    if (await repoExists(token, repo)) kept.push(repo);
+    else removed.push(repo);
+  }
+  if (removed.length) {
+    const current = cfg.current && kept.includes(cfg.current) ? cfg.current : "";
+    saveTeams({ teams: kept, current });
+  }
+  return removed;
+}
+
 /**
  * Cycle through the selection ring [no-team, team1, team2, …] and persist it.
  * Returns the new selection: a repo, `""` for "no team" (local), or `null` when

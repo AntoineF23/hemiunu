@@ -19,6 +19,9 @@ import {
   currentTeam,
   setCurrentTeam,
   createRepo,
+  repoExists,
+  pruneTeams,
+  normalizeRepo,
   githubViewer,
   githubClientId,
   requestDeviceCode,
@@ -83,7 +86,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "github", desc: "sign in to GitHub (remembered)" },
   { name: "vercel", desc: "connect Vercel (for sharing)" },
   { name: "team", desc: "switch team (feature/repo)" },
-  { name: "team-new", desc: "new feature → creates a private repo + switch" },
+  { name: "team-new", desc: "new feature (name → create) or add a repo by URL" },
   { name: "restore", desc: "recover files from the recycle bin" },
   { name: "help", desc: "show all commands" },
   { name: "exit", desc: "quit Hemiunu" },
@@ -492,6 +495,24 @@ function App({
         kind: "note",
         text: `· file access ${fsTrust ? "allowed" : "disabled"} for this folder (remembered — /trust to change)`,
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On startup, drop saved teams whose GitHub repos no longer exist / aren't
+  // accessible, so the switcher only shows teams that are really there.
+  useEffect(() => {
+    const token = resolveGithubToken();
+    if (!token) return;
+    void (async () => {
+      const removed = await pruneTeams(token);
+      if (!removed.length) return;
+      setTeams(listTeams());
+      if (currentProjectRef.current && removed.includes(currentProjectRef.current)) switchProject(null);
+      push({
+        kind: "note",
+        text: `· removed ${removed.length} team${removed.length > 1 ? "s" : ""} no longer on GitHub: ${removed.join(", ")}`,
+      });
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1036,17 +1057,33 @@ function App({
       }
     }
     if (cmd === "team-new") {
-      const name = rest.join(" ").trim();
-      if (!name)
+      const arg = rest.join(" ").trim();
+      if (!arg)
         return push({
           kind: "note",
-          text: "· usage: /team-new <name>  (creates a private repo and switches to it)",
+          text: "· usage: /team-new <name> (create a private repo) or /team-new <github-url> (add an existing repo)",
         });
       const token = resolveGithubToken();
       if (!token) return push({ kind: "note", text: "· sign in first with /github" });
-      push({ kind: "note", text: `· creating private repo ${name}…` });
+      // A URL or owner/repo → adopt an existing repo; a bare name → create one.
+      if (arg.includes("/") || arg.includes("github.com")) {
+        const repo = normalizeRepo(arg);
+        push({ kind: "note", text: `· checking ${repo}…` });
+        void (async () => {
+          if (await repoExists(token, repo)) {
+            addTeam(repo);
+            setTeams(listTeams());
+            switchProject(repo);
+            push({ kind: "note", text: `· added team ${repo} — switched to it` });
+          } else {
+            push({ kind: "error", text: `couldn't find ${repo} on GitHub (or you don't have access)` });
+          }
+        })();
+        return;
+      }
+      push({ kind: "note", text: `· creating private repo ${arg}…` });
       void (async () => {
-        const r = await createRepo(token, name, { private: true });
+        const r = await createRepo(token, arg, { private: true });
         if ("error" in r) return push({ kind: "error", text: `couldn't create repo: ${r.error}` });
         const repo = addTeam(r.repo);
         setTeams(listTeams());

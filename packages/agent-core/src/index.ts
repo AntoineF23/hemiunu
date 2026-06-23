@@ -52,6 +52,8 @@ export {
   setCurrentTeam,
   cycleTeam,
   createRepo,
+  repoExists,
+  pruneTeams,
 } from "./github";
 export type { TeamsConfig, DeviceCode, DevicePoll } from "./github";
 export {
