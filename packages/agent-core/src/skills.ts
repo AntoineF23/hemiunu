@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { configDir } from "./config";
+import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
 import { slugify } from "./prototype";
 
 /**
@@ -60,7 +61,7 @@ export interface SavedSkill {
 /** Built-in CLI command names a skill may not shadow. */
 const RESERVED = new Set([
   "new", "clear", "compact", "models", "setup", "trust", "list", "resume",
-  "mcp", "help", "exit", "quit", "skills", "skill",
+  "mcp", "help", "exit", "quit", "skills", "skill", "github", "team", "team-new",
 ]);
 
 /** The per-user skills directory. */
@@ -68,34 +69,15 @@ export function skillsDir(root: string = configDir()): string {
   return join(root, "skills");
 }
 
-interface Frontmatter {
-  meta: Record<string, string>;
-  body: string;
-}
-
-/** Parse `--- key: value ---` frontmatter + body. Tolerant: no fence = all body. */
-function parseFrontmatter(raw: string): Frontmatter {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
-  if (!m) return { meta: {}, body: raw.trim() };
-  const meta: Record<string, string> = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const i = line.indexOf(":");
-    if (i === -1) continue;
-    const key = line.slice(0, i).trim();
-    const val = line.slice(i + 1).trim().replace(/^["']|["']$/g, "");
-    if (key) meta[key] = val;
-  }
-  return { meta, body: m[2].trim() };
-}
-
-/** Render a skill back to canonical SKILL.md text. */
+/** Render a skill to canonical SKILL.md text. */
 function render(
   meta: { name: string; description: string; argumentHint?: string },
   body: string,
 ): string {
-  const fm = [`name: ${meta.name}`, `description: ${meta.description}`];
-  if (meta.argumentHint) fm.push(`argument-hint: ${JSON.stringify(meta.argumentHint)}`);
-  return `---\n${fm.join("\n")}\n---\n\n${body.trim()}\n`;
+  return renderFrontmatter(
+    { name: meta.name, description: meta.description, "argument-hint": meta.argumentHint },
+    body,
+  );
 }
 
 function metaFrom(meta: Record<string, string>, nameBase: string, path: string): SkillMeta {
