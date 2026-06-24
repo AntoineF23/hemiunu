@@ -51,9 +51,11 @@ import { Box, render, Static, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import React, { useEffect, useRef, useState } from "react";
 
-// --- desert palette ---
-const SAND = "#d7af87";
-const SAGE = "#87af87";
+// --- ancient-Egypt palette: gold leaf, lapis/faience, sandstone, papyrus ---
+const SAND = "#d7af87"; // gold ochre — accents, the name, prompts
+const SAGE = "#87af87"; // faded faience green — assistant voice
+const STONE = "#9c8f78"; // weathered sandstone — carved boxes & borders
+const PAPYRUS = "#c9b386"; // aged papyrus — secondary text
 
 // Retrieval tier the `researcher` subagent runs on (mirrors agent-core config).
 const RESEARCH_MODEL = process.env.HEMIUNU_MODEL_RESEARCH ?? "claude-sonnet-4.6";
@@ -73,6 +75,19 @@ const LOGO = String.raw`
                           nn_r   nn_r                 __
                     __   /l(\   /l)\      nn_r
               __                         /\(\    __`;
+
+// The pyramid logo + the name, with an Egyptian-tinted subtitle.
+function Banner() {
+  return (
+    <Box flexDirection="column">
+      <Text color={SAND}>{LOGO}</Text>
+      <Text>
+        <Text color={SAND} bold>{"   HEMIUNU"}</Text>
+        <Text color={PAPYRUS}>{"  ☥  product agent"}</Text>
+      </Text>
+    </Box>
+  );
+}
 
 const HELP =
   "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
@@ -140,8 +155,10 @@ const COMPACT_AT = Math.min(
 );
 const kfmt = (n: number) => `${Math.round(n / 1000)}k`;
 
-// Pyramid spinner (shimmering triangle) + ancient-civilisation status words.
-const PYRAMID = ["△", "◭", "▲", "◮"];
+// Hieroglyph spinner (a glyph is "carved" each tick) + status words.
+// NB: these live in the Egyptian Hieroglyphs Unicode block — if your terminal
+// font lacks it they show as □; swap this set for supported symbols then.
+const HIERO = ["𓂀", "𓁹", "𓆣", "𓇳", "𓋹", "𓊽", "𓅓", "𓏏", "𓃭", "𓎼", "𓊃", "𓉔"];
 const WORDS = [
   "Excavating",
   "Deciphering",
@@ -340,17 +357,7 @@ type Item =
 function ItemView({ item }: { item: Item }) {
   switch (item.kind) {
     case "banner":
-      return (
-        <Box flexDirection="column">
-          <Text color={SAND}>{LOGO}</Text>
-          <Text>
-            <Text color={SAND} bold>
-              {"   HEMIUNU"}
-            </Text>
-            <Text dimColor>{"  ·  product agent"}</Text>
-          </Text>
-        </Box>
-      );
+      return <Banner />;
     case "user":
       return (
         <Box marginTop={1}>
@@ -1493,7 +1500,8 @@ function App({
     : "⌂ no team";
 
   const elapsed = busy ? Date.now() - turnStartRef.current : 0;
-  const frame = PYRAMID[Math.floor(elapsed / 160) % PYRAMID.length];
+  // Spinner: a single hieroglyph, changing each beat.
+  const glyph = HIERO[Math.floor(elapsed / 220) % HIERO.length];
   const word =
     statusLabel === "compacting"
       ? "Compacting"
@@ -1531,7 +1539,7 @@ function App({
       {busy && !permission && !picker ? (
         <Box marginTop={1}>
           <Text color={SAND} bold>
-            {`${frame} ${word}… `}
+            {`${glyph}  ${word}… `}
           </Text>
           <Text dimColor>
             {`(${fmtElapsed(elapsed)} · ↑ ${tokfmt(turnTokensRef.current)} tokens · esc to interrupt)`}
@@ -1612,12 +1620,11 @@ function App({
         <Box
           marginTop={1}
           borderStyle="single"
-          borderColor={SAND}
-          borderLeft={false}
-          borderRight={false}
+          borderColor={STONE}
+          paddingX={1}
         >
           <Text color={SAND} bold>
-            {"› "}
+            {"☥ "}
           </Text>
           <TextInput
             value={value}
@@ -1687,7 +1694,7 @@ function Setup({ onDone }: { onDone: () => void }) {
 
   return (
     <Box flexDirection="column">
-      <Text color={SAND}>{LOGO}</Text>
+      <Banner />
       <Box marginTop={1} marginLeft={3}>
         <Text color={SAND} bold>Welcome to Hemiunu — let's get you set up.</Text>
       </Box>
@@ -1751,7 +1758,7 @@ function LaunchPicker({
   });
   return (
     <Box flexDirection="column">
-      <Text color={SAND}>{LOGO}</Text>
+      <Banner />
       <Box marginTop={1} marginLeft={3} flexDirection="column">
         <Text color={SAND} bold>Which team do you want to work on?</Text>
         <Text dimColor>{"Open another terminal to work on a second team in parallel."}</Text>
