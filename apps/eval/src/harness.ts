@@ -74,6 +74,8 @@ export interface TurnDetail {
   events: SubagentEvent[];
   /** Wall-clock duration of the whole turn, in ms. */
   ms: number;
+  /** The SDK session id (from the init message) — for resume-continuity tests. */
+  sessionId?: string;
 }
 
 /**
@@ -89,6 +91,7 @@ export async function collectTurnDetailed(opts: RunTurnOptions): Promise<TurnDet
   const caller = opts.onSubagentEvent;
   let text = "";
   let cost = 0;
+  let sessionId: string | undefined;
   const start = Date.now();
   for await (const m of runTurn({
     ...opts,
@@ -98,7 +101,9 @@ export async function collectTurnDetailed(opts: RunTurnOptions): Promise<TurnDet
     },
   })) {
     const msg = m as Record<string, any>;
-    if (msg.type === "assistant") {
+    if (msg.type === "system" && msg.subtype === "init") {
+      sessionId = msg.session_id;
+    } else if (msg.type === "assistant") {
       for (const b of msg.message?.content ?? []) {
         if (b.type === "tool_use") {
           toolUses.push({ name: b.name, input: b.input ?? {} });
@@ -112,7 +117,15 @@ export async function collectTurnDetailed(opts: RunTurnOptions): Promise<TurnDet
       if (typeof msg.total_cost_usd === "number") cost = msg.total_cost_usd;
     }
   }
-  return { text, cost, toolUses, delegations, events, ms: Date.now() - start };
+  const detail = { text, cost, toolUses, delegations, events, ms: Date.now() - start, sessionId };
+  if (process.env.CAP_DEBUG) {
+    console.error(
+      `      \x1b[2m[debug] tools=[${toolUses.map((t) => t.name).join(", ")}] ` +
+        `delegations=[${delegations.join(", ")}] events=${events.length} ` +
+        `text="${text.slice(0, 120).replace(/\n/g, " ")}"\x1b[0m`,
+    );
+  }
+  return detail;
 }
 
 /** Did the agent call a tool whose name contains `needle`? */
