@@ -7,6 +7,7 @@ import { z } from "zod";
 import { configDir, loadConfig } from "./config";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
 import { slugify } from "./prototype";
+import { createToolCapHook } from "./toolcap";
 
 /**
  * Per-MCP "source maps" — a per-user memory of what lives inside each connected
@@ -223,6 +224,7 @@ export async function runScan(opts: ScanOptions): Promise<string> {
       model: cfg.researchModel,
       thinking: cfg.thinking,
       systemPrompt: SCANNER_PROMPT,
+      hooks: createToolCapHook(),
       settingSources: [],
       env: {
         ...process.env,

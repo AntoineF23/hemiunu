@@ -30,6 +30,7 @@ import {
   saveSourceMap,
   loadSourceMaps,
   loadSourceMap,
+  createToolCapHook,
   appendKnowledge,
   normalizeRepo,
   prototypePath,
@@ -325,6 +326,28 @@ async function main() {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  await check("tool cap: PostToolUse hook truncates oversized results, leaves small ones", async () => {
+    const budget = 100; // tokens → 400 chars
+    const cb = createToolCapHook(budget).PostToolUse![0].hooks[0];
+    // Small result (MCP content shape) passes through untouched.
+    const small = await cb(
+      { hook_event_name: "PostToolUse", tool_name: "mcp__notion__API-post-search", tool_response: { content: [{ type: "text", text: "ok" }] } } as any,
+      "id1",
+      {} as any,
+    );
+    assert(!(small as any).hookSpecificOutput, "small result should not be modified");
+    // Oversized result is replaced with a truncated string + a notice.
+    const big = { content: [{ type: "text", text: "x".repeat(5000) }] };
+    const out = (await cb(
+      { hook_event_name: "PostToolUse", tool_name: "mcp__notion__API-query-data-source", tool_response: big } as any,
+      "id2",
+      {} as any,
+    )) as any;
+    const replaced = out.hookSpecificOutput?.updatedToolOutput as string;
+    assert(typeof replaced === "string", "oversized result should be replaced");
+    assert(replaced.length < 5000 && /truncated/i.test(replaced), "replacement should be shorter and carry a truncation notice");
   });
 
   await check("prototype knowledge: appendKnowledge builds & appends sections", () => {

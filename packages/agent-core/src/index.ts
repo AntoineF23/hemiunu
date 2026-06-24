@@ -100,6 +100,7 @@ export {
   GET_SOURCE_MAP_TOOL_ID,
 } from "./sources";
 export type { SourceMap, SourceMapMeta, SaveSourceMapOptions, ScanOptions } from "./sources";
+export { createToolCapHook, resultBudgetTokens, DEFAULT_RESULT_BUDGET_TOKENS } from "./toolcap";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
 export { setControlHandler, requestControl } from "./control";
