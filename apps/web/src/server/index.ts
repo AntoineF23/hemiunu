@@ -1,0 +1,57 @@
+// The Hemiunu web worker: a long-lived local Node process that wraps the engine
+// and streams to a browser client. Bound to 127.0.0.1 only — the OS user is the
+// auth boundary; there is no login. Run via bin/hemiunu-web.mjs (or `pnpm dev`).
+import "./env-first"; // MUST be first — sets HEMIUNU_HOME before the engine loads .env
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { Hono } from "hono";
+import { bootRuntime } from "./runtime";
+import { settingsRoute } from "./routes/settings";
+import { turnRoute } from "./routes/turn";
+
+const HOST = "127.0.0.1";
+const PORT = Number(process.env.HEMIUNU_WEB_PORT ?? 4317);
+
+const app = new Hono();
+
+// DNS-rebinding / cross-origin guard: a malicious web page must not be able to
+// POST to this local worker. Allow only same-origin localhost callers (and
+// same-origin requests, which omit Origin). The Vite dev client on :5173
+// proxies through to us, so its requests carry no cross-site Origin.
+app.use("/api/*", async (c, next) => {
+  const origin = c.req.header("origin");
+  if (origin) {
+    let host: string;
+    try {
+      host = new URL(origin).hostname;
+    } catch {
+      return c.json({ error: "bad origin" }, 403);
+    }
+    if (host !== "127.0.0.1" && host !== "localhost") {
+      return c.json({ error: "forbidden origin" }, 403);
+    }
+  }
+  return next();
+});
+
+app.get("/api/health", (c) => c.json({ ok: true }));
+app.route("/", settingsRoute);
+app.route("/", turnRoute);
+
+// In production the worker also serves the built SPA. In dev the client is
+// served by Vite (port 5173), which proxies /api here — so this is a no-op then.
+const clientDir = join(import.meta.dirname, "..", "..", "dist", "client");
+if (existsSync(clientDir)) {
+  app.use("/*", serveStatic({ root: clientDir }));
+  app.get("/*", serveStatic({ path: join(clientDir, "index.html") }));
+}
+
+// Fail fast with a clear message if the engine can't boot (e.g. bad config dir).
+bootRuntime();
+
+serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
+  console.log(`Hemiunu web worker → http://${HOST}:${info.port}`);
+  console.log(`Dev client (Vite) → http://${HOST}:5173`);
+});

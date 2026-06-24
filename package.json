@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.8.0",
-  "bin": { "hemiunu": "bin/hemiunu.mjs" },
+  "bin": { "hemiunu": "bin/hemiunu.mjs", "hemiunu-web": "bin/hemiunu-web.mjs" },
   "scripts": {
     "dev": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/cli/src/index.tsx",
+    "web": "node bin/hemiunu-web.mjs",
     "smoke": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/eval/src/smoke.ts",
     "cap": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/eval/src/capability.ts",
     "typecheck": "turbo run typecheck"
