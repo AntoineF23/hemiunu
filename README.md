@@ -21,6 +21,17 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
   filesystem, or anything you add to `mcp.json`) and searches them before
   answering. Every tool call is gated by a **yes / always / no** permission
   prompt (queued, arrow-key select, `Esc` to interrupt).
+- **Source maps (`/scan`)** — `/scan <mcp>` (or just `/scan` for all connected
+  sources, in parallel) sends a cheap-tier **scanner** subagent into a server to
+  map what's inside it: structure, the ids of key pages/databases with one-line
+  summaries, and how to query it. Each map is a per-user Markdown file in
+  `~/.hemiunu/sources/` you can also edit by hand. Only the one-line description
+  is surfaced to the agent each turn (progressive disclosure, like skills); it
+  pulls the full map on demand with `get_source_map` before searching a source,
+  so it goes straight to the right place. Re-running `/scan` reconciles the map
+  (updates changed facts, drops disproven ones, keeps anything it can't verify),
+  and the agent updates maps on its own when it notices they've drifted. What's
+  visible depends on **your** access rights — hence per-user.
 - **Researcher subagent + model tiers** — for anything that needs looking
   things up, the main model delegates retrieval to a `researcher` subagent
   running on a **cheaper tier** (`HEMIUNU_MODEL_RESEARCH`, default Sonnet),
@@ -130,7 +141,7 @@ access; the decision is remembered per folder. `/trust` re-opens it.
 ## Slash commands
 
 `/new` `/clear` `/compact` `/models` `/setup` `/trust` `/list` `/resume`
-`/mcp` `/skills` `/help` `/exit`
+`/mcp` `/scan` `/skills` `/help` `/exit`
 
 ## Skills
 

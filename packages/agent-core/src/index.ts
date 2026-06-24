@@ -88,6 +88,18 @@ export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 export { commitAndPush, migrateLocalIntoTeam } from "./workspace";
 export type { PushResult } from "./workspace";
 export { createShareServer, SHARE_TOOLS } from "./share";
+export {
+  loadSourceMaps,
+  loadSourceMap,
+  saveSourceMap,
+  sourceMapsDir,
+  createSourcesServer,
+  runScan,
+  SOURCE_TOOLS,
+  SAVE_SOURCE_MAP_TOOL_ID,
+  GET_SOURCE_MAP_TOOL_ID,
+} from "./sources";
+export type { SourceMap, SourceMapMeta, SaveSourceMapOptions, ScanOptions } from "./sources";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
 export { setControlHandler, requestControl } from "./control";

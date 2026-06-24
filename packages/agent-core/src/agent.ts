@@ -8,6 +8,7 @@ import { createSkillsServer, SKILL_TOOLS } from "./skills";
 import { createPrototypeKnowledgeServer, PROTOTYPE_KNOWLEDGE_TOOLS } from "./prototypes";
 import { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 import { createShareServer, SHARE_TOOLS } from "./share";
+import { createSourcesServer, SOURCE_TOOLS } from "./sources";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
 import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
@@ -86,6 +87,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     PROTOTYPE_KNOWLEDGE_TOOLS,
     WORKSPACE_TOOLS,
     SHARE_TOOLS,
+    SOURCE_TOOLS,
     TEAM_CONTROL_TOOLS,
     ...sourceTools,
     DELEGATE_TOOL,
@@ -117,6 +119,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     "hemiunu-prototype-knowledge": createPrototypeKnowledgeServer(),
     "hemiunu-workspace": createWorkspaceServer(),
     "hemiunu-share": createShareServer(),
+    "hemiunu-sources": createSourcesServer(),
     ...(opts.mcpServers ?? {}),
   } as Options["mcpServers"];
 

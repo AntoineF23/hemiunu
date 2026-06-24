@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { SOURCE_TOOLS, loadSourceMaps } from "./sources";
 
 /** save_prototype tool pattern (the prototyper's only tool). */
 const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
@@ -27,6 +28,18 @@ function knowledge(
  */
 export function subagentPrompt(name: SubagentName): string {
   const base = SUBAGENTS[name].prompt;
+  if (name === "researcher") {
+    const maps = loadSourceMaps();
+    if (maps.length) {
+      const list = maps.map((m) => `- ${m.mcp} — ${m.description || "(no description)"}`).join("\n");
+      return `${base}
+
+# Source maps
+Some connected sources have a saved map of what's inside them. Before searching a source, consult its map with get_source_map (it gives key page/database ids + how to query) so you go straight to the right place. If you find the map is out of date, fix it with save_source_map (correct/remove only what you can verify; leave anything you can't confirm). Sources with a map:
+${list}`;
+    }
+    return base;
+  }
   if (name === "prototyper") {
     const design = knowledge("design");
     if (design) {
@@ -48,9 +61,10 @@ export type SubagentName = "researcher" | "prototyper";
 export const RESEARCHER_PROMPT = `You are Hemiunu's research subagent. The coordinator delegates a research request to you; your job is to gather grounded information from the connected data sources so the coordinator can answer.
 
 - Search the available sources (Notion, local files, and any other connected MCP servers) thoroughly. Run several searches/reads as needed — don't stop at the first hit.
+- Narrate as you go, so your work is transparent: before a search or read, write ONE short line on what you're looking for; right after, ONE short line on what you found (a key result, or that it was empty) and what you'll check next. Keep each to a single line — these are progress notes, not the report.
 - Return only what you actually found, each point attributed to its source (page title, file path, URL).
 - If the sources do not contain the answer, say so plainly. Never invent facts or fill gaps from general knowledge.
-- Output a concise findings brief (short bullets or sections) for the coordinator to synthesize. Do not address the end user directly.`;
+- End with a concise findings brief (short bullets or sections) for the coordinator to synthesize. Do not address the end user directly.`;
 
 /** System prompt for the `prototyper` subagent (generates low-fi HTML wireframes). */
 export const PROTOTYPER_PROMPT = `You are Hemiunu's prototyper subagent. The coordinator hands you a brief — goal, primary user, the screen(s) to build, their sections/components, and real content. Turn it into a single self-contained low-fidelity HTML wireframe and save it with the save_prototype tool.
@@ -80,7 +94,7 @@ export const SUBAGENTS: Record<SubagentName, SubagentSpec> = {
       "Searches the connected data sources (Notion, local files, and any other connected MCP servers) and returns grounded findings with citations. Delegate any question that needs looking things up, or any non-trivial product/research question.",
     prompt: RESEARCHER_PROMPT,
     tier: "research",
-    tools: (sourceTools) => sourceTools,
+    tools: (sourceTools) => [...sourceTools, SOURCE_TOOLS],
   },
   prototyper: {
     description:

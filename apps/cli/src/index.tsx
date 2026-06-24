@@ -11,6 +11,10 @@ import {
   loadSkills,
   loadSkill,
   expandSkill,
+  loadSourceMaps,
+  runScan,
+  SAVE_SOURCE_MAP_TOOL_ID,
+  GET_SOURCE_MAP_TOOL_ID,
   resolveGithubToken,
   addTeam,
   cycleTeam,
@@ -71,7 +75,7 @@ const LOGO = String.raw`
               __                         /\(\    __`;
 
 const HELP =
-  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
+  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -85,6 +89,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "list", desc: "list saved conversations" },
   { name: "resume", desc: "resume a conversation by id" },
   { name: "mcp", desc: "show connected MCP servers" },
+  { name: "scan", desc: "map connected sources (/scan or /scan <name>)" },
   { name: "skills", desc: "list saved skills" },
   { name: "github", desc: "sign in to GitHub (remembered)" },
   { name: "vercel", desc: "connect Vercel (for sharing)" },
@@ -216,8 +221,62 @@ function resultText(content: unknown): string {
 }
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-const previewInput = (input: unknown) => clip(JSON.stringify(input ?? {}), 100);
 const title = (p: string) => clip(p.replace(/\s+/g, " ").trim(), 60);
+
+const HOME_DIR = process.env.HOME ?? "";
+/** A long uuid → its first segment, so ids read as `38835e52…` not a wall. */
+const shortId = (id: string) => (id.length > 12 ? `${id.split("-")[0]}…` : id);
+const shortPath = (p: string) =>
+  HOME_DIR && p.startsWith(HOME_DIR) ? `~${p.slice(HOME_DIR.length)}` : p;
+
+/** Render a tool call's input as the one argument that matters, not raw JSON. */
+function toolPreview(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const i = input as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  if (str(i.query)) return `“${clip(str(i.query), 60)}”`;
+  if (str(i.pattern)) return clip(str(i.pattern), 60);
+  if (str(i.path)) return clip(shortPath(str(i.path)), 60);
+  if (str(i.page_id)) return shortId(str(i.page_id));
+  if (str(i.data_source_id)) return shortId(str(i.data_source_id));
+  if (str(i.mcp)) return str(i.mcp);
+  if (str(i.prompt)) return `“${clip(str(i.prompt), 60)}”`;
+  const firstStr = Object.values(i).find((v) => typeof v === "string" && v.trim()) as string | undefined;
+  return firstStr ? clip(firstStr.trim(), 60) : "";
+}
+
+/** Turn a tool result into a short human line instead of dumping its JSON. */
+function summarizeResult(text: string): string {
+  const t = text.trim();
+  if (!t) return "done";
+  if (/^(Error|EPERM|ENOENT|EACCES|EISDIR)/i.test(t)) return `⚠ ${clip(t.replace(/\s+/g, " "), 120)}`;
+  let j: any;
+  try {
+    j = JSON.parse(t);
+  } catch {
+    return clip(t.replace(/\s+/g, " "), 140);
+  }
+  if (j && typeof j === "object") {
+    if (Array.isArray(j.results)) {
+      const n = j.results.length;
+      return n === 0 ? "no results" : `${n}${j.has_more ? "+" : ""} result${n === 1 ? "" : "s"}`;
+    }
+    if (typeof j.markdown === "string") {
+      const first = j.markdown.replace(/^[>#\s]+/, "").split("\n").find((l: string) => l.trim()) ?? "";
+      return first ? `“${clip(first.trim(), 90)}”` : "empty page";
+    }
+    if (typeof j.content === "string") {
+      const c = j.content;
+      const files = (c.match(/\[FILE\]/g) ?? []).length;
+      const dirs = (c.match(/\[DIR\]/g) ?? []).length;
+      if (files || dirs) return `${dirs} dir${dirs === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`;
+      return clip(c.replace(/\s+/g, " "), 120);
+    }
+    const keys = Object.keys(j);
+    if (keys.length) return clip(keys.join(", "), 80);
+  }
+  return clip(t.replace(/\s+/g, " "), 140);
+}
 
 // Minimal inline markdown → Ink nodes: **bold**, `code`.
 function mdInline(line: string, li: number): React.ReactNode[] {
@@ -270,7 +329,7 @@ function md(text: string): React.ReactNode[] {
 type Item =
   | { kind: "banner" }
   | { kind: "user"; text: string }
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; sub?: boolean }
   | { kind: "tool"; name: string; input: string; sub?: boolean; delegate?: boolean }
   | { kind: "result"; text: string; sub?: boolean }
   | { kind: "perm"; text: string; ok: boolean }
@@ -304,6 +363,21 @@ function ItemView({ item }: { item: Item }) {
         </Box>
       );
     case "text":
+      // A subagent's own narration — what it's looking for / what it found.
+      // This is the meaningful explanation, so keep it readable (NOT dimmed,
+      // unlike the surrounding tool lines); a sage marker + indent ties it to
+      // the delegation while still standing apart from the main agent's answer.
+      if (item.sub)
+        return (
+          <Box marginLeft={2}>
+            <Text wrap="wrap">
+              <Text color={SAGE} bold>
+                {"› "}
+              </Text>
+              {item.text}
+            </Text>
+          </Box>
+        );
       return (
         <Box marginTop={1}>
           <Text>
@@ -557,10 +631,21 @@ function App({
           .map((s) => `- /${s.name} — ${s.description || "(no description)"}`)
           .join("\n")}`
       : "";
+    // Surface source maps (frontmatter only — progressive disclosure) for the
+    // sources connected right now, so the agent knows what's inside each and can
+    // pull the full map (page/db ids, how to query) on demand with get_source_map.
+    const maps = loadSourceMaps().filter((m) => names.includes(m.mcp));
+    const mapped = new Set(maps.map((m) => m.mcp));
+    const unmapped = names.filter((n) => !mapped.has(n));
+    const sourceMaps = maps.length
+      ? `\n\n## Source maps (what's inside each connected source)\nBefore searching a source, consult its map with get_source_map (it has key page/database ids + how to query) so you go straight to the right place. Keep maps current: if you find one is out of date, fix it with save_source_map.${
+          unmapped.length ? ` Connected sources with no map yet: ${unmapped.join(", ")} — suggest /scan to map them.` : ""
+        }\n${maps.map((m) => `- ${m.mcp} — ${m.description || "(no description)"}`).join("\n")}`
+      : "";
     const summary = compactedRef.current
       ? `\n\n## Summary of earlier conversation (compacted)\n${compactedRef.current}`
       : "";
-    return systemPrompt + sources + skillList + summary;
+    return systemPrompt + sources + skillList + sourceMaps + summary;
   };
 
   // Permission gate: queued so concurrent requests ask one menu at a time.
@@ -577,6 +662,18 @@ function App({
               kind: "note",
               text: `✎ remembered${tgt ? ` (${tgt})` : ""}: ${clip(note, 80)}`,
             });
+            resolve({ behavior: "allow", updatedInput: input });
+            return;
+          }
+          // Source-map read/write are local & low-risk (only touch
+          // ~/.hemiunu/sources). Auto-approve; a save shows as a note.
+          if (toolName === GET_SOURCE_MAP_TOOL_ID) {
+            resolve({ behavior: "allow", updatedInput: input });
+            return;
+          }
+          if (toolName === SAVE_SOURCE_MAP_TOOL_ID) {
+            const mcp = typeof input.mcp === "string" ? input.mcp : "";
+            push({ kind: "note", text: `✎ source map updated${mcp ? `: ${mcp}` : ""}` });
             resolve({ behavior: "allow", updatedInput: input });
             return;
           }
@@ -629,6 +726,10 @@ function App({
     let cost: number | null = null;
     let usage: Record<string, number> | undefined;
     let fullText = "";
+    // Tool-call ids of delegations (Task/parallel). Their results are internal
+    // handoffs — the subagent's narration and the main answer already cover the
+    // findings, so we skip dumping the raw brief blob.
+    const delegateIds = new Set<string>();
 
     try {
       for await (const m of runTurn({
@@ -662,8 +763,14 @@ function App({
           const sub = !!msg.parent_tool_use_id;
           for (const b of msg.message.content) {
             if (b.type === "text") {
-              // Suppress the researcher's own narration; only synthesis text shows.
-              if (sub) continue;
+              // A subagent's narration (what it's looking for / found) — show it
+              // dim & indented so the work is transparent, but keep it out of the
+              // saved transcript and the main answer (that's the coordinator's).
+              if (sub) {
+                const tx = b.text.trim();
+                if (tx) push({ kind: "text", text: clip(tx, 240), sub: true });
+                continue;
+              }
               fullText += b.text;
               liveRef.current += b.text;
               turnTokensRef.current += Math.ceil(b.text.length / 4);
@@ -673,6 +780,7 @@ function App({
               liveRef.current = "";
               setLive("");
               if (b.name === PARALLEL_TOOL_ID) {
+                delegateIds.add(b.id);
                 const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
                 const summary = tasks
                   .map((t: Record<string, unknown>) => String(t.label ?? t.agent ?? "task"))
@@ -685,6 +793,7 @@ function App({
                 });
                 setStatusLabel("parallel");
               } else if (b.name === "Agent" || b.name === "Task") {
+                delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
                 const desc = clip(String(b.input?.description ?? ""), 56);
                 // researcher runs on the cheap retrieval tier; others (e.g.
@@ -698,7 +807,7 @@ function App({
                 });
                 setStatusLabel(who === "prototyper" ? "prototyping" : "researching");
               } else {
-                push({ kind: "tool", name: b.name, input: previewInput(b.input), sub });
+                push({ kind: "tool", name: b.name, input: toolPreview(b.input), sub });
                 setStatusLabel(sub ? "researching" : "running");
               }
             }
@@ -707,8 +816,10 @@ function App({
           const sub = !!msg.parent_tool_use_id;
           for (const b of msg.message?.content ?? []) {
             if (b.type === "tool_result") {
+              // A delegation's result is an internal handoff — skip the raw brief.
+              if (b.tool_use_id && delegateIds.has(b.tool_use_id)) continue;
               const t = resultText(b.content);
-              if (t) push({ kind: "result", text: clip(t, 200), sub });
+              if (t) push({ kind: "result", text: summarizeResult(t), sub });
             }
           }
           setStatusLabel(sub ? "researching" : "thinking");
@@ -874,6 +985,41 @@ function App({
           { kind: "text", text: summary.trim() },
         ]);
       }
+    }
+  }
+
+  // Map one or more connected sources: run the scanner subagent (cheap tier)
+  // per server, concurrently. The user typing /scan is the gate, so the
+  // scanner's tools are auto-approved inside each run.
+  async function runScans(targets: string[]) {
+    turnStartRef.current = Date.now();
+    turnTokensRef.current = 0;
+    setBusy(true);
+    setStatusLabel("scanning");
+    push({
+      kind: "note",
+      text: `· scanning ${targets.length > 1 ? `${targets.length} sources` : targets[0]}: ${targets.join(", ")}`,
+    });
+    try {
+      await Promise.all(
+        targets.map(async (mcp) => {
+          push({ kind: "tool", name: mcp, input: "→ scanner · running", sub: true });
+          try {
+            const summary = await runScan({
+              mcp,
+              mcpServers: activeServers,
+              onTool: (t) =>
+                push({ kind: "tool", name: `${mcp} · ${prettyTool(t)}`, input: "", sub: true }),
+            });
+            push({ kind: "result", text: `${mcp} mapped${summary ? ` — ${clip(summary, 100)}` : ""}`, sub: true });
+          } catch (e) {
+            push({ kind: "result", text: `${mcp} scan failed: ${e instanceof Error ? e.message : String(e)}`, sub: true });
+          }
+        }),
+      );
+      push({ kind: "note", text: "· source maps saved to ~/.hemiunu/sources/ — use /scan again to refresh" });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1198,6 +1344,20 @@ function App({
       switchProject(repo);
       return push({ kind: "note", text: `· switched to team ${repo}` });
     }
+    if (cmd === "scan") {
+      const connected = Object.keys(activeServers);
+      if (!connected.length) {
+        return push({ kind: "note", text: "· no connected sources to scan (see /mcp)" });
+      }
+      const named = rest[0]?.trim();
+      if (named && !connected.includes(named)) {
+        return push({
+          kind: "note",
+          text: `· '${named}' isn't a connected source. Connected: ${connected.join(", ")}`,
+        });
+      }
+      return void runScans(named ? [named] : connected);
+    }
     // Not a built-in: is it a saved skill? Read fresh so file edits apply now.
     const skill = loadSkill(cmd);
     if (skill) {
@@ -1343,7 +1503,9 @@ function App({
           ? "Prototyping"
           : statusLabel === "parallel"
             ? "Orchestrating"
-            : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
+            : statusLabel === "scanning"
+              ? "Scanning"
+              : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
 
   // While paused, render nothing so an interactive child (vercel login) owns the
   // terminal; state is preserved and the full UI returns on resume.

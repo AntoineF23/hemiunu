@@ -27,6 +27,9 @@ import {
   loadSkills,
   loadSkill,
   expandSkill,
+  saveSourceMap,
+  loadSourceMaps,
+  loadSourceMap,
   appendKnowledge,
   normalizeRepo,
   prototypePath,
@@ -291,6 +294,34 @@ async function main() {
         threw = true;
       }
       assert(threw, "a reserved command name must be rejected");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await check("source maps: saveSourceMap writes a per-mcp file; load round-trips frontmatter + body", () => {
+    const root = mkdtempSync(join(tmpdir(), "hemiunu-sources-"));
+    try {
+      const saved = saveSourceMap({
+        mcp: "Notion",
+        description: "Product workspace — roadmap, specs (viewer).",
+        body: "## Key locations\n- **Roadmap** — page id `abc123` — quarterly OKRs.",
+        root,
+      });
+      assert(saved.mcp === "notion", `mcp name should be slugified, got: ${saved.mcp}`);
+
+      const list = loadSourceMaps(root);
+      assert(list.some((m) => m.mcp === "notion"), "saved map should be listed");
+      assert(
+        list[0].description === "Product workspace — roadmap, specs (viewer).",
+        "frontmatter description should round-trip",
+      );
+      assert(!!list[0].scanned, "a scanned date should be recorded in frontmatter");
+
+      const full = loadSourceMap("notion", root);
+      assert(!!full && /abc123/.test(full.body), "full map body should load on demand");
+
+      assert(loadSourceMap("missing", root) === undefined, "absent map returns undefined");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
