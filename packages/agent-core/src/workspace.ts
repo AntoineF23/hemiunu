@@ -46,6 +46,11 @@ export function trashRoot(): string {
 // the same level), so it never touches the launch folder and migrates cleanly
 // into a repo when the user creates a team.
 
+// The team's living knowledge file, kept at the repo root. Duplicated as a
+// literal (not imported from ./prototypes) to avoid an import cycle —
+// prototypes.ts already imports localWorkspaceDir from here.
+const PROTOTYPE_MD = "PROTOTYPE.md";
+
 let localSessionId = "default";
 
 /** Set the id for this run's local (no-team) workspace folder. */
@@ -321,22 +326,60 @@ export async function commitAndPush(
  */
 export async function migrateLocalIntoTeam(
   repo: string,
-  opts: { token?: string; login?: string; cwd?: string; cloneUrl?: string } = {},
+  opts: {
+    token?: string;
+    login?: string;
+    cwd?: string;
+    cloneUrl?: string;
+    /**
+     * Smart-merge two PROTOTYPE.md versions when the adopted repo already has one.
+     * Receives both bodies; returns the final file content, or null to fall back
+     * to the safe textual concat (so a failed/empty model response never loses data).
+     */
+    reconcile?: (parts: { local: string; remote: string }) => Promise<string | null>;
+  } = {},
 ): Promise<{ migrated: string[]; pushed: boolean; note: string }> {
   const src = opts.cwd ?? localWorkspaceDir();
   const synced = await ensureWorkspace(repo, { token: opts.token, cloneUrl: opts.cloneUrl });
   if (synced.action === "failed") return { migrated: [], pushed: false, note: synced.note ?? "sync failed" };
   const dir = synced.path;
   if (!existsSync(src)) return { migrated: [], pushed: false, note: "no local work to migrate" };
+  // PROTOTYPE.md is the team's living knowledge file — never clobber a remote
+  // one; it's merged explicitly below. Everything else copies FLAT into the repo
+  // root, so the prototype files end up at the same level.
   const skip = (s: string) => {
     const b = basename(s);
-    return b !== "node_modules" && b !== ".git";
+    return b !== "node_modules" && b !== ".git" && b !== PROTOTYPE_MD;
   };
-  // Copy the local session folder's contents FLAT into the repo root, so the
-  // prototype files and PROTOTYPE.md end up at the same level.
   const entries = readdirSync(src).filter((n) => n !== ".git" && n !== "node_modules");
   if (!entries.length) return { migrated: [], pushed: false, note: "no local work to migrate" };
   cpSync(src, dir, { recursive: true, filter: skip });
+
+  // Bring the local PROTOTYPE.md across: take it as-is when the repo has none,
+  // else merge — smart reconcile if provided, falling back to a lossless concat.
+  const localProto = join(src, PROTOTYPE_MD);
+  const remoteProto = join(dir, PROTOTYPE_MD);
+  if (existsSync(localProto)) {
+    const local = readFileSync(localProto, "utf8");
+    if (!existsSync(remoteProto)) {
+      writeFileSync(remoteProto, local, "utf8");
+    } else {
+      const remote = readFileSync(remoteProto, "utf8");
+      let merged: string | null = null;
+      if (opts.reconcile) {
+        try {
+          merged = await opts.reconcile({ local, remote });
+        } catch {
+          merged = null;
+        }
+      }
+      if (!merged || !merged.trim()) {
+        const day = new Date().toISOString().slice(0, 10);
+        merged = `${remote.trimEnd()}\n\n<!-- merged from local session ${day} -->\n\n${local.trim()}\n`;
+      }
+      writeFileSync(remoteProto, merged, "utf8");
+    }
+  }
 
   const pr = await commitAndPush(repo, {
     message: "Import local prototype work",

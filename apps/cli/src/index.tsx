@@ -25,6 +25,7 @@ import {
   repoExists,
   pruneTeams,
   migrateLocalIntoTeam,
+  askAnthropic,
   normalizeRepo,
   githubViewer,
   githubClientId,
@@ -615,6 +616,7 @@ function App({
       if (!listTeams().includes(repo)) {
         return `'${repo}' isn't one of the user's teams — use create_team, or they can add it with /team-new ${repo}.`;
       }
+      await bringLocalWorkInto(repo); // carry any local work into the repo first
       adoptTeam(repo);
       push({ kind: "note", text: `· team set to ${repo}` });
       return `Now working in ${repo}.`;
@@ -913,6 +915,61 @@ function App({
     setTeams(listTeams());
   }
 
+  // AI cleanup for a PROTOTYPE.md merge: when the adopted repo already has a
+  // knowledge file, fold it with the local one — drop superseded entries, merge
+  // duplicates, keep everything still relevant. Runs through askAnthropic, which
+  // uses the brain's own key/endpoint, so it works for every user (proxy OR
+  // direct Anthropic). Best-effort: returns null on any failure so the migration
+  // falls back to a lossless textual concat and never loses team knowledge.
+  async function reconcilePrototype({
+    local,
+    remote,
+  }: {
+    local: string;
+    remote: string;
+  }): Promise<string | null> {
+    const res = await askAnthropic({
+      model: RESEARCH_MODEL,
+      maxTokens: 4000,
+      system:
+        "You merge two versions of a feature's PROTOTYPE.md knowledge file into one. " +
+        "Keep the YAML frontmatter (use the most recent `updated` date). Preserve every still-relevant " +
+        "decision, open question, and piece of feedback. Drop entries a later one clearly supersedes, and " +
+        "fold duplicates or near-duplicates together. Do not invent content. " +
+        "Return ONLY the merged Markdown file — no commentary, no code fences.",
+      prompt: `# Existing repo PROTOTYPE.md\n\n${remote}\n\n---\n\n# Local session PROTOTYPE.md\n\n${local}`,
+    });
+    if ("error" in res) {
+      push({ kind: "note", text: `· PROTOTYPE.md merged (AI cleanup skipped: ${res.error.slice(0, 80)})` });
+      return null;
+    }
+    const cleaned = res.text
+      .replace(/^```(?:markdown|md)?\n?/, "")
+      .replace(/\n?```$/, "")
+      .trim();
+    return cleaned || null;
+  }
+
+  // Bring the current local (no-team) work into `repo` before entering it, so
+  // nothing made while working locally is left behind. No-ops unless this session
+  // is actually local — safe to call before any adopt/switch. PROTOTYPE.md is
+  // merged (AI-reconciled) into the repo's existing one rather than overwritten.
+  async function bringLocalWorkInto(repo: string): Promise<void> {
+    if ((currentProjectRef.current ?? "") !== "") return; // only when coming FROM local
+    const token = resolveGithubToken();
+    if (!token) {
+      push({ kind: "note", text: `· can't move local work into ${repo} — not signed in to GitHub (/github)` });
+      return;
+    }
+    const login = (await githubViewer(token)) ?? undefined;
+    const mig = await migrateLocalIntoTeam(repo, { token, login, reconcile: reconcilePrototype });
+    if (mig.migrated.length)
+      push({
+        kind: "note",
+        text: `· moved your local work into ${repo} (${mig.migrated.join(", ")})${mig.pushed ? "" : ` — ${mig.note}`}`,
+      });
+  }
+
   // Create a private repo for the current work, push any LOCAL prototype work
   // into it, and adopt it as the team — all without resetting the conversation
   // or redrawing the banner. Pushes a progress note; returns a summary string.
@@ -932,7 +989,7 @@ function App({
     }
     const repo = addTeam(r.repo);
     const login = (await githubViewer(token)) ?? undefined;
-    const mig = await migrateLocalIntoTeam(repo, { token, login });
+    const mig = await migrateLocalIntoTeam(repo, { token, login, reconcile: reconcilePrototype });
     adoptTeam(repo);
     const summary = mig.migrated.length
       ? `created ${repo} (private) and pushed your local work (${mig.migrated.join(", ")})${mig.pushed ? "" : ` — note: ${mig.note}`}`
@@ -1316,6 +1373,7 @@ function App({
           if (await repoExists(token, repo)) {
             addTeam(repo);
             setTeams(listTeams());
+            await bringLocalWorkInto(repo); // carry any local work into the repo first
             adoptTeam(repo); // keep the conversation; no banner reset
             push({ kind: "note", text: `· added team ${repo} — now your team` });
           } else {
@@ -1341,15 +1399,29 @@ function App({
           options,
           onChoice: (v) => {
             setPicker(null);
-            if (v !== null) switchProject(v === NONE ? null : v);
+            if (v === null) return;
+            const target = v === NONE ? null : v;
+            if (target === null) {
+              switchProject(null);
+              return;
+            }
+            // Carry local work into the team before switching to it.
+            void (async () => {
+              await bringLocalWorkInto(target);
+              switchProject(target);
+            })();
           },
         });
         return;
       }
       const repo = addTeam(arg);
       setTeams(listTeams());
-      switchProject(repo);
-      return push({ kind: "note", text: `· switched to team ${repo}` });
+      void (async () => {
+        await bringLocalWorkInto(repo); // carry any local work into the repo first
+        switchProject(repo);
+        push({ kind: "note", text: `· switched to team ${repo}` });
+      })();
+      return;
     }
     if (cmd === "scan") {
       const connected = Object.keys(activeServers);
@@ -1482,7 +1554,16 @@ function App({
         // speak up when there's nothing to cycle to.
         if (next === null)
           push({ kind: "note", text: "· no teams yet — /team-new <name> to create one" });
-        else switchProject(next === "" ? null : next);
+        else {
+          const target = next === "" ? null : next;
+          if (target === null) switchProject(null);
+          // Carry local work into the team before switching to it.
+          else
+            void (async () => {
+              await bringLocalWorkInto(target);
+              switchProject(target);
+            })();
+        }
       }
     },
     { isActive: inputActive },

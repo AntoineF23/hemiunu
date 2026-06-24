@@ -10,8 +10,9 @@ export {
   createModelsServer,
   ASK_MODEL_TOOL_ID,
   askModel,
+  askAnthropic,
 } from "./tools";
-export type { AskModelOptions } from "./tools";
+export type { AskModelOptions, AskAnthropicOptions } from "./tools";
 export { PROVIDERS, PROVIDER_NAMES, resolveProvider } from "./providers";
 export type { ProviderSpec } from "./providers";
 export {

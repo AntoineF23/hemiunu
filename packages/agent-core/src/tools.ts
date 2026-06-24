@@ -93,6 +93,68 @@ export async function askModel({
   }
 }
 
+export interface AskAnthropicOptions {
+  /** Claude model id, e.g. "claude-sonnet-4.6". */
+  model: string;
+  prompt: string;
+  system?: string;
+  maxTokens?: number;
+}
+
+/**
+ * One-shot call to Claude via the native Anthropic Messages API, using the SAME
+ * key/endpoint as the brain: ANTHROPIC_API_KEY + ANTHROPIC_BASE_URL (defaulting
+ * to api.anthropic.com when no gateway is set). Unlike askModel (OpenAI-format,
+ * bring-your-own providers), this reaches Claude for EVERY user with a working
+ * key — proxy or direct. Returns the text, or { error } explaining why none.
+ */
+export async function askAnthropic({
+  model,
+  prompt,
+  system,
+  maxTokens = 2000,
+}: AskAnthropicOptions): Promise<{ text: string } | { error: string }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) return { error: "No ANTHROPIC_API_KEY configured." };
+  const base = (process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com").replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        // Some gateways authenticate with a bearer token instead; harmless for
+        // Anthropic direct (it reads x-api-key). Sending both maximizes reach.
+        authorization: `Bearer ${apiKey}`,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        ...(system ? { system } : {}),
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { error: `Anthropic ${model} (HTTP ${res.status}): ${body.slice(0, 300)}` };
+    }
+    const json = (await res.json()) as {
+      content?: { type?: string; text?: string }[];
+      stop_reason?: string;
+    };
+    const text = (json.content ?? [])
+      .filter((b) => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text as string)
+      .join("")
+      .trim();
+    if (!text) return { error: `Anthropic ${model} returned no text (stop_reason: ${json.stop_reason ?? "unknown"}).` };
+    return { text };
+  } catch (e) {
+    return { error: `Failed to reach Anthropic ${model}: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 /**
  * In-process MCP server exposing `ask_model` — a one-shot call to any (esp.
  * non-Claude) model on the proxy. The Claude main loop stays the brain; it
