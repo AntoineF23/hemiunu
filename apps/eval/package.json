@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "smoke": "tsx src/smoke.ts",
+    "cap": "tsx src/capability.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

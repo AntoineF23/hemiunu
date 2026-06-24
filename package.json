@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/cli/src/index.tsx",
     "smoke": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/eval/src/smoke.ts",
+    "cap": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx apps/eval/src/capability.ts",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

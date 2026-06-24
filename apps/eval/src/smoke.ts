@@ -63,45 +63,13 @@ import {
   seedContextFiles,
 } from "@hemiunu/memory";
 import { loadMcpRegistry } from "@hemiunu/mcp";
+import { check, assert, collectTurn, report } from "./harness";
 
 const OFFLINE = process.argv.includes("--offline");
 // Live gate uses the configured model by default (known-good with the proxy's
 // `effort` param — some models, e.g. haiku-4.5, reject it). Override with
 // HEMIUNU_EVAL_MODEL to run the gate against a cheaper/different model.
 const EVAL_MODEL = process.env.HEMIUNU_EVAL_MODEL ?? loadConfig().model;
-
-let passed = 0;
-let failed = 0;
-
-async function check(name: string, fn: () => void | Promise<void>) {
-  try {
-    await fn();
-    passed++;
-    console.log(`  \x1b[32m✓\x1b[0m ${name}`);
-  } catch (err) {
-    failed++;
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(`  \x1b[31m✗\x1b[0m ${name}\n      ${msg}`);
-  }
-}
-
-function assert(cond: unknown, msg: string): asserts cond {
-  if (!cond) throw new Error(msg);
-}
-
-/** Drain a runTurn stream into final text + cost. */
-async function collectTurn(prompt: string): Promise<{ text: string; cost: number }> {
-  let text = "";
-  let cost = 0;
-  for await (const m of runTurn({ prompt, model: EVAL_MODEL })) {
-    const msg = m as Record<string, any>;
-    if (msg.type === "result") {
-      if (typeof msg.result === "string") text = msg.result;
-      if (typeof msg.total_cost_usd === "number") cost = msg.total_cost_usd;
-    }
-  }
-  return { text, cost };
-}
 
 async function main() {
   console.log("\n\x1b[1mHemiunu smoke harness\x1b[0m");
@@ -660,7 +628,7 @@ async function main() {
   let liveCost = 0;
 
   await check("engine completes a turn and returns text", async () => {
-    const { text, cost } = await collectTurn("Reply with exactly: PONG");
+    const { text, cost } = await collectTurn("Reply with exactly: PONG", EVAL_MODEL);
     liveCost += cost;
     assert(text.trim().length > 0, "expected a non-empty response");
     assert(/pong/i.test(text), `expected the model to echo PONG, got: ${text.slice(0, 80)}`);
@@ -752,13 +720,6 @@ async function main() {
 
   console.log(`\n\x1b[2m  live turns cost ~$${liveCost.toFixed(4)}\x1b[0m`);
   report();
-}
-
-function report() {
-  const total = passed + failed;
-  const color = failed === 0 ? "\x1b[32m" : "\x1b[31m";
-  console.log(`\n${color}${passed}/${total} checks passed\x1b[0m\n`);
-  process.exit(failed === 0 ? 0 : 1);
 }
 
 main().catch((err) => {
