@@ -196,7 +196,7 @@ export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> 
   if (!repo) {
     return (
       readLocal() ??
-      `No PROTOTYPE.md yet (local). Add knowledge and I'll create one here. ${LOCAL_HINT}`
+      `No PROTOTYPE.md here yet — it's created automatically the first time I save a note or decision. ${LOCAL_HINT}`
     );
   }
   const token = opts?.token ?? resolveGithubToken();
@@ -209,7 +209,7 @@ export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> 
       const access = await repoAccessError(token, repo);
       return access
         ? `Couldn't read PROTOTYPE.md: ${access}`
-        : `No PROTOTYPE.md yet in ${repo} — add knowledge and I'll create it.`;
+        : `${repo} has no PROTOTYPE.md yet — it's created automatically the first time I save a note, decision, or update there. Nothing for you to do.`;
     }
     return file.content;
   } catch (e) {
