@@ -2,9 +2,14 @@ packages:
   - apps/*
   - packages/*
 
-# esbuild (pulled in via tsx) ships a postinstall build script; approve it so
-# pnpm doesn't warn on install.
+allowBuilds:
+  esbuild: set this to true or false
+
+# Native/postinstall build scripts we trust. esbuild (via tsx) and
+# better-sqlite3 (the conversation store) each ship one; approve them so pnpm
+# builds them instead of warning.
 onlyBuiltDependencies:
   - esbuild
+  - better-sqlite3
 
 verifyDepsBeforeRun: false

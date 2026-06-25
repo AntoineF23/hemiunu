@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import Database, { type Database as DatabaseType } from "better-sqlite3";
 
 export interface ConversationRow {
   id: string;
@@ -18,10 +18,10 @@ export interface MessageRow {
 
 /** SQLite-backed store persisting full conversations (list / resume / replay). */
 export class ConversationStore {
-  private db: DatabaseSync;
+  private db: DatabaseType;
 
   constructor(dbPath: string) {
-    this.db = new DatabaseSync(dbPath);
+    this.db = new Database(dbPath);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS conversations (
         id         TEXT PRIMARY KEY,
