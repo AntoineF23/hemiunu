@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -462,4 +463,21 @@ export function discardWorkspace(repo: string, reason = "removed after push to m
   const binned = binWorkspace(path, repo, reason);
   rmSync(path, { recursive: true, force: true });
   return binned;
+}
+
+/**
+ * Move a team's local checkout to its new path after the repo was renamed, and
+ * repoint its `origin` to the new URL so iteration/pushes keep working without a
+ * re-clone. Best-effort: a no-op when there's no local checkout yet.
+ */
+export async function renameWorkspace(oldRepo: string, newRepo: string): Promise<void> {
+  const from = workspacePath(oldRepo);
+  const to = workspacePath(newRepo);
+  if (from === to || !existsSync(from)) return;
+  mkdirSync(dirname(to), { recursive: true });
+  rmSync(to, { recursive: true, force: true });
+  renameSync(from, to);
+  await git(["remote", "set-url", "origin", `https://github.com/${normalizeRepo(newRepo)}.git`], {
+    cwd: to,
+  });
 }

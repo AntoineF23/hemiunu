@@ -236,6 +236,20 @@ export function addTeam(ref: string): string {
   return repo;
 }
 
+/**
+ * Remove a team from the saved list. If it was the current selection, fall back
+ * to "no team" (local mode). Returns true if it was present and removed.
+ */
+export function removeTeam(ref: string): boolean {
+  const repo = normalizeRepo(ref);
+  const cfg = loadTeams();
+  if (!cfg.teams.includes(repo)) return false;
+  cfg.teams = cfg.teams.filter((t) => t !== repo);
+  if (cfg.current && normalizeRepo(cfg.current) === repo) cfg.current = "";
+  saveTeams(cfg);
+  return true;
+}
+
 /** Switch to an existing team. Returns false if it isn't in the list. */
 export function switchTeam(ref: string): boolean {
   const repo = normalizeRepo(ref);
@@ -244,6 +258,19 @@ export function switchTeam(ref: string): boolean {
   cfg.current = repo;
   saveTeams(cfg);
   return true;
+}
+
+/**
+ * Replace a team's repo id after a rename (`oldRepo` → `newRepo`), preserving its
+ * position in the list and updating the `current` pointer if it was selected.
+ */
+export function renameTeam(oldRepo: string, newRepo: string): void {
+  const oldN = normalizeRepo(oldRepo);
+  const newN = normalizeRepo(newRepo);
+  const cfg = loadTeams();
+  cfg.teams = cfg.teams.map((t) => (t === oldN ? newN : t));
+  if (cfg.current && normalizeRepo(cfg.current) === oldN) cfg.current = newN;
+  saveTeams(cfg);
 }
 
 /** Select a team, or `null` for "no team" (local mode). Persisted. */
@@ -364,6 +391,31 @@ export async function createRepo(
   if (!res.ok) return { error: `${res.status} ${await res.text()}` };
   const json = (await res.json()) as { full_name?: string };
   return { repo: json.full_name ?? `${org ?? viewer ?? "?"}/${repoName}` };
+}
+
+/**
+ * Rename a repo on GitHub (owner unchanged — only the name part). GitHub keeps
+ * redirecting the old URL afterwards, so existing clones/remotes still work.
+ * Returns the new `owner/name`, or an error message.
+ */
+export async function renameRepo(
+  token: string,
+  repo: string,
+  newName: string,
+): Promise<{ repo: string } | { error: string }> {
+  const norm = normalizeRepo(repo);
+  const [owner] = norm.split("/");
+  const name = newName.trim().replace(/\s+/g, "-");
+  if (!name) return { error: "empty name" };
+  const res = await fetch(`${API}/repos/${norm}`, {
+    method: "PATCH",
+    headers: { ...apiHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+    signal: timeoutSignal(),
+  });
+  if (!res.ok) return { error: `${res.status} ${await res.text()}` };
+  const json = (await res.json()) as { full_name?: string };
+  return { repo: json.full_name ?? `${owner}/${name}` };
 }
 
 export interface RepoFile {

@@ -12,7 +12,8 @@ import { listTeams } from "./github";
 
 export type ControlEvent =
   | { type: "create-team"; name: string }
-  | { type: "switch-team"; repo: string };
+  | { type: "switch-team"; repo: string }
+  | { type: "rename-team"; name: string };
 
 type ControlHandler = (e: ControlEvent) => Promise<string>;
 
@@ -76,10 +77,22 @@ export function createTeamControlServer() {
     { annotations: { title: "List teams", readOnlyHint: true } },
   );
 
+  const renameTool = tool(
+    "rename_team",
+    "Rename the CURRENT team — renames its GitHub repo (the owner is unchanged), updates the saved team, and moves the local working copy. Use when the user wants this team/feature named differently. Confirm the new name with the user first; pass a short kebab-case name.",
+    {
+      name: z.string().describe("New short kebab-case repo name, e.g. 'adaptive-safety-floor'."),
+    },
+    async ({ name }) => ({
+      content: [{ type: "text", text: await requestControl({ type: "rename-team", name }) }],
+    }),
+    { annotations: { title: "Rename team", readOnlyHint: false } },
+  );
+
   return createSdkMcpServer({
     name: "hemiunu-team-control",
     version: "0.0.0",
-    tools: [createTool, switchTool, listTool],
+    tools: [createTool, switchTool, listTool, renameTool],
   });
 }
 

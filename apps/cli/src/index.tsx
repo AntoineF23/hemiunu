@@ -22,6 +22,9 @@ import {
   currentTeam,
   setCurrentTeam,
   createRepo,
+  renameRepo,
+  renameTeam,
+  renameWorkspace,
   repoExists,
   pruneTeams,
   migrateLocalIntoTeam,
@@ -541,6 +544,9 @@ function App({
       if (e.type === "create-team") {
         return await createAndAdoptTeam(e.name);
       }
+      if (e.type === "rename-team") {
+        return await renameCurrentTeam(e.name);
+      }
       const repo = normalizeRepo(e.repo);
       if (!listTeams().includes(repo)) {
         return `'${repo}' isn't one of the user's teams — use create_team, or they can add it with /team-new ${repo}.`;
@@ -939,6 +945,48 @@ function App({
       : `created ${repo} (private)`;
     push({ kind: "note", text: `· ${summary} — now your team` });
     return summary;
+  }
+
+  // Rename the CURRENT team: rename its GitHub repo (owner unchanged), update the
+  // saved team + the local checkout, and adopt the new id — without resetting the
+  // conversation. Driven by the agent's rename_team tool via the control bridge.
+  async function renameCurrentTeam(name: string): Promise<string> {
+    const current = currentProjectRef.current;
+    if (!current) {
+      return "There's no team to rename — you're working locally. Create one first with create_team.";
+    }
+    const token = resolveGithubToken();
+    if (!token) {
+      const m = "Not signed in to GitHub — run /github first.";
+      push({ kind: "note", text: `· ${m}` });
+      return m;
+    }
+    push({ kind: "note", text: `· renaming ${current} → ${name}…` });
+    const r = await renameRepo(token, current, name);
+    if ("error" in r) {
+      const taken = /\b422\b|already exists/i.test(r.error);
+      const m = taken
+        ? `couldn't rename: you already have a repo called "${name}". Pick a different name.`
+        : `couldn't rename repo: ${r.error}`;
+      push({ kind: "error", text: m });
+      return m;
+    }
+    const newRepo = r.repo;
+    stopPreview(); // the old checkout dir is about to move
+    renameTeam(current, newRepo);
+    await renameWorkspace(current, newRepo);
+    // Carry the in-window workspace state (scrollback, session, cost) to the new key.
+    const ws = workspaces.current.get(current);
+    if (ws) {
+      workspaces.current.delete(current);
+      workspaces.current.set(newRepo, ws);
+    }
+    setCurrentTeam(newRepo);
+    currentProjectRef.current = newRepo;
+    setTeam(newRepo);
+    setTeams(listTeams());
+    push({ kind: "note", text: `· renamed to ${newRepo}` });
+    return `Renamed the team to ${newRepo}. The conversation and your work carried over.`;
   }
 
   async function runCompact({ silent = false }: { silent?: boolean } = {}) {

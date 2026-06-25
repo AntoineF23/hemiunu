@@ -775,9 +775,11 @@ async function main() {
 
   await check("control bridge: requestControl routes to the registered handler", async () => {
     try {
-      setControlHandler(async (e) =>
-        e.type === "create-team" ? `made ${e.name}` : `switched ${e.repo}`,
-      );
+      setControlHandler(async (e) => {
+        if (e.type === "create-team") return `made ${e.name}`;
+        if (e.type === "rename-team") return `renamed ${e.name}`;
+        return `switched ${e.repo}`;
+      });
       assert(
         (await requestControl({ type: "create-team", name: "foo" })) === "made foo",
         "should route create",
@@ -785,6 +787,10 @@ async function main() {
       assert(
         (await requestControl({ type: "switch-team", repo: "a/b" })) === "switched a/b",
         "should route switch",
+      );
+      assert(
+        (await requestControl({ type: "rename-team", name: "bar" })) === "renamed bar",
+        "should route rename",
       );
     } finally {
       setControlHandler(null);

@@ -47,9 +47,12 @@ export {
   currentTeam,
   addTeam,
   switchTeam,
+  removeTeam,
+  renameTeam,
   setCurrentTeam,
   cycleTeam,
   createRepo,
+  renameRepo,
   repoExists,
   pruneTeams,
 } from "./github";
@@ -81,7 +84,7 @@ export {
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
 export { startPreview, stopPreview, previewStatus } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
-export { commitAndPush, migrateLocalIntoTeam } from "./workspace";
+export { commitAndPush, migrateLocalIntoTeam, renameWorkspace } from "./workspace";
 export type { PushResult } from "./workspace";
 export { createShareServer, SHARE_TOOLS } from "./share";
 export {
