@@ -11,3 +11,7 @@ import { join } from "node:path";
 if (!process.env.HEMIUNU_HOME) {
   process.env.HEMIUNU_HOME = join(import.meta.dirname, "..", "..", "..", "..");
 }
+
+// The web app embeds the prototype preview inline (as a chat artifact), so the
+// engine shouldn't also pop a system browser tab when a preview starts.
+if (!process.env.HEMIUNU_NO_OPEN) process.env.HEMIUNU_NO_OPEN = "1";

@@ -7,12 +7,14 @@ import type { PermissionDecision, ServerEvent } from "../shared/protocol";
 
 export interface ChatItem {
   id: number;
-  kind: "user" | "agent" | "tool" | "result" | "note" | "subagent" | "error";
+  kind: "user" | "agent" | "tool" | "result" | "note" | "subagent" | "error" | "artifact";
   text: string;
   /** for tool items */
   toolName?: string;
   delegate?: boolean;
   sub?: boolean;
+  /** for artifact items: the live preview URL to embed */
+  url?: string;
 }
 
 export interface PermissionPrompt {
@@ -138,6 +140,9 @@ export function useTurnStream(): TurnState {
               case "note":
                 push({ kind: "note", text: e.text });
                 break;
+              case "artifact":
+                push({ kind: "artifact", text: e.title, url: e.url });
+                break;
               case "permission":
                 setPermission({ requestId: e.requestId, name: e.name, preview: e.preview });
                 break;
@@ -210,6 +215,24 @@ export function useTurnStream(): TurnState {
           text: m.content,
         })),
       );
+      // Restore the prototype artifact (re-serves its files), if this
+      // conversation produced one — replays it at the bottom of the thread.
+      void (async () => {
+        try {
+          const res = await fetch(`/api/conversations/${encodeURIComponent(sessionId)}/artifact`);
+          const { artifact } = (await res.json()) as {
+            artifact: { url: string; title: string } | null;
+          };
+          if (artifact?.url) {
+            setItems((prev) => [
+              ...prev,
+              { id: idRef.current++, kind: "artifact", text: artifact.title, url: artifact.url },
+            ]);
+          }
+        } catch {
+          /* no artifact / worker offline — leave the thread as text-only */
+        }
+      })();
     },
     [busy],
   );

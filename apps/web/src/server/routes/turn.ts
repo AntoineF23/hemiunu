@@ -3,18 +3,25 @@
 // (/permission, /abort). The stream-consumption switch and the permission
 // auto-approvals are ported from apps/cli/src/index.tsx (runUserTurn + canUseTool).
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
+  activeProtoDir,
   asStream,
+  generateTitle,
   GET_SOURCE_MAP_TOOL_ID,
   PARALLEL_TOOL_ID,
+  previewStatus,
   recordSeenTool,
   REMEMBER_TOOL_ID,
   resolveToolPolicy,
   runTurn,
   SAVE_SOURCE_MAP_TOOL_ID,
+  startPreview,
 } from "@hemiunu/agent-core";
+import { recordArtifact } from "../artifacts";
 import { clip, prettyTool, resultText, summarizeResult, title, toolPreview } from "../format";
 import { activeMcp, bootRuntime, effectiveSystem, turnRepo } from "../runtime";
 import {
@@ -117,6 +124,14 @@ turnRoute.post("/api/turn", async (c) => {
     // Tool ids of delegations (Task/parallel); their results are internal
     // handoffs we don't surface as raw blobs.
     const delegateIds = new Set<string>();
+    // When the agent starts (or switches) a localhost preview during the turn,
+    // surface it as an inline artifact card. previewStatus() is in-process, so
+    // we just watch it change as iterate_prototype / edits run.
+    let lastPreviewUrl = previewStatus()?.url ?? null;
+    // Whether the agent built/edited a prototype this turn — if it used
+    // save_prototype (which just writes files, no server), we start a static
+    // preview ourselves afterwards so it still shows as an inline artifact.
+    let touchedPrototype = false;
 
     try {
       for await (const m of runTurn({
@@ -156,6 +171,9 @@ turnRoute.post("/api/turn", async (c) => {
               fullText += txt;
               emit({ type: "text", delta: txt });
             } else if (b.type === "tool_use") {
+              if (/save_prototype|write_workspace_file|iterate_prototype/.test(b.name ?? "")) {
+                touchedPrototype = true;
+              }
               if (b.name === PARALLEL_TOOL_ID) {
                 if (b.id) delegateIds.add(b.id);
                 const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
@@ -193,6 +211,29 @@ turnRoute.post("/api/turn", async (c) => {
           cost = msg.total_cost_usd ?? null;
           usage = msg.usage;
         }
+
+        // A preview appeared (or changed) → emit it as an inline artifact.
+        const preview = previewStatus();
+        if (preview && preview.url !== lastPreviewUrl) {
+          lastPreviewUrl = preview.url;
+          const t = preview.repo || "Prototype";
+          await emit({ type: "artifact", url: preview.url, title: t });
+          if (sessionId) recordArtifact(sessionId, { dir: activeProtoDir(), repo: turnRepo(), title: t });
+        }
+      }
+
+      // If the agent built a prototype via save_prototype (no preview server),
+      // start a static preview of the prototype dir so it shows as an artifact.
+      if (touchedPrototype && !previewStatus()) {
+        const dir = activeProtoDir();
+        if (existsSync(join(dir, "index.html"))) {
+          const res = await startPreview(turnRepo() ?? "prototype", dir);
+          if ("url" in res) {
+            const t = turnRepo() || "Prototype";
+            await emit({ type: "artifact", url: res.url, title: t });
+            if (sessionId) recordArtifact(sessionId, { dir, repo: turnRepo(), title: t });
+          }
+        }
       }
     } catch (e) {
       if (session.ac.signal.aborted) emit({ type: "interrupted" });
@@ -209,9 +250,20 @@ turnRoute.post("/api/turn", async (c) => {
 
     // Persist the exchange (same shape the CLI writes).
     if (sessionId) {
-      rt.store.ensureConversation(sessionId, title(prompt), rt.model);
-      rt.store.addMessage(sessionId, "user", prompt);
-      rt.store.addMessage(sessionId, "assistant", fullText, cost);
+      const sid = sessionId;
+      rt.store.ensureConversation(sid, title(prompt), rt.model);
+      rt.store.addMessage(sid, "user", prompt);
+      rt.store.addMessage(sid, "assistant", fullText, cost);
+      // First turn of a new conversation → upgrade the truncated title to an
+      // LLM-generated one (small model). Fire-and-forget: the truncation already
+      // shows in history immediately; this refines it without blocking the turn.
+      if (!body.resume) {
+        void generateTitle(prompt)
+          .then((t) => {
+            if (t) rt.store.setTitle(sid, t);
+          })
+          .catch(() => {});
+      }
     }
 
     await emit({ type: "done" });

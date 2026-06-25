@@ -14,6 +14,8 @@ export type ServerEvent =
   | { type: "note"; text: string }
   | { type: "permission"; requestId: string; name: string; preview: string }
   | { type: "subagent"; label: string; detail: string; sub: true }
+  // A live preview (wireframe / prototype) to embed inline in the thread.
+  | { type: "artifact"; url: string; title: string }
   | { type: "cost"; costUsd: number | null; outTokens: number; ctxTokens: number }
   | { type: "interrupted" }
   | { type: "error"; message: string }

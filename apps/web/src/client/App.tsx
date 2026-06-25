@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, CircleAlert, CornerDownRight, PencilLine, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ArtifactCard } from "@/components/ArtifactCard";
 import { Composer } from "@/components/Composer";
 import { Home } from "@/components/Home";
 import { ConversationsPanel } from "@/components/panels/ConversationsPanel";
@@ -282,6 +283,8 @@ function Item({ item, streaming }: { item: ChatItem; streaming: boolean }) {
       );
     case "subagent":
       return <div className="subagent">{item.text}</div>;
+    case "artifact":
+      return item.url ? <ArtifactCard url={item.url} title={item.text} /> : null;
     case "note":
       return (
         <div className="note">

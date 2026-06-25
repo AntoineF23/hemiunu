@@ -11,6 +11,7 @@ export {
   ASK_MODEL_TOOL_ID,
   askModel,
   askAnthropic,
+  generateTitle,
 } from "./tools";
 export type { AskModelOptions, AskAnthropicOptions } from "./tools";
 export { PROVIDERS, PROVIDER_NAMES, resolveProvider } from "./providers";

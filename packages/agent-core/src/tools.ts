@@ -175,6 +175,34 @@ export async function askAnthropic({
 }
 
 /**
+ * Generate a short conversation title from the user's first message, with a
+ * small/cheap model (Haiku via HEMIUNU_TITLE_MODEL, else the retrieval tier).
+ * Goes through askAnthropic (raw Messages API → no SDK `effort` param, so Haiku
+ * works even on a proxy). Returns null on any failure so the caller keeps its
+ * fallback. The result is cleaned to a short, quote-free, single-line title.
+ */
+export async function generateTitle(firstMessage: string): Promise<string | null> {
+  const prompt = firstMessage.trim().slice(0, 2000);
+  if (!prompt) return null;
+  const model =
+    process.env.HEMIUNU_TITLE_MODEL?.trim() ||
+    process.env.HEMIUNU_MODEL_RESEARCH?.trim() ||
+    "claude-sonnet-4.6";
+  const system =
+    "Write a 3–6 word title summarizing the user's message, in Title Case. " +
+    "No surrounding quotes, no trailing punctuation, no preamble. Reply with ONLY the title.";
+  const res = await askAnthropic({ model, prompt, system, maxTokens: 24 });
+  if ("error" in res) return null;
+  const title = res.text
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 60)
+    .trim();
+  return title || null;
+}
+
+/**
  * In-process MCP server exposing `ask_model` — a one-shot call to any (esp.
  * non-Claude) model on the proxy. The Claude main loop stays the brain; it
  * calls this for a focused subtask, then integrates the result.

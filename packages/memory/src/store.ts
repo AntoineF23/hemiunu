@@ -71,6 +71,11 @@ export class ConversationStore {
       .run(id, title, new Date().toISOString(), model);
   }
 
+  /** Replace a conversation's title (e.g. with an LLM-generated one). */
+  setTitle(id: string, title: string): void {
+    this.db.prepare("UPDATE conversations SET title = ? WHERE id = ?").run(title, id);
+  }
+
   addMessage(
     conversationId: string,
     role: "user" | "assistant",
