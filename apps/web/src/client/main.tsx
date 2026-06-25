@@ -11,14 +11,19 @@ import "@fontsource/noto-sans-egyptian-hieroglyphs";
 // Syntax-highlight theme for code blocks (Atom One Dark — dark in both UI modes,
 // matching the gold-standard chat UIs).
 import "highlight.js/styles/atom-one-dark.css";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { App } from "./App";
 import { ErrorBoundary } from "./ErrorBoundary";
+// theme.css owns the design tokens + base; styles.css the chat thread + prose.
+import "./theme.css";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

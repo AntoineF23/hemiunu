@@ -1,0 +1,158 @@
+/* ────────────────────────────────────────────────────────────────────────
+   Hemiunu — dark "Egyptian night" design system.
+   The warm papyrus brand recolored for a dark Claude.ai-style shell: warm
+   near-black ground, clay (terracotta) as the single accent, sage as a quiet
+   secondary, lapis for motion. Serif (Newsreader) for the greeting + agent
+   prose, Inter for UI, JetBrains Mono for code.
+
+   This file owns the design tokens (mapped to both shadcn's variable names and
+   our own brand names) + base body styling. styles.css keeps the chat
+   thread / markdown prose, the papyrus grain, and the streaming caret.
+   ──────────────────────────────────────────────────────────────────────── */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    /* Brand surfaces — warm dark neutrals */
+    --ground: #1b1916; /* main canvas */
+    --rail: #141210; /* the icon rail (a touch darker) */
+    --paper: #26231e; /* composer, cards, panels */
+    --raised: #302c26; /* hovers, user bubble, menu hover */
+    --raised-2: #383229;
+
+    /* Ink — warm cream text hierarchy */
+    --ink: #ece7da;
+    --ink-2: #b8b1a3;
+    --ink-3: #8a8478;
+    --ink-4: #615c52;
+
+    /* Hairlines */
+    --line: rgba(236, 231, 218, 0.1);
+    --line-2: rgba(236, 231, 218, 0.16);
+
+    /* Accent — clay / terracotta (brightened for dark) + quiet secondaries */
+    --clay: #d4774f;
+    --clay-strong: #e08a63;
+    --clay-soft: rgba(212, 119, 79, 0.14);
+    --sage: #7a9b7a;
+    --lapis: #5bb8c4;
+    --gold: #c79a5c;
+    --danger: #d9684f;
+
+    --code-bg: #282c34;
+
+    /* Carved-tablet surface for the user bubble + permission card */
+    --stone: #2f2a22;
+    --stone-line: #46402f;
+
+    /* Shape + depth (consumed by the chat thread in styles.css) */
+    --r-sm: 9px;
+    --r-md: 13px;
+    --r-lg: 18px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.24);
+    --shadow-pop: 0 10px 34px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --measure: 760px; /* chat column max-width */
+
+    /* shadcn/ui token contract (mapped to the brand surfaces above) */
+    --radius: 0.75rem;
+    --background: var(--ground);
+    --foreground: var(--ink);
+    --card: var(--paper);
+    --card-foreground: var(--ink);
+    --popover: #211e19;
+    --popover-foreground: var(--ink);
+    --primary: var(--clay);
+    --primary-foreground: #1b1916;
+    --secondary: var(--raised);
+    --secondary-foreground: var(--ink);
+    --muted: #2a2620;
+    --muted-foreground: var(--ink-3);
+    --accent: var(--raised);
+    --accent-foreground: var(--ink);
+    --destructive: var(--danger);
+    --destructive-foreground: #1b1916;
+    /* Hairline borders — almost invisible, like the reference UI */
+    --border: rgba(236, 231, 218, 0.06);
+    --input: rgba(236, 231, 218, 0.11);
+    --ring: var(--clay);
+
+    /* Type */
+    --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-serif: "Newsreader Variable", Georgia, "Times New Roman", serif;
+    --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-hiero: "Noto Sans Egyptian Hieroglyphs", serif;
+
+    --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+}
+
+/* Expose the tokens as Tailwind utilities (bg-background, text-clay, etc.). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Brand tokens as utilities */
+  --color-ground: var(--ground);
+  --color-rail: var(--rail);
+  --color-paper: var(--paper);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-clay: var(--clay);
+  --color-clay-strong: var(--clay-strong);
+  --color-sage: var(--sage);
+  --color-lapis: var(--lapis);
+  --color-gold: var(--gold);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 6px);
+
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}

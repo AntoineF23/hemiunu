@@ -1,24 +1,34 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  ArrowUp,
-  ChevronDown,
-  CircleAlert,
-  CornerDownRight,
-  PencilLine,
-  Square,
-  Wrench,
-} from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ChevronDown, CircleAlert, CornerDownRight, PencilLine, Wrench } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Composer } from "@/components/Composer";
+import { Home } from "@/components/Home";
+import { ConversationsPanel } from "@/components/panels/ConversationsPanel";
+import { PrototypePanel } from "@/components/panels/PrototypePanel";
+import { SettingsPanel } from "@/components/panels/SettingsPanel";
+import { TeamsPanel } from "@/components/panels/TeamsPanel";
+import { type Panel, Rail } from "@/components/Rail";
 import { friendlyTool } from "./friendly";
 import { StatusWord } from "./Hieroglyphs";
 import { Markdown } from "./Markdown";
+import { useSettings } from "./useSettings";
 import { type ChatItem, useTurnStream } from "./useTurnStream";
 
+const RAIL_KEY = "hemiunu.rail.collapsed";
+
 export function App() {
-  const { items, busy, permission, lastCost, send, respond, stop } = useTurnStream();
+  const { items, busy, permission, lastCost, send, respond, stop, reset, loadConversation } =
+    useTurnStream();
+  const { settings, refresh, setModel } = useSettings();
   const [draft, setDraft] = useState("");
   const [showDetails, setShowDetails] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) === "1");
+  const [panel, setPanel] = useState<Panel | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem(RAIL_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
 
   // Keep the latest content in view as the turn streams.
   useLayoutEffect(() => {
@@ -26,145 +36,136 @@ export function App() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [items, permission, busy]);
 
-  // Auto-grow the composer.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
-  }, [draft]);
-
-  const submit = () => {
+  const submit = useCallback(() => {
     if (!draft.trim() || busy) return;
     send(draft);
     setDraft("");
-  };
+  }, [draft, busy, send]);
 
+  const model = settings?.model ?? "claude-opus-4.8";
+  const empty = items.length === 0;
   const lastId = items[items.length - 1]?.id;
 
+  const composer = (
+    <Composer
+      draft={draft}
+      setDraft={setDraft}
+      onSubmit={submit}
+      busy={busy}
+      onStop={stop}
+      disabled={!!permission}
+      model={model}
+      onModelChange={setModel}
+      autoFocus
+    />
+  );
+
   return (
-    <div className="app">
-      <aside className="rail">
-        <div className="brand">
-          <span className="brand-word">Hemiunu</span>
-        </div>
+    <div className="relative z-[1] flex h-full">
+      <Rail
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((v) => !v)}
+        onNewChat={reset}
+        activePanel={panel}
+        onSelectPanel={(p) => setPanel(p)}
+        team={settings?.team ?? null}
+        user={settings?.user ?? null}
+      />
 
-        <button className="team" disabled title="Team switcher — coming soon">
-          <span className="team-dot" />
-          <span className="team-name">Local workspace</span>
-          <ChevronDown size={15} className="team-caret" />
-        </button>
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        {empty ? (
+          <Home name={settings?.user ?? null} team={settings?.team ?? null} onPick={setDraft}>
+            {composer}
+          </Home>
+        ) : (
+          <>
+            <div className="scroll" ref={scrollRef}>
+              <div className="thread">
+                {items.map((it) => (
+                  <Item key={it.id} item={it} streaming={busy && it.id === lastId} />
+                ))}
 
-        <div className="rail-spacer" />
+                {busy && !permission && items[items.length - 1]?.kind !== "agent" && (
+                  <div className="thinking">
+                    <StatusWord />
+                  </div>
+                )}
 
-        <p className="rail-hint">
-          Chat is the first slice. Teams, memory, prototypes and connections arrive next.
-        </p>
-      </aside>
-
-      <main className="main">
-        <div className="scroll" ref={scrollRef}>
-          <div className="thread">
-            {items.length === 0 && (
-              <div className="empty">
-                <div className="empty-glyphs">𓋹 𓂀 𓏏 𓆣 𓇳</div>
-                <h1>What are we building?</h1>
-                <p>
-                  Ask Hemiunu about your product, dig through your connected sources, or describe a
-                  feature to prototype.
-                </p>
+                {permission && (
+                  <div className="perm">
+                    <div className="perm-head">
+                      <Wrench size={16} className="perm-icon" />
+                      <span>
+                        Hemiunu wants to{" "}
+                        <strong>{friendlyTool(permission.name).label.toLowerCase()}</strong>
+                      </span>
+                    </div>
+                    {permission.preview && <div className="perm-preview">{permission.preview}</div>}
+                    <div className="perm-actions">
+                      <Button size="sm" onClick={() => respond("yes")}>
+                        Allow
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => respond("always")}>
+                        Always allow
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => respond("no")}>
+                        Not now
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-
-            {items.map((it) => (
-              <Item key={it.id} item={it} streaming={busy && it.id === lastId} />
-            ))}
-
-            {/* Before/between the agent's prose: a single changing word, so the
-                wait feels alive without crowding the screen with motion. */}
-            {busy && !permission && items[items.length - 1]?.kind !== "agent" && (
-              <div className="thinking">
-                <StatusWord />
-              </div>
-            )}
-
-            {permission && (
-              <div className="perm">
-                <div className="perm-head">
-                  <Wrench size={16} className="perm-icon" />
-                  <span>
-                    Hemiunu wants to{" "}
-                    <strong>{friendlyTool(permission.name).label.toLowerCase()}</strong>
-                  </span>
-                </div>
-                {permission.preview && <div className="perm-preview">{permission.preview}</div>}
-                <div className="perm-actions">
-                  <button className="btn primary" onClick={() => respond("yes")}>
-                    Allow
-                  </button>
-                  <button className="btn" onClick={() => respond("always")}>
-                    Always allow
-                  </button>
-                  <button className="btn ghost" onClick={() => respond("no")}>
-                    Not now
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="dock">
-          <div className="dock-inner">
-            <div className="composer">
-              <textarea
-                ref={taRef}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submit();
-                  }
-                }}
-                placeholder="Message Hemiunu…"
-                rows={1}
-                disabled={!!permission}
-              />
-              {busy ? (
-                <button className="send stop-mode" onClick={stop} aria-label="Stop">
-                  <Square size={15} fill="currentColor" />
-                </button>
-              ) : (
-                <button
-                  className="send"
-                  onClick={submit}
-                  disabled={!draft.trim()}
-                  aria-label="Send"
-                >
-                  <ArrowUp size={17} strokeWidth={2.5} />
-                </button>
-              )}
             </div>
 
-            <div className="footer">
-              <span className="footer-model">claude-opus-4.8</span>
-              {lastCost && (
-                <button className="details-toggle" onClick={() => setShowDetails((v) => !v)}>
-                  details <ChevronDown size={12} className={showDetails ? "flip" : ""} />
-                </button>
-              )}
-            </div>
-            {showDetails && lastCost && (
-              <div className="details">
-                context ~{Math.round(lastCost.ctxTokens / 1000)}k · last turn{" "}
-                {lastCost.costUsd != null ? `$${lastCost.costUsd.toFixed(4)}` : "—"} ·{" "}
-                {lastCost.outTokens} tokens out
+            <div className="border-t border-border bg-gradient-to-b from-transparent to-ground px-7 pb-4 pt-2.5">
+              <div className="mx-auto max-w-[760px]">
+                {composer}
+                <div className="mt-2 flex items-center justify-between px-1 text-xs text-ink-4">
+                  <span />
+                  {lastCost && (
+                    <button
+                      className="inline-flex items-center gap-1 hover:text-ink-2"
+                      onClick={() => setShowDetails((v) => !v)}
+                    >
+                      details
+                      <ChevronDown size={12} className={showDetails ? "rotate-180" : ""} />
+                    </button>
+                  )}
+                </div>
+                {showDetails && lastCost && (
+                  <div className="mt-1 px-1 font-mono text-[11.5px] text-ink-4">
+                    context ~{Math.round(lastCost.ctxTokens / 1000)}k · last turn{" "}
+                    {lastCost.costUsd != null ? `$${lastCost.costUsd.toFixed(4)}` : "—"} ·{" "}
+                    {lastCost.outTokens} tokens out
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </>
+        )}
       </main>
+
+      <TeamsPanel
+        open={panel === "teams"}
+        onOpenChange={(o) => !o && setPanel(null)}
+        onChanged={refresh}
+      />
+      <PrototypePanel open={panel === "prototypes"} onOpenChange={(o) => !o && setPanel(null)} />
+      <SettingsPanel
+        open={panel === "settings"}
+        onOpenChange={(o) => !o && setPanel(null)}
+        settings={settings}
+        onChanged={refresh}
+        onModelChange={setModel}
+      />
+      <ConversationsPanel
+        open={panel === "conversations"}
+        onOpenChange={(o) => !o && setPanel(null)}
+        onResume={(id, msgs) => {
+          loadConversation(id, msgs);
+          setPanel(null);
+        }}
+      />
     </div>
   );
 }

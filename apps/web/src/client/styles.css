@@ -1,178 +1,29 @@
 /* ────────────────────────────────────────────────────────────────────────
-   Hemiunu — warm "paper" design system.
-   Premium AI-chat patterns (Claude / ChatGPT / Vercel as references) tuned to
-   Hemiunu's desert / papyrus / excavation brand: warm off-white ground, clay
-   (terracotta) as the single accent, sage as a quiet secondary, serif agent
-   prose, Inter UI, JetBrains Mono code, minimalist line icons.
+   Hemiunu — chat thread + markdown prose.
+   Design tokens + base body live in theme.css. This file styles ONLY the
+   conversation: turns, agent prose, tool activity, the permission card, the
+   streaming caret, and the papyrus grain. All colors come from the (dark)
+   CSS variables defined in theme.css, so the thread is dark by construction.
    ──────────────────────────────────────────────────────────────────────── */
 
-:root {
-  /* Surfaces — warm neutrals */
-  --ground: #faf9f5; /* page */
-  --paper: #ffffff; /* cards, composer */
-  --raised: #f4f2ea; /* user bubble, hovers */
-  --raised-2: #ece9df;
-
-  /* Ink */
-  --ink: #20201c; /* primary text */
-  --ink-2: #56544c; /* secondary */
-  --ink-3: #86837a; /* muted */
-  --ink-4: #a8a499; /* faint */
-
-  /* Lines — hairline, translucent */
-  --line: rgba(28, 26, 20, 0.08);
-  --line-2: rgba(28, 26, 20, 0.13);
-
-  /* Accent — clay / terracotta (the "sand") */
-  --clay: #c4633f;
-  --clay-strong: #b0552f;
-  --clay-soft: rgba(196, 99, 63, 0.1);
-  --sage: #5f7d5f;
-  --danger: #b3402b;
-
-  /* Egyptian palette (from the CLI): weathered sandstone + lapis for motion */
-  --stone: #ece7da; /* carved-tablet surface */
-  --stone-2: #e3ddcc;
-  --stone-line: #d3cab6;
-  --lapis: #2f8a99; /* hieroglyphs / motion */
-  --lapis-bright: #5bb8c4;
-  --gold: #b8894e; /* ankh + fine accents */
-
-  /* Code */
-  --code-bg: #282c34;
-
-  /* Shape + depth */
-  --r-sm: 9px;
-  --r-md: 13px;
-  --r-lg: 18px;
-  --shadow-sm: 0 1px 2px rgba(28, 26, 20, 0.04), 0 1px 3px rgba(28, 26, 20, 0.05);
-  --shadow-pop: 0 6px 28px rgba(28, 26, 20, 0.1), 0 1px 3px rgba(28, 26, 20, 0.06);
-
-  /* Type */
-  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-serif: "Newsreader Variable", Georgia, "Times New Roman", serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-hiero: "Noto Sans Egyptian Hieroglyphs", serif;
-
-  /* Layout */
-  --measure: 720px; /* chat column */
-  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-* {
-  box-sizing: border-box;
-}
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
-body {
-  background: var(--ground);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
-/* Papyrus grain — a faint paper fibre over the whole ground. Subtle on purpose. */
+/* Papyrus grain — a faint fibre over the whole ground. Subtle on dark. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.5;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 ::selection {
   background: var(--clay-soft);
 }
 
-.app {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: 256px 1fr;
-  height: 100%;
-}
-
-/* ── Left rail ─────────────────────────────────────────── */
-.rail {
-  background: var(--ground);
-  border-right: 1px solid var(--line);
-  padding: 18px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.brand {
-  display: flex;
-  align-items: baseline;
-  padding: 8px 8px 4px;
-}
-.brand-word {
-  font-family: var(--font-sans);
-  font-weight: 500;
-  font-size: 16px;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-.team {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 9px 11px;
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  cursor: default;
-  font: inherit;
-  font-size: 13.5px;
-  color: var(--ink-2);
-}
-.team-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--sage);
-  flex-shrink: 0;
-}
-.team-name {
-  flex: 1;
-  text-align: left;
-  color: var(--ink);
-}
-.team-caret {
-  color: var(--ink-4);
-}
-.rail-spacer {
-  flex: 1;
-}
-.rail-hint {
-  color: var(--ink-4);
-  font-size: 12px;
-  line-height: 1.55;
-  padding: 0 8px;
-  margin: 0;
-}
-
-/* ── Main / thread ─────────────────────────────────────── */
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0; /* allow the scroll child to actually scroll, not push the dock off-screen */
-  position: relative;
-  overflow: hidden;
-}
+/* ── Thread / scroll ───────────────────────────────────── */
 .scroll {
   flex: 1;
-  min-height: 0; /* the classic flex-overflow fix → composer stays pinned (sticky) */
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
 }
@@ -183,35 +34,6 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 26px;
-}
-
-/* Empty state */
-.empty {
-  margin: auto;
-  text-align: center;
-  max-width: 440px;
-  padding-top: 8vh;
-}
-.empty-glyphs {
-  font-family: var(--font-hiero);
-  font-size: 30px;
-  letter-spacing: 0.18em;
-  color: var(--lapis);
-  opacity: 0.65;
-}
-.empty h1 {
-  font-family: var(--font-serif);
-  font-weight: 500;
-  font-size: 30px;
-  letter-spacing: -0.01em;
-  margin: 18px 0 10px;
-  color: var(--ink);
-}
-.empty p {
-  color: var(--ink-3);
-  font-size: 15px;
-  line-height: 1.6;
-  margin: 0;
 }
 
 /* Turns */
@@ -242,10 +64,9 @@ body::before {
   word-wrap: break-word;
   color: var(--ink);
   font-size: 15px;
-  /* engraved-tablet edge: light top inset + soft drop */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    0 1px 2px rgba(28, 26, 20, 0.05);
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .agent-turn {
   max-width: 100%;
@@ -257,7 +78,7 @@ body::before {
   font-size: 17px;
   line-height: 1.72;
   color: var(--ink);
-  max-width: 640px;
+  max-width: 680px;
 }
 .caret {
   display: inline-block;
@@ -338,12 +159,12 @@ body::before {
   font-weight: 650;
 }
 
-/* Inline code — terracotta, like the references */
+/* Inline code — terracotta on a faint light wash */
 .prose :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.84em;
-  color: var(--danger);
-  background: rgba(28, 26, 20, 0.045);
+  color: var(--clay-strong);
+  background: rgba(236, 231, 218, 0.06);
   border: 0.5px solid var(--line-2);
   border-radius: 5px;
   padding: 1.5px 5px;
@@ -479,8 +300,8 @@ body::before {
   gap: 8px;
   font-size: 14px;
   color: var(--danger);
-  background: rgba(179, 64, 43, 0.06);
-  border: 1px solid rgba(179, 64, 43, 0.18);
+  background: rgba(217, 104, 79, 0.08);
+  border: 1px solid rgba(217, 104, 79, 0.22);
   border-radius: var(--r-md);
   padding: 10px 13px;
 }
@@ -492,9 +313,7 @@ body::before {
   border-left: 3px solid var(--clay);
   border-radius: var(--r-md);
   padding: 14px 16px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    var(--shadow-sm);
+  box-shadow: var(--shadow-sm);
   animation: rise 0.28s var(--ease);
 }
 .perm-head {
@@ -519,58 +338,13 @@ body::before {
   gap: 8px;
   margin-top: 14px;
 }
-.btn {
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
-  padding: 7px 15px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line-2);
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition:
-    border-color 0.16s var(--ease),
-    background 0.16s var(--ease);
-}
-.btn:hover {
-  border-color: var(--ink-4);
-}
-.btn.primary {
-  background: var(--clay);
-  border-color: var(--clay);
-  color: #fff;
-}
-.btn.primary:hover {
-  background: var(--clay-strong);
-  border-color: var(--clay-strong);
-}
-.btn.ghost {
-  border-color: transparent;
-  color: var(--ink-3);
-}
-.btn.ghost:hover {
-  background: var(--raised);
-}
 
-/* ── Dock / composer ───────────────────────────────────── */
-.dock {
-  border-top: 1px solid var(--line);
-  background: linear-gradient(to bottom, transparent, var(--ground) 22%);
-  padding: 10px 28px 18px;
-}
-.dock-inner {
-  max-width: var(--measure);
-  margin: 0 auto;
-}
-/* The only moving element during a turn: a single excavation verb that fades as
-   it changes. Lives in the thread (where prose will appear), never above the
-   composer. */
+/* The only moving element during a turn: a single excavation verb that fades. */
 .thinking {
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 16px;
-  color: var(--lapis);
+  color: var(--ink-3);
 }
 .word-fade {
   display: inline-block;
@@ -583,114 +357,6 @@ body::before {
   to {
     opacity: 1;
   }
-}
-.composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  background: var(--paper);
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-lg);
-  padding: 9px 9px 9px 16px;
-  box-shadow: var(--shadow-sm);
-  transition:
-    border-color 0.16s var(--ease),
-    box-shadow 0.16s var(--ease);
-}
-.composer:focus-within {
-  border-color: rgba(196, 99, 63, 0.5);
-  box-shadow:
-    var(--shadow-sm),
-    0 0 0 3px var(--clay-soft);
-}
-.composer textarea {
-  flex: 1;
-  resize: none;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.55;
-  padding: 5px 0;
-  max-height: 220px;
-}
-.composer textarea::placeholder {
-  color: var(--ink-4);
-}
-.composer textarea:disabled {
-  opacity: 0.5;
-}
-.send {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--clay);
-  color: #fff;
-  cursor: pointer;
-  transition:
-    background 0.16s var(--ease),
-    transform 0.1s var(--ease);
-}
-.send:hover:not(:disabled) {
-  background: var(--clay-strong);
-}
-.send:active:not(:disabled) {
-  transform: scale(0.94);
-}
-.send:disabled {
-  background: var(--raised-2);
-  color: var(--ink-4);
-  cursor: default;
-}
-/* While a turn runs, the arrow becomes a stop square. */
-.send.stop-mode {
-  background: var(--ink);
-}
-.send.stop-mode:hover {
-  background: var(--danger);
-}
-.footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 9px;
-  padding: 0 4px;
-  color: var(--ink-4);
-  font-size: 12px;
-}
-.footer-model {
-  font-family: var(--font-mono);
-  letter-spacing: -0.02em;
-}
-.details-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  background: none;
-  border: none;
-  color: var(--ink-4);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-}
-.details-toggle:hover {
-  color: var(--ink-2);
-}
-.details-toggle .flip {
-  transform: rotate(180deg);
-}
-.details {
-  margin-top: 7px;
-  padding: 0 4px;
-  color: var(--ink-4);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────── */
@@ -720,14 +386,4 @@ body::before {
 .markdown-fallback {
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* ── Responsive ────────────────────────────────────────── */
-@media (max-width: 880px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-  .rail {
-    display: none;
-  }
 }

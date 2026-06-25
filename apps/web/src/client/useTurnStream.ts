@@ -29,6 +29,10 @@ export interface TurnState {
   send: (prompt: string) => void;
   respond: (decision: PermissionDecision) => void;
   stop: () => void;
+  /** Clear the conversation and start fresh (new chat). */
+  reset: () => void;
+  /** Load a past conversation's messages and bind its session for resuming. */
+  loadConversation: (sessionId: string, messages: { role: string; content: string }[]) => void;
 }
 
 /** Parse a fetch stream as SSE, yielding each `data:` frame's parsed JSON. */
@@ -181,5 +185,32 @@ export function useTurnStream(): TurnState {
     void fetch(`/api/turn/${turnId}/abort`, { method: "POST" });
   }, []);
 
-  return { items, busy, permission, lastCost, send, respond, stop };
+  const reset = useCallback(() => {
+    if (busy) return;
+    setItems([]);
+    setPermission(null);
+    setLastCost(null);
+    sessionRef.current = undefined;
+    turnIdRef.current = null;
+  }, [busy]);
+
+  const loadConversation = useCallback(
+    (sessionId: string, messages: { role: string; content: string }[]) => {
+      if (busy) return;
+      setPermission(null);
+      setLastCost(null);
+      sessionRef.current = sessionId;
+      turnIdRef.current = null;
+      setItems(
+        messages.map((m) => ({
+          id: idRef.current++,
+          kind: m.role === "user" ? "user" : "agent",
+          text: m.content,
+        })),
+      );
+    },
+    [busy],
+  );
+
+  return { items, busy, permission, lastCost, send, respond, stop, reset, loadConversation };
 }

@@ -61,6 +61,15 @@ export function bootRuntime(): Runtime {
 }
 
 /**
+ * Change the brain model for subsequent turns (turn.ts reads `rt.model`), so a
+ * model switch from the UI takes effect immediately — no worker restart. The
+ * persisted HEMIUNU_MODEL (written by the settings route) keeps it across boots.
+ */
+export function setRuntimeModel(model: string): void {
+  bootRuntime().model = model;
+}
+
+/**
  * Servers + tool patterns active for this turn. The filesystem server is only
  * exposed once the launch folder is trusted (mirrors the CLI's fsOn gate); trust
  * defaults to off (null → excluded) until the user allows it.
