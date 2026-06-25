@@ -236,6 +236,13 @@ async function registerClient(
     }),
     signal: sig(),
   });
+  if (res.status === 401 || res.status === 403) {
+    // Endpoint exists but won't let just anyone register — it's gated to
+    // pre-approved partner apps (Figma's hosted MCP behaves this way).
+    throw new Error(
+      "this server doesn't allow automatic sign-up (its registration is restricted to approved apps) — not supported yet.",
+    );
+  }
   if (!res.ok) throw new Error(`client registration failed: ${res.status} ${await res.text()}`);
   const j = (await res.json()) as { client_id?: string; client_secret?: string };
   if (!j.client_id) throw new Error("client registration returned no client_id");

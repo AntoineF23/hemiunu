@@ -70,6 +70,7 @@ const RESERVED = new Set([
   "list",
   "resume",
   "mcp",
+  "mcp-auth",
   "help",
   "exit",
   "quit",

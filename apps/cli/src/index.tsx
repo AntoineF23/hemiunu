@@ -1,8 +1,13 @@
 import { mkdirSync } from "node:fs";
+import { createServer } from "node:http";
 import { join } from "node:path";
 import {
   runTurn,
   applyMcpOAuth,
+  startMcpAuth,
+  completeMcpAuth,
+  probeMcpServer,
+  mcpOAuthStatus,
   REMEMBER_TOOL_ID,
   PARALLEL_TOOL_ID,
   configDir,
@@ -106,7 +111,7 @@ function Banner() {
 }
 
 const HELP =
-  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /team-add  /team-remove  /restore  /exit";
+  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /mcp-auth  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /team-add  /team-remove  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -120,6 +125,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "list", desc: "list saved conversations" },
   { name: "resume", desc: "resume a conversation by id" },
   { name: "mcp", desc: "show connected MCP servers" },
+  { name: "mcp-auth", desc: "sign in to a remote MCP server (OAuth)" },
   { name: "scan", desc: "map connected sources (/scan or /scan <name>)" },
   { name: "skills", desc: "list saved skills" },
   { name: "github", desc: "connect / switch / disconnect GitHub accounts" },
@@ -1213,6 +1219,75 @@ function App({
     });
   }
 
+  // Authorize a remote MCP server via OAuth from the CLI: spin a throwaway
+  // loopback server to catch the browser redirect (same pattern as preview.ts),
+  // open the consent page, then exchange the code and store the token.
+  async function runMcpAuth(server: string) {
+    const cfg = (registry.mcpServers as Record<string, { url?: string }>)[server];
+    const url = typeof cfg?.url === "string" ? cfg.url : undefined;
+    if (!url) {
+      return push({
+        kind: "note",
+        text: `· '${server}' isn't a remote (http/sse) server — nothing to authorize`,
+      });
+    }
+    let settled = false;
+    const srv = createServer((req, res) => {
+      const u = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (u.pathname !== "/callback") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(
+        '<!doctype html><meta charset="utf-8"><body style="font:16px system-ui;padding:3rem">You can close this tab and return to Hemiunu.</body>',
+      );
+      if (settled) return;
+      settled = true;
+      const code = u.searchParams.get("code");
+      const state = u.searchParams.get("state");
+      void (async () => {
+        try {
+          if (!code || !state) throw new Error("missing code/state in redirect");
+          await completeMcpAuth(state, code);
+          push({ kind: "note", text: `· connected to ${server} (authorized)` });
+        } catch (e) {
+          push({
+            kind: "error",
+            text: `MCP authorize: ${e instanceof Error ? e.message : String(e)}`,
+          });
+        } finally {
+          srv.close();
+        }
+      })();
+    });
+    srv.listen(0, "127.0.0.1", () => {
+      void (async () => {
+        const addr = srv.address();
+        const port = typeof addr === "object" && addr ? addr.port : 0;
+        try {
+          const { authUrl } = await startMcpAuth(server, url, `http://127.0.0.1:${port}/callback`);
+          openUrl(authUrl);
+          push({ kind: "note", text: `· authorize ${server} in your browser…` });
+        } catch (e) {
+          srv.close();
+          push({
+            kind: "error",
+            text: `MCP authorize: ${e instanceof Error ? e.message : String(e)}`,
+          });
+        }
+      })();
+    });
+    // Stop waiting after 5 minutes if the user never finishes.
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        srv.close();
+      }
+    }, 5 * 60_000).unref();
+  }
+
   // Connect Vercel with its own browser login (no token) — needs the real
   // terminal, so pause the TUI (render nothing) while `vercel login` runs, then
   // resume with all state intact. Remembered machine-wide, so it's a one-time step.
@@ -1258,12 +1333,37 @@ function App({
       return promptTrust();
     }
     if (cmd === "mcp") {
-      const names = Object.keys(registry.mcpServers).join(", ") || "none";
       const userMcp = join(configDir(), "mcp.json");
-      return push({
+      const names = Object.keys(registry.mcpServers);
+      push({
         kind: "note",
-        text: `mcp connected: ${names}\nadd your own servers in ${userMcp} (merged over the defaults)`,
+        text: `mcp connected: ${names.join(", ") || "none"}\nadd your own servers in ${userMcp} (merged over the defaults)`,
       });
+      // Probe remote (http/sse) servers and flag any that need authorizing or
+      // are offline — so a server with no tools explains itself.
+      void (async () => {
+        for (const name of names) {
+          const cfg = (registry.mcpServers as Record<string, { url?: string }>)[name];
+          if (typeof cfg?.url !== "string") continue;
+          const p = await probeMcpServer(cfg.url);
+          if (p === "needs-auth" && !mcpOAuthStatus(name).authorized) {
+            push({ kind: "note", text: `· ${name} needs authorizing — run /mcp-auth ${name}` });
+          } else if (p === "unreachable") {
+            push({ kind: "note", text: `· ${name} not reachable (is it running?)` });
+          }
+        }
+      })();
+      return;
+    }
+    if (cmd === "mcp-auth") {
+      const server = rest.join(" ").trim();
+      if (!server)
+        return push({
+          kind: "note",
+          text: "· usage: /mcp-auth <server-name> (sign in to a remote MCP server)",
+        });
+      void runMcpAuth(server);
+      return;
     }
     if (cmd === "setup") {
       const set = (v?: string) => (v && v.trim() ? "✓" : "✗");
