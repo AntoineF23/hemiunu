@@ -63,7 +63,26 @@ if (existsSync(clientDir)) {
 // Fail fast with a clear message if the engine can't boot (e.g. bad config dir).
 bootRuntime();
 
-serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
+const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
   console.log(`Hemiunu web worker → http://${HOST}:${info.port}`);
   console.log(`Dev client (Vite) → http://${HOST}:5173`);
+});
+
+// A raw EADDRINUSE stack trace is meaningless to a non-coder. The usual cause is
+// a previous Hemiunu web worker still running on this port — say so, plainly,
+// with how to fix it.
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `\nHemiunu web is already running (port ${PORT} is in use).\n\n` +
+        `Just open it in your browser:  http://${HOST}:5173\n\n` +
+        `If it's stuck, stop the old one and try again:\n` +
+        `  lsof -ti tcp:${PORT} | xargs kill        (macOS / Linux)\n` +
+        `or start this one on a different port:\n` +
+        `  HEMIUNU_WEB_PORT=4318 hemiunu-web\n`,
+    );
+  } else {
+    console.error(`\nHemiunu web couldn't start: ${err.message}\n`);
+  }
+  process.exit(1);
 });
