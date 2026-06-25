@@ -4,9 +4,29 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { explainError } from "./explain";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
-import { commitFile, getFile, githubViewer, resolveGithubToken, resolveRepo } from "./github";
+import {
+  commitFile,
+  getFile,
+  githubViewer,
+  repoExists,
+  resolveGithubToken,
+  resolveRepo,
+} from "./github";
 import { slugify } from "./prototype";
 import { localWorkspaceDir } from "./workspace";
+
+/**
+ * A 404 from the Contents API is ambiguous: the FILE may be absent, OR the whole
+ * repo may be unreachable by this token (wrong GitHub account / revoked access).
+ * When something 404s, confirm the repo is actually reachable; if not, return
+ * actionable guidance instead of pretending the file just needs creating — this
+ * is the single most common confusing failure for a non-coder.
+ */
+async function repoAccessError(token: string, repo: string): Promise<string | null> {
+  return (await repoExists(token, repo))
+    ? null
+    : `can't reach ${repo} — you may be signed in to a different GitHub account, or access was revoked. Reconnect with /github (or switch accounts), then try again.`;
+}
 
 /**
  * Team-knowledge layer. A team = a feature = a repo (1:1), so each repo carries
@@ -165,7 +185,8 @@ export async function addPrototypeNote(
     );
     return `Added ${kind} to ${repo}'s PROTOTYPE.md${commitUrl ? ` — ${commitUrl}` : ""}.`;
   } catch (e) {
-    return `Couldn't update PROTOTYPE.md: ${explainError(e)}`;
+    const access = await repoAccessError(token, repo);
+    return `Couldn't update PROTOTYPE.md: ${access ?? explainError(e)}`;
   }
 }
 
@@ -182,7 +203,14 @@ export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> 
   if (!token) return "Not signed in to GitHub — run /github, or work locally with no team.";
   try {
     const file = await getFile(token, repo, PROTOTYPE_FILE, opts?.branch);
-    if (!file) return `No PROTOTYPE.md yet in ${repo} — add knowledge and I'll create it.`;
+    if (!file) {
+      // A 404 here might mean the repo itself is unreachable, not just an absent
+      // file — distinguish so we don't promise a create that will then fail.
+      const access = await repoAccessError(token, repo);
+      return access
+        ? `Couldn't read PROTOTYPE.md: ${access}`
+        : `No PROTOTYPE.md yet in ${repo} — add knowledge and I'll create it.`;
+    }
     return file.content;
   } catch (e) {
     return `Couldn't read PROTOTYPE.md: ${explainError(e)}`;
@@ -227,7 +255,8 @@ export async function updatePrototype(content: string, opts?: RemoteOpts): Promi
     );
     return `Updated ${repo}'s PROTOTYPE.md${commitUrl ? ` — ${commitUrl}` : ""}.`;
   } catch (e) {
-    return `Couldn't update PROTOTYPE.md: ${explainError(e)}`;
+    const access = await repoAccessError(token, repo);
+    return `Couldn't update PROTOTYPE.md: ${access ?? explainError(e)}`;
   }
 }
 
