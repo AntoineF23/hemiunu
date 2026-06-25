@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadMcpRegistry } from "./config";
+import { loadMcpRegistry, parseServerConfig } from "./config";
 
 function withTempMcp<T>(servers: Record<string, unknown>, fn: (root: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), "hemiunu-mcp-"));
@@ -14,6 +14,28 @@ function withTempMcp<T>(servers: Record<string, unknown>, fn: (root: string) => 
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test("parseServerConfig: infers type=stdio from a command (standard Playwright config)", () => {
+  const cfg = parseServerConfig({ command: "npx", args: ["@playwright/mcp@latest"] }) as {
+    type: string;
+    command: string;
+  };
+  assert.equal(cfg.type, "stdio");
+  assert.equal(cfg.command, "npx");
+});
+
+test("parseServerConfig: infers type=http from a url", () => {
+  const cfg = parseServerConfig({ url: "https://mcp.example.com/sse" }) as { type: string };
+  assert.equal(cfg.type, "http");
+});
+
+test("loadMcpRegistry: connects a server given with no explicit type", () => {
+  withTempMcp({ playwright: { command: "npx", args: ["@playwright/mcp@latest"] } }, (dir) => {
+    const reg = loadMcpRegistry(dir);
+    assert.deepEqual(reg.toolPatterns, ["mcp__playwright__*"]);
+    assert.equal(reg.skipped.length, 0);
+  });
+});
 
 test("loadMcpRegistry: interpolates ${ENV} and emits one tool pattern per server", () => {
   process.env.HEMIUNU_TEST_TOKEN = "secret123";

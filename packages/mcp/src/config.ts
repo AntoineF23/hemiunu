@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 
 // --- mcp.json schema (standard `mcpServers` shape) ---
@@ -19,10 +19,34 @@ const RemoteServer = z.object({
   disabled: z.boolean().optional(),
 });
 
-const ServerConfig = z.discriminatedUnion("type", [StdioServer, RemoteServer]);
+/**
+ * Infer a missing `type` from the config shape, matching the de-facto standard
+ * MCP config (Claude Desktop, and what every server's docs paste): a `command`
+ * means stdio, a `url` means http. Without this, pasting a normal config like
+ * `{ "command": "npx", "args": ["@playwright/mcp@latest"] }` would be rejected
+ * for lacking an explicit `type`.
+ */
+function inferType(raw: unknown): unknown {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    if (o.type === undefined) {
+      if (typeof o.command === "string") return { ...o, type: "stdio" };
+      if (typeof o.url === "string") return { ...o, type: "http" };
+    }
+  }
+  return raw;
+}
+
+const ServerConfig = z.preprocess(
+  inferType,
+  z.discriminatedUnion("type", [StdioServer, RemoteServer]),
+);
 const McpFile = z.object({
   mcpServers: z.record(z.string(), ServerConfig).default({}),
 });
+
+/** A single MCP server entry (stdio or http/sse), as stored in mcp.json. */
+export type McpServerConfig = z.infer<typeof ServerConfig>;
 
 export interface LoadedRegistry {
   /** Server configs ready to pass to the SDK `mcpServers` option. */
@@ -109,4 +133,37 @@ export function loadMcpRegistry(
   }
 
   return result;
+}
+
+// --- User overlay editing (so a UI can add servers without hand-editing JSON) ---
+
+/** Validate one server config; throws a readable error if it's malformed. */
+export function parseServerConfig(raw: unknown): McpServerConfig {
+  return ServerConfig.parse(raw);
+}
+
+/** Read the raw (un-interpolated) server map from a user mcp.json overlay. */
+export function readUserServers(path: string): Record<string, McpServerConfig> {
+  return readServers(path);
+}
+
+function writeUserServers(path: string, servers: Record<string, McpServerConfig>): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`, "utf8");
+}
+
+/** Add or replace a server in the user overlay (creates the file if needed). */
+export function upsertUserServer(path: string, name: string, config: McpServerConfig): void {
+  const servers = readUserServers(path);
+  servers[name] = config;
+  writeUserServers(path, servers);
+}
+
+/** Remove a server from the user overlay. Returns false if it wasn't there. */
+export function removeUserServer(path: string, name: string): boolean {
+  const servers = readUserServers(path);
+  if (!(name in servers)) return false;
+  delete servers[name];
+  writeUserServers(path, servers);
+  return true;
 }
