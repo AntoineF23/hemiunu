@@ -101,7 +101,9 @@ export async function* runTurn(opts: RunTurnOptions) {
   for (const name of SUBAGENT_NAMES) {
     const spec = SUBAGENTS[name];
     const agentTools = spec.tools(sourceTools);
-    if (name === "researcher" && !hasSources) continue;
+    // Source-dependent subagents (the researcher) only earn their keep when
+    // sources are connected; reasoning specialists are always available.
+    if (spec.needsSources && !hasSources) continue;
     agents[name] = {
       description: spec.description,
       prompt: subagentPrompt(name),

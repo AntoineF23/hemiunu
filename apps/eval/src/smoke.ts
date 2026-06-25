@@ -227,6 +227,15 @@ async function main() {
       !/design principles to apply/i.test(researcher),
       "researcher should NOT carry the design guideline",
     );
+    // Specialist subagents carry their own knowledge packs (generic injection).
+    assert(
+      /product strategy principles/i.test(subagentPrompt("strategist")),
+      "strategist should inject the strategy pack",
+    );
+    assert(
+      /analytics principles/i.test(subagentPrompt("analyst")),
+      "analyst should inject the metrics pack",
+    );
   });
 
   await check("writeUserEnv writes ~/.hemiunu/.env and a user mcp.json overlay merges", () => {

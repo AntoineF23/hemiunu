@@ -21,42 +21,43 @@ function knowledge(name: string, root: string = process.env.HEMIUNU_HOME ?? proc
 }
 
 /**
- * Resolve a subagent's full system prompt, injecting domain knowledge where it
- * applies. The prototyper carries the full design guideline so every wireframe
- * is designed to those principles; other subagents use their base prompt.
+ * Resolve a subagent's full system prompt. Each subagent can declare a domain
+ * knowledge pack (`context/knowledge/<name>.md`) that's injected ONLY into its
+ * own prompt — so the team scales (add a pack + point a subagent at it) without
+ * bloating the always-on coordinator prompt. See context/knowledge/README.md.
+ * The researcher additionally gets the live list of connected source maps.
  */
 export function subagentPrompt(name: SubagentName): string {
-  const base = SUBAGENTS[name].prompt;
+  const spec = SUBAGENTS[name];
+  let prompt = spec.prompt;
+
+  // Researcher: the live source-map list (dynamic, not a file).
   if (name === "researcher") {
     const maps = loadSourceMaps();
     if (maps.length) {
       const list = maps
         .map((m) => `- ${m.mcp} — ${m.description || "(no description)"}`)
         .join("\n");
-      return `${base}
+      prompt += `
 
 # Source maps
 Some connected sources have a saved map of what's inside them. Before searching a source, consult its map with get_source_map (it gives key page/database ids + how to query) so you go straight to the right place. If you find the map is out of date, fix it with save_source_map (correct/remove only what you can verify; leave anything you can't confirm). Sources with a map:
 ${list}`;
     }
-    return base;
   }
-  if (name === "prototyper") {
-    const design = knowledge("design");
-    if (design) {
-      return `${base}
 
-# Design principles to apply
-
-Apply these when making structural and interaction decisions. At the LOW-FI wireframe stage you are working on, lean on Purpose, Agency (incl. Forgiveness), Familiarity, Flexibility, and especially Simplicity/Clarity — hierarchy via order, spacing, and contrast; every element earns its place. Visual Craft (fonts, colour, motion) and Delight polish belong to the hi-fi stage, not here — keep the wireframe grayscale and structural, but let these principles shape what you include and how you arrange it.
-
-${design}`;
+  // Any subagent's declared knowledge pack (committed under context/knowledge/).
+  if (spec.knowledge) {
+    const doc = knowledge(spec.knowledge.name);
+    if (doc) {
+      const intro = spec.knowledge.intro ? `\n\n${spec.knowledge.intro}` : "";
+      prompt += `\n\n# ${spec.knowledge.header}${intro}\n\n${doc}`;
     }
   }
-  return base;
+  return prompt;
 }
 
-export type SubagentName = "researcher" | "prototyper";
+export type SubagentName = "researcher" | "prototyper" | "strategist" | "analyst";
 
 /** System prompt for the `researcher` subagent (runs on the cheaper retrieval tier). */
 export const RESEARCHER_PROMPT = `You are Hemiunu's research subagent. The coordinator delegates a research request to you; your job is to gather grounded information from the connected data sources so the coordinator can answer.
@@ -78,6 +79,23 @@ Rules:
 - Build only the screen(s) in the brief. Add small annotation notes sparingly where they aid understanding.
 - Save via save_prototype with an index.html entry point (and any assets); files are written flat into the prototype workspace, alongside PROTOTYPE.md. Then tell the coordinator in one or two lines what you built and the saved path. Do not address the end user directly.`;
 
+/** System prompt for the `strategist` subagent (product judgment; synthesis tier). */
+export const STRATEGIST_PROMPT = `You are Hemiunu's product strategist subagent. The coordinator hands you a decision, idea, or trade-off; assess it with sharp product judgment and return a clear recommendation — you do NOT build anything.
+
+- Weigh desirability (do users want it?), viability (does it serve the business?), and feasibility (can we build it?) — name the binding constraint.
+- Pressure-test the problem before the solution: whose problem, how painful, how do we know. Call out untested assumptions and the riskiest one.
+- Size the opportunity and the cost honestly; prefer the cheapest experiment that would change your mind.
+- Be decisive: give a recommendation (do it / don't / validate first), the reasoning in a few bullets, and the single cheapest next step to de-risk it.
+- Ground claims in what the coordinator gives you (research, PROTOTYPE.md, data). If evidence is missing, say what you'd need rather than inventing it. Do not address the end user directly.`;
+
+/** System prompt for the `analyst` subagent (data/metrics interpretation; synthesis tier). */
+export const ANALYST_PROMPT = `You are Hemiunu's data & insights analyst subagent. The coordinator gives you data, metrics, or a question about them; interpret it rigorously and return the insight that matters.
+
+- Say what the numbers show AND what they don't — segments, time windows, base rates, confounders, sample size. Distinguish correlation from cause.
+- Quantify (magnitudes, deltas, %); never invent figures. If a number you need is missing, state exactly what to measure or pull.
+- Flag weak or misleading evidence (vanity metrics, survivorship, selection bias) plainly.
+- End with the key insight(s) in one or two lines and the recommended action or the metric to track next. Do not address the end user directly.`;
+
 export interface SubagentSpec {
   description: string;
   prompt: string;
@@ -85,6 +103,11 @@ export interface SubagentSpec {
   tier: "research" | "synthesis";
   /** The tool patterns this subagent may use, given the connected source tools. */
   tools: (sourceTools: string[]) => string[];
+  /** Optional domain knowledge pack injected into this subagent's prompt
+   *  (context/knowledge/<name>.md). See context/knowledge/README.md. */
+  knowledge?: { name: string; header: string; intro?: string };
+  /** Only registered when sources are connected (e.g. the researcher). */
+  needsSources?: boolean;
 }
 
 /** Single source of truth for subagents — used both for the SDK `agents`
@@ -96,6 +119,7 @@ export const SUBAGENTS: Record<SubagentName, SubagentSpec> = {
     prompt: RESEARCHER_PROMPT,
     tier: "research",
     tools: (sourceTools) => [...sourceTools, SOURCE_TOOLS],
+    needsSources: true,
   },
   prototyper: {
     description:
@@ -103,6 +127,28 @@ export const SUBAGENTS: Record<SubagentName, SubagentSpec> = {
     prompt: PROTOTYPER_PROMPT,
     tier: "synthesis",
     tools: () => [PROTOTYPE_TOOLS],
+    knowledge: {
+      name: "design",
+      header: "Design principles to apply",
+      intro:
+        "Apply these when making structural and interaction decisions. At the LOW-FI wireframe stage you are working on, lean on Purpose, Agency (incl. Forgiveness), Familiarity, Flexibility, and especially Simplicity/Clarity — hierarchy via order, spacing, and contrast; every element earns its place. Visual Craft (fonts, colour, motion) and Delight polish belong to the hi-fi stage, not here — keep the wireframe grayscale and structural, but let these principles shape what you include and how you arrange it.",
+    },
+  },
+  strategist: {
+    description:
+      "Assesses a product decision, idea, or trade-off with strategic judgment (desirability/viability/feasibility, opportunity sizing, prioritisation, risks) and returns a clear recommendation + the cheapest next validation. Delegate prioritisation, 'should we build X', positioning, or scope trade-off questions — give it the relevant context/research.",
+    prompt: STRATEGIST_PROMPT,
+    tier: "synthesis",
+    tools: () => [],
+    knowledge: { name: "strategy", header: "Product strategy principles" },
+  },
+  analyst: {
+    description:
+      "Interprets data/metrics rigorously — what they show, what they don't, segments, confounders, what to measure next — and returns the key insight + recommended action. Delegate questions about metrics, funnels, experiment results, or 'what does this data mean' — give it the actual numbers/source.",
+    prompt: ANALYST_PROMPT,
+    tier: "synthesis",
+    tools: () => [],
+    knowledge: { name: "metrics", header: "Analytics principles" },
   },
 };
 
