@@ -15,6 +15,15 @@ import { currentWorkspace } from "./workspace-context";
 
 const API = "https://api.github.com";
 
+// GitHub REST calls are small and normally finish in 1–3s, so they get a much
+// tighter timeout than the 60s we allow slow AI-model calls — a stalled commit
+// surfaces as an error in ~20s instead of looking frozen for a full minute.
+// Override with HEMIUNU_GITHUB_TIMEOUT_MS.
+function githubTimeout(): number {
+  const n = Number(process.env.HEMIUNU_GITHUB_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 20_000;
+}
+
 function apiHeaders(token: string): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`,
@@ -89,7 +98,7 @@ export async function requestDeviceCode(scope: string = DEVICE_SCOPE): Promise<D
       "User-Agent": "hemiunu",
     },
     body: JSON.stringify({ client_id: clientId, scope }),
-    signal: timeoutSignal(),
+    signal: timeoutSignal(githubTimeout()),
   });
   if (!res.ok) throw new Error(`device-code request failed: ${res.status} ${await res.text()}`);
   const j = (await res.json()) as {
@@ -130,7 +139,7 @@ export async function pollDeviceToken(deviceCode: string): Promise<DevicePoll> {
       device_code: deviceCode,
       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
     }),
-    signal: timeoutSignal(),
+    signal: timeoutSignal(githubTimeout()),
   });
   const j = (await res.json()) as {
     access_token?: string;
@@ -285,7 +294,7 @@ export async function repoExists(token: string, repo: string): Promise<boolean> 
   try {
     const res = await fetch(`${API}/repos/${normalizeRepo(repo)}`, {
       headers: apiHeaders(token),
-      signal: timeoutSignal(),
+      signal: timeoutSignal(githubTimeout()),
     });
     if (res.ok) return true;
     if (res.status === 404 || res.status === 403 || res.status === 401) return false;
@@ -351,7 +360,10 @@ export function resolveRepo(): string | undefined {
 /** The authenticated user's login (for attribution), or undefined if the token is bad. */
 export async function githubViewer(token: string): Promise<string | undefined> {
   try {
-    const res = await fetch(`${API}/user`, { headers: apiHeaders(token), signal: timeoutSignal() });
+    const res = await fetch(`${API}/user`, {
+      headers: apiHeaders(token),
+      signal: timeoutSignal(githubTimeout()),
+    });
     if (!res.ok) return undefined;
     const json = (await res.json()) as { login?: string };
     return json.login;
@@ -386,7 +398,7 @@ export async function createRepo(
     method: "POST",
     headers: { ...apiHeaders(token), "Content-Type": "application/json" },
     body: JSON.stringify({ name: repoName, private: isPrivate, auto_init: true }),
-    signal: timeoutSignal(),
+    signal: timeoutSignal(githubTimeout()),
   });
   if (!res.ok) return { error: `${res.status} ${await res.text()}` };
   const json = (await res.json()) as { full_name?: string };
@@ -411,7 +423,7 @@ export async function renameRepo(
     method: "PATCH",
     headers: { ...apiHeaders(token), "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
-    signal: timeoutSignal(),
+    signal: timeoutSignal(githubTimeout()),
   });
   if (!res.ok) return { error: `${res.status} ${await res.text()}` };
   const json = (await res.json()) as { full_name?: string };
@@ -431,7 +443,10 @@ export async function getFile(
   branch?: string,
 ): Promise<RepoFile | null> {
   const url = `${API}/repos/${repo}/contents/${path}${branch ? `?ref=${encodeURIComponent(branch)}` : ""}`;
-  const res = await fetch(url, { headers: apiHeaders(token), signal: timeoutSignal() });
+  const res = await fetch(url, {
+    headers: apiHeaders(token),
+    signal: timeoutSignal(githubTimeout()),
+  });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitHub GET ${path}: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { content?: string; sha: string };
@@ -462,7 +477,7 @@ async function putFile(
       ...(sha ? { sha } : {}),
       ...(branch ? { branch } : {}),
     }),
-    signal: timeoutSignal(),
+    signal: timeoutSignal(githubTimeout()),
   });
   if (!res.ok) {
     const err = new Error(`GitHub PUT ${path}: ${res.status} ${await res.text()}`) as Error & {
