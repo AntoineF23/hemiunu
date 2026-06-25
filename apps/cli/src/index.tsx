@@ -98,7 +98,7 @@ function Banner() {
 }
 
 const HELP =
-  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /restore  /exit";
+  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -118,6 +118,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "vercel", desc: "connect Vercel (for sharing)" },
   { name: "team", desc: "switch team (feature/repo)" },
   { name: "team-new", desc: "new feature (name → create) or add a repo by URL" },
+  { name: "team-rename", desc: "rename the current team's repo" },
   { name: "restore", desc: "recover files from the recycle bin" },
   { name: "help", desc: "show all commands" },
   { name: "exit", desc: "quit Hemiunu" },
@@ -953,7 +954,10 @@ function App({
   async function renameCurrentTeam(name: string): Promise<string> {
     const current = currentProjectRef.current;
     if (!current) {
-      return "There's no team to rename — you're working locally. Create one first with create_team.";
+      const m =
+        "There's no team to rename — you're working locally. Create one first with /team-new.";
+      push({ kind: "note", text: `· ${m}` });
+      return m;
     }
     const token = resolveGithubToken();
     if (!token) {
@@ -1399,6 +1403,16 @@ function App({
         return;
       }
       void createAndAdoptTeam(arg); // create + migrate local work + adopt (no reset)
+      return;
+    }
+    if (cmd === "team-rename") {
+      const arg = rest.join(" ").trim();
+      if (!arg)
+        return push({
+          kind: "note",
+          text: "· usage: /team-rename <new-name> (renames the current team's repo)",
+        });
+      void renameCurrentTeam(arg); // rename repo + state + local checkout (no reset)
       return;
     }
     if (cmd === "team") {

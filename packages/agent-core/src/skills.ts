@@ -71,6 +71,7 @@ const RESERVED = new Set([
   "vercel",
   "team",
   "team-new",
+  "team-rename",
   "restore",
   "settings",
 ]);
