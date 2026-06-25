@@ -161,7 +161,11 @@ export function listTrash(): TrashEntry[] {
     const metaPath = join(root, id, TRASH_META);
     if (!existsSync(metaPath)) continue;
     try {
-      const m = JSON.parse(readFileSync(metaPath, "utf8")) as { repo?: string; reason?: string; time?: string };
+      const m = JSON.parse(readFileSync(metaPath, "utf8")) as {
+        repo?: string;
+        reason?: string;
+        time?: string;
+      };
       out.push({ id, repo: m.repo ?? "?", reason: m.reason ?? "", time: m.time ?? "" });
     } catch {
       // skip a malformed entry
@@ -234,7 +238,10 @@ async function isValidWorkspace(path: string, cloneUrl: string): Promise<boolean
  * were preserved because the remote hadn't moved. Anything discarded along the
  * way is snapshotted to the recycle bin first (see `binned`).
  */
-export async function ensureWorkspace(repo: string, opts: EnsureOptions = {}): Promise<EnsureResult> {
+export async function ensureWorkspace(
+  repo: string,
+  opts: EnsureOptions = {},
+): Promise<EnsureResult> {
   const norm = normalizeRepo(repo);
   const path = workspacePath(norm);
   const cloneUrl = opts.cloneUrl ?? `https://github.com/${norm}.git`;
@@ -310,12 +317,17 @@ export async function commitAndPush(
       `user.email=${opts.login ? `${opts.login}@users.noreply.github.com` : "hemiunu@users.noreply.github.com"}`,
     ];
     const c = await git([...ident, "commit", "-m", opts.message], { cwd: path });
-    if (!c.ok) return { ok: false, branch, note: `commit failed: ${c.stderr.trim().slice(0, 200)}` };
+    if (!c.ok)
+      return { ok: false, branch, note: `commit failed: ${c.stderr.trim().slice(0, 200)}` };
   }
 
   const p = await git(["push", "-u", "origin", `HEAD:${branch}`], { cwd: path, token: opts.token });
   if (!p.ok) return { ok: false, branch, note: `push failed: ${p.stderr.trim().slice(0, 200)}` };
-  return { ok: true, branch, note: dirty ? `committed and pushed to ${branch}` : `pushed ${branch} (nothing new)` };
+  return {
+    ok: true,
+    branch,
+    note: dirty ? `committed and pushed to ${branch}` : `pushed ${branch} (nothing new)`,
+  };
 }
 
 /**
@@ -341,7 +353,8 @@ export async function migrateLocalIntoTeam(
 ): Promise<{ migrated: string[]; pushed: boolean; note: string }> {
   const src = opts.cwd ?? localWorkspaceDir();
   const synced = await ensureWorkspace(repo, { token: opts.token, cloneUrl: opts.cloneUrl });
-  if (synced.action === "failed") return { migrated: [], pushed: false, note: synced.note ?? "sync failed" };
+  if (synced.action === "failed")
+    return { migrated: [], pushed: false, note: synced.note ?? "sync failed" };
   const dir = synced.path;
   if (!existsSync(src)) return { migrated: [], pushed: false, note: "no local work to migrate" };
   // PROTOTYPE.md is the team's living knowledge file — never clobber a remote

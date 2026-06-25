@@ -39,8 +39,7 @@ const ENV_RE = /\$\{([A-Za-z0-9_]+)\}/g;
 function interpolate(value: string, missing: Set<string>): string {
   return value.replace(ENV_RE, (_, name: string) => {
     // ${CWD} / ${PWD} resolve to the directory Hemiunu was launched in.
-    const v =
-      name === "CWD" || name === "PWD" ? process.cwd() : process.env[name];
+    const v = name === "CWD" || name === "PWD" ? process.cwd() : process.env[name];
     if (v === undefined || v === "") {
       missing.add(name);
       return "";

@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
@@ -60,8 +53,26 @@ export interface SavedSkill {
 
 /** Built-in CLI command names a skill may not shadow. */
 const RESERVED = new Set([
-  "new", "clear", "compact", "models", "setup", "trust", "list", "resume",
-  "mcp", "help", "exit", "quit", "skills", "skill", "github", "vercel", "team", "team-new", "restore", "settings",
+  "new",
+  "clear",
+  "compact",
+  "models",
+  "setup",
+  "trust",
+  "list",
+  "resume",
+  "mcp",
+  "help",
+  "exit",
+  "quit",
+  "skills",
+  "skill",
+  "github",
+  "vercel",
+  "team",
+  "team-new",
+  "restore",
+  "settings",
 ]);
 
 /** The per-user skills directory. */
@@ -120,9 +131,7 @@ export function loadSkills(root: string = configDir()): SkillMeta[] {
 export function loadSkill(name: string, root: string = configDir()): Skill | undefined {
   const slug = slugify(name);
   const dir = skillsDir(root);
-  const file = [join(dir, `${slug}.md`), join(dir, slug, "SKILL.md")].find((p) =>
-    existsSync(p),
-  );
+  const file = [join(dir, `${slug}.md`), join(dir, slug, "SKILL.md")].find((p) => existsSync(p));
   if (!file) return undefined;
   const { meta, body } = parseFrontmatter(readFileSync(file, "utf8"));
   return { ...metaFrom(meta, slug, file), body };
@@ -180,15 +189,35 @@ export function createSkillsServer(root: string = configDir()) {
     "save_skill",
     "Create or replace a reusable skill (a saved procedure the user can later run as /<name>). Write clear step-by-step instructions in the body; use $ARGUMENTS where the user's input should be inserted. Only do this when the user asks to save/create/update a skill.",
     {
-      name: z.string().describe("Short kebab-case command name, e.g. 'weekly-report'. Becomes the /command."),
-      description: z.string().describe("One line: what the skill does and when to use it (this is how it's discovered)."),
-      body: z.string().describe("The skill instructions in Markdown. Put $ARGUMENTS where the user's input goes."),
-      argument_hint: z.string().optional().describe("Optional hint for the expected argument(s), e.g. '[week]'."),
+      name: z
+        .string()
+        .describe("Short kebab-case command name, e.g. 'weekly-report'. Becomes the /command."),
+      description: z
+        .string()
+        .describe(
+          "One line: what the skill does and when to use it (this is how it's discovered).",
+        ),
+      body: z
+        .string()
+        .describe(
+          "The skill instructions in Markdown. Put $ARGUMENTS where the user's input goes.",
+        ),
+      argument_hint: z
+        .string()
+        .optional()
+        .describe("Optional hint for the expected argument(s), e.g. '[week]'."),
     },
     async ({ name, description, body, argument_hint }) => {
       try {
         const s = saveSkill({ name, description, body, argumentHint: argument_hint, root });
-        return { content: [{ type: "text", text: `Saved skill /${s.name} (${s.path}). The user can run it with /${s.name}.` }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Saved skill /${s.name} (${s.path}). The user can run it with /${s.name}.`,
+            },
+          ],
+        };
       } catch (e) {
         return { content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }] };
       }
@@ -219,7 +248,10 @@ export function createSkillsServer(root: string = configDir()) {
       if (!s) return { content: [{ type: "text", text: `No skill named '${name}'.` }] };
       return {
         content: [
-          { type: "text", text: `---\nname: ${s.name}\ndescription: ${s.description}\n---\n\n${s.body}` },
+          {
+            type: "text",
+            text: `---\nname: ${s.name}\ndescription: ${s.description}\n---\n\n${s.body}`,
+          },
         ],
       };
     },

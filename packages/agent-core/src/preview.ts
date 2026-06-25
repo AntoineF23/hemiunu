@@ -93,7 +93,9 @@ function startStatic(dir: string): Promise<Running> {
           reply.end("Not found");
           return;
         }
-        reply.writeHead(200, { "Content-Type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream" });
+        reply.writeHead(200, {
+          "Content-Type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
+        });
         createReadStream(file).pipe(reply);
       } catch {
         reply.writeHead(500);
@@ -114,7 +116,9 @@ async function startDevServer(dir: string): Promise<Running> {
   if (!existsSync(join(dir, "node_modules"))) {
     await new Promise<void>((res, rej) => {
       const inst = spawn(pm, ["install"], { cwd: dir, stdio: "ignore" });
-      inst.on("exit", (code) => (code === 0 ? res() : rej(new Error(`${pm} install failed (${code})`))));
+      inst.on("exit", (code) =>
+        code === 0 ? res() : rej(new Error(`${pm} install failed (${code})`)),
+      );
       inst.on("error", rej);
     });
   }
@@ -150,7 +154,10 @@ async function startDevServer(dir: string): Promise<Running> {
  * Start (or reuse) the localhost preview for `repo` served from `dir`, and open
  * the browser. Reuses the running preview if it's already for this repo.
  */
-export async function startPreview(repo: string, dir: string): Promise<{ url: string } | { error: string }> {
+export async function startPreview(
+  repo: string,
+  dir: string,
+): Promise<{ url: string } | { error: string }> {
   if (current?.repo === repo) return { url: current.url };
   stopPreview();
   try {

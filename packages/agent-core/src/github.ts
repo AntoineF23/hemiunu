@@ -82,7 +82,11 @@ export async function requestDeviceCode(scope: string = DEVICE_SCOPE): Promise<D
   }
   const res = await fetch("https://github.com/login/device/code", {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "hemiunu" },
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "hemiunu",
+    },
     body: JSON.stringify({ client_id: clientId, scope }),
   });
   if (!res.ok) throw new Error(`device-code request failed: ${res.status} ${await res.text()}`);
@@ -114,7 +118,11 @@ export async function pollDeviceToken(deviceCode: string): Promise<DevicePoll> {
   if (!clientId) return { status: "error", message: "No GitHub OAuth client id." };
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "hemiunu" },
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "hemiunu",
+    },
     body: JSON.stringify({
       client_id: clientId,
       device_code: deviceCode,
@@ -340,8 +348,7 @@ export async function createRepo(
   }
   repoName = repoName.replace(/\s+/g, "-");
   const viewer = await githubViewer(token);
-  const url =
-    org && org !== viewer ? `${API}/orgs/${org}/repos` : `${API}/user/repos`;
+  const url = org && org !== viewer ? `${API}/orgs/${org}/repos` : `${API}/user/repos`;
   const res = await fetch(url, {
     method: "POST",
     headers: { ...apiHeaders(token), "Content-Type": "application/json" },

@@ -20,14 +20,17 @@ export function createShareServer() {
     "Save the current prototype's changes to its repo: stage, commit, and push. to='checkpoint' pushes a branch you can review/preview; to='main' publishes to the default branch and clears the local workspace. Always confirm with the user before pushing to main.",
     {
       message: z.string().describe("Commit message summarizing the changes."),
-      to: z.enum(["checkpoint", "main"]).describe("Where to push: a checkpoint branch, or main (done)."),
+      to: z
+        .enum(["checkpoint", "main"])
+        .describe("Where to push: a checkpoint branch, or main (done)."),
     },
     async ({ message, to }) => {
       const repo = resolveRepo();
       if (!repo) return text("No team selected — pick one (/team) first.");
       const token = resolveGithubToken();
       if (!token) return text("Not signed in to GitHub — run /github.");
-      if (!existsSync(workspacePath(repo))) return text("No local workspace — run iterate_prototype first.");
+      if (!existsSync(workspacePath(repo)))
+        return text("No local workspace — run iterate_prototype first.");
       const login = (await githubViewer(token)) ?? undefined;
       const r = await commitAndPush(repo, { message, token, login, toMain: to === "main" });
       if (!r.ok) return text(r.note);

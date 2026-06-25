@@ -75,7 +75,10 @@ export function summarizeResult(text: string): string {
     }
     if (typeof j.markdown === "string") {
       const first =
-        j.markdown.replace(/^[>#\s]+/, "").split("\n").find((l: string) => l.trim()) ?? "";
+        j.markdown
+          .replace(/^[>#\s]+/, "")
+          .split("\n")
+          .find((l: string) => l.trim()) ?? "";
       return first ? `“${clip(first.trim(), 90)}”` : "empty page";
     }
     if (typeof j.content === "string") {

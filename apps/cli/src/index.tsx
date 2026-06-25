@@ -83,7 +83,9 @@ function Banner() {
     <Box flexDirection="column">
       <Text color={SAND}>{LOGO}</Text>
       <Text>
-        <Text color={SAND} bold>{"   HEMIUNU"}</Text>
+        <Text color={SAND} bold>
+          {"   HEMIUNU"}
+        </Text>
         <Text color={PAPYRUS}>{"  ☥  product agent"}</Text>
       </Text>
     </Box>
@@ -146,8 +148,7 @@ function contextWindowFor(model: string): number {
   if (m.includes("grok")) return 256_000;
   if (m.includes("qwen")) return 256_000;
   if (m.includes("gpt") || m.includes("o1") || m.includes("o3")) return 128_000;
-  if (m.includes("llama") || m.includes("mistral") || m.includes("deepseek"))
-    return 128_000;
+  if (m.includes("llama") || m.includes("mistral") || m.includes("deepseek")) return 128_000;
   return 128_000;
 }
 const COMPACT_AT = Math.min(
@@ -259,7 +260,9 @@ function toolPreview(input: unknown): string {
   if (str(i.data_source_id)) return shortId(str(i.data_source_id));
   if (str(i.mcp)) return str(i.mcp);
   if (str(i.prompt)) return `“${clip(str(i.prompt), 60)}”`;
-  const firstStr = Object.values(i).find((v) => typeof v === "string" && v.trim()) as string | undefined;
+  const firstStr = Object.values(i).find((v) => typeof v === "string" && v.trim()) as
+    | string
+    | undefined;
   return firstStr ? clip(firstStr.trim(), 60) : "";
 }
 
@@ -267,7 +270,8 @@ function toolPreview(input: unknown): string {
 function summarizeResult(text: string): string {
   const t = text.trim();
   if (!t) return "done";
-  if (/^(Error|EPERM|ENOENT|EACCES|EISDIR)/i.test(t)) return `⚠ ${clip(t.replace(/\s+/g, " "), 120)}`;
+  if (/^(Error|EPERM|ENOENT|EACCES|EISDIR)/i.test(t))
+    return `⚠ ${clip(t.replace(/\s+/g, " "), 120)}`;
   let j: any;
   try {
     j = JSON.parse(t);
@@ -280,14 +284,19 @@ function summarizeResult(text: string): string {
       return n === 0 ? "no results" : `${n}${j.has_more ? "+" : ""} result${n === 1 ? "" : "s"}`;
     }
     if (typeof j.markdown === "string") {
-      const first = j.markdown.replace(/^[>#\s]+/, "").split("\n").find((l: string) => l.trim()) ?? "";
+      const first =
+        j.markdown
+          .replace(/^[>#\s]+/, "")
+          .split("\n")
+          .find((l: string) => l.trim()) ?? "";
       return first ? `“${clip(first.trim(), 90)}”` : "empty page";
     }
     if (typeof j.content === "string") {
       const c = j.content;
       const files = (c.match(/\[FILE\]/g) ?? []).length;
       const dirs = (c.match(/\[DIR\]/g) ?? []).length;
-      if (files || dirs) return `${dirs} dir${dirs === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`;
+      if (files || dirs)
+        return `${dirs} dir${dirs === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`;
       return clip(c.replace(/\s+/g, " "), 120);
     }
     const keys = Object.keys(j);
@@ -402,8 +411,12 @@ function ItemView({ item }: { item: Item }) {
         return (
           <Box marginTop={1}>
             <Text>
-              <Text color={SAND} bold>{"⌂ "}</Text>
-              <Text color={SAND} bold>{prettyTool(item.name)}</Text>
+              <Text color={SAND} bold>
+                {"⌂ "}
+              </Text>
+              <Text color={SAND} bold>
+                {prettyTool(item.name)}
+              </Text>
               <Text dimColor>{` ${item.input}`}</Text>
             </Text>
           </Box>
@@ -506,9 +519,9 @@ function App({
   const fsName = Object.keys(registry.mcpServers).find(
     (n) =>
       n === "filesystem" ||
-      (((registry.mcpServers as Record<string, { args?: unknown[] }>)[n]?.args ?? []) as unknown[]).some(
-        (a) => typeof a === "string" && a.includes("server-filesystem"),
-      ),
+      (
+        ((registry.mcpServers as Record<string, { args?: unknown[] }>)[n]?.args ?? []) as unknown[]
+      ).some((a) => typeof a === "string" && a.includes("server-filesystem")),
   );
   const [fsTrust, setFsTrust] = useState<boolean | null>(() =>
     fsName ? (store.getFolderTrust(process.cwd()) ?? null) : true,
@@ -520,9 +533,7 @@ function App({
   const fsOn = fsTrust === true || !fsName;
   const activeServers = fsOn
     ? registry.mcpServers
-    : Object.fromEntries(
-        Object.entries(registry.mcpServers).filter(([n]) => n !== fsName),
-      );
+    : Object.fromEntries(Object.entries(registry.mcpServers).filter(([n]) => n !== fsName));
   const activePatterns = fsOn
     ? registry.toolPatterns
     : registry.toolPatterns.filter((p) => !p.startsWith(`mcp__${fsName}__`));
@@ -538,7 +549,10 @@ function App({
   // the whole lot. The active project lives in the React state/refs above; the
   // others are parked here, keyed by repo.
   const workspaces = useRef(
-    new Map<string, { items: Item[]; sessionId?: string; compacted: string; ctx: number; cost: number }>(),
+    new Map<
+      string,
+      { items: Item[]; sessionId?: string; compacted: string; ctx: number; cost: number }
+    >(),
   );
   const currentProjectRef = useRef<string | undefined>(initialTeam ?? undefined);
   const turnStartRef = useRef(0); // ms timestamp when the current turn began
@@ -596,7 +610,8 @@ function App({
       const removed = await pruneTeams(token);
       if (!removed.length) return;
       setTeams(listTeams());
-      if (currentProjectRef.current && removed.includes(currentProjectRef.current)) switchProject(null);
+      if (currentProjectRef.current && removed.includes(currentProjectRef.current))
+        switchProject(null);
       push({
         kind: "note",
         text: `· removed ${removed.length} team${removed.length > 1 ? "s" : ""} no longer on GitHub: ${removed.join(", ")}`,
@@ -648,7 +663,9 @@ function App({
     const unmapped = names.filter((n) => !mapped.has(n));
     const sourceMaps = maps.length
       ? `\n\n## Source maps (what's inside each connected source)\nBefore searching a source, consult its map with get_source_map (it has key page/database ids + how to query) so you go straight to the right place. Keep maps current: if you find one is out of date, fix it with save_source_map.${
-          unmapped.length ? ` Connected sources with no map yet: ${unmapped.join(", ")} — suggest /scan to map them.` : ""
+          unmapped.length
+            ? ` Connected sources with no map yet: ${unmapped.join(", ")} — suggest /scan to map them.`
+            : ""
         }\n${maps.map((m) => `- ${m.mcp} — ${m.description || "(no description)"}`).join("\n")}`
       : "";
     const summary = compactedRef.current
@@ -758,7 +775,12 @@ function App({
           if (e.type === "task-start") {
             push({ kind: "tool", name: e.label, input: `→ ${e.agent} · running`, sub: true });
           } else if (e.type === "task-tool") {
-            push({ kind: "tool", name: `${e.label} · ${prettyTool(e.tool)}`, input: "", sub: true });
+            push({
+              kind: "tool",
+              name: `${e.label} · ${prettyTool(e.tool)}`,
+              input: "",
+              sub: true,
+            });
           } else {
             push({ kind: "result", text: `${e.label} ${e.ok ? "done" : "failed"}`, sub: true });
           }
@@ -940,7 +962,10 @@ function App({
       prompt: `# Existing repo PROTOTYPE.md\n\n${remote}\n\n---\n\n# Local session PROTOTYPE.md\n\n${local}`,
     });
     if ("error" in res) {
-      push({ kind: "note", text: `· PROTOTYPE.md merged (AI cleanup skipped: ${res.error.slice(0, 80)})` });
+      push({
+        kind: "note",
+        text: `· PROTOTYPE.md merged (AI cleanup skipped: ${res.error.slice(0, 80)})`,
+      });
       return null;
     }
     const cleaned = res.text
@@ -958,7 +983,10 @@ function App({
     if ((currentProjectRef.current ?? "") !== "") return; // only when coming FROM local
     const token = resolveGithubToken();
     if (!token) {
-      push({ kind: "note", text: `· can't move local work into ${repo} — not signed in to GitHub (/github)` });
+      push({
+        kind: "note",
+        text: `· can't move local work into ${repo} — not signed in to GitHub (/github)`,
+      });
       return;
     }
     const login = (await githubViewer(token)) ?? undefined;
@@ -1075,13 +1103,24 @@ function App({
               onTool: (t) =>
                 push({ kind: "tool", name: `${mcp} · ${prettyTool(t)}`, input: "", sub: true }),
             });
-            push({ kind: "result", text: `${mcp} mapped${summary ? ` — ${clip(summary, 100)}` : ""}`, sub: true });
+            push({
+              kind: "result",
+              text: `${mcp} mapped${summary ? ` — ${clip(summary, 100)}` : ""}`,
+              sub: true,
+            });
           } catch (e) {
-            push({ kind: "result", text: `${mcp} scan failed: ${e instanceof Error ? e.message : String(e)}`, sub: true });
+            push({
+              kind: "result",
+              text: `${mcp} scan failed: ${e instanceof Error ? e.message : String(e)}`,
+              sub: true,
+            });
           }
         }),
       );
-      push({ kind: "note", text: "· source maps saved to ~/.hemiunu/sources/ — use /scan again to refresh" });
+      push({
+        kind: "note",
+        text: "· source maps saved to ~/.hemiunu/sources/ — use /scan again to refresh",
+      });
     } finally {
       setBusy(false);
     }
@@ -1139,7 +1178,10 @@ function App({
     try {
       dc = await requestDeviceCode();
     } catch (e) {
-      return push({ kind: "error", text: `GitHub sign-in: ${e instanceof Error ? e.message : String(e)}` });
+      return push({
+        kind: "error",
+        text: `GitHub sign-in: ${e instanceof Error ? e.message : String(e)}`,
+      });
     }
     setDevice({ userCode: dc.userCode, url: dc.verificationUri });
     openUrl(dc.verificationUri);
@@ -1167,7 +1209,9 @@ function App({
     setDevice(null);
     push({
       kind: "note",
-      text: githubLoginCancel.current ? "· GitHub sign-in cancelled" : "· GitHub sign-in timed out — /github to retry",
+      text: githubLoginCancel.current
+        ? "· GitHub sign-in cancelled"
+        : "· GitHub sign-in timed out — /github to retry",
     });
   }
 
@@ -1178,13 +1222,18 @@ function App({
     setPaused(true);
     await sleep(80); // let Ink render an empty frame and drop raw mode
     try {
-      (process.stdin as NodeJS.ReadStream & { setRawMode?: (m: boolean) => void }).setRawMode?.(false);
+      (process.stdin as NodeJS.ReadStream & { setRawMode?: (m: boolean) => void }).setRawMode?.(
+        false,
+      );
     } catch {
       // ignore — Ink manages raw mode; this is best-effort
     }
     const ok = await vercelLogin();
     setPaused(false);
-    push({ kind: "note", text: ok ? "· connected to Vercel" : "· Vercel sign-in was cancelled or didn't complete" });
+    push({
+      kind: "note",
+      text: ok ? "· connected to Vercel" : "· Vercel sign-in was cancelled or didn't complete",
+    });
   }
 
   function handleCommand(text: string) {
@@ -1377,7 +1426,10 @@ function App({
             adoptTeam(repo); // keep the conversation; no banner reset
             push({ kind: "note", text: `· added team ${repo} — now your team` });
           } else {
-            push({ kind: "error", text: `couldn't find ${repo} on GitHub (or you don't have access)` });
+            push({
+              kind: "error",
+              text: `couldn't find ${repo} on GitHub (or you don't have access)`,
+            });
           }
         })();
         return;
@@ -1467,10 +1519,7 @@ function App({
       ? 0
       : Math.max(
           0,
-          Math.min(
-            menuSel - Math.floor(SLASH_MENU_ROWS / 2),
-            slashItems.length - SLASH_MENU_ROWS,
-          ),
+          Math.min(menuSel - Math.floor(SLASH_MENU_ROWS / 2), slashItems.length - SLASH_MENU_ROWS),
         );
 
   // Keep the highlight on the top match as the filter narrows; refresh the
@@ -1667,7 +1716,11 @@ function App({
           {slashItems.slice(menuStart, menuStart + SLASH_MENU_ROWS).map((it, i) => {
             const idx = menuStart + i;
             return (
-              <Text key={it.name} color={idx === menuSel ? SAGE : undefined} dimColor={idx !== menuSel}>
+              <Text
+                key={it.name}
+                color={idx === menuSel ? SAGE : undefined}
+                dimColor={idx !== menuSel}
+              >
                 {idx === menuSel ? "❯ " : "  "}
                 <Text color={idx === menuSel ? SAGE : SAND} bold>{`/${it.name}`}</Text>
                 {it.skill ? <Text dimColor>{"  · skill"}</Text> : null}
@@ -1686,24 +1739,27 @@ function App({
         <Box flexDirection="column" marginTop={1}>
           <Text>
             <Text color={SAGE}>{"⌂ "}</Text>
-            <Text color={SAND} bold>Connect GitHub</Text>
+            <Text color={SAND} bold>
+              Connect GitHub
+            </Text>
           </Text>
-          <Text dimColor>{"  1. opening "}<Text color={SAGE}>{device.url}</Text>{" in your browser"}</Text>
+          <Text dimColor>
+            {"  1. opening "}
+            <Text color={SAGE}>{device.url}</Text>
+            {" in your browser"}
+          </Text>
           <Text>
             {"  2. enter this code:  "}
-            <Text color={SAND} bold>{device.userCode}</Text>
+            <Text color={SAND} bold>
+              {device.userCode}
+            </Text>
           </Text>
           <Text dimColor>{"  waiting for you to authorize…  (Esc to cancel)"}</Text>
         </Box>
       ) : null}
 
       {inputActive ? (
-        <Box
-          marginTop={1}
-          borderStyle="single"
-          borderColor={STONE}
-          paddingX={1}
-        >
+        <Box marginTop={1} borderStyle="single" borderColor={STONE} paddingX={1}>
           <Text color={SAND} bold>
             {"☥ "}
           </Text>
@@ -1718,7 +1774,9 @@ function App({
 
       <Box flexDirection="column" marginTop={1}>
         <Text>
-          <Text color={SAND} bold>{teamLabel}</Text>
+          <Text color={SAND} bold>
+            {teamLabel}
+          </Text>
           {teams.length >= 1 ? <Text dimColor>{"  · shift+tab to switch"}</Text> : null}
         </Text>
         <Text color={SAGE}>{`${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
@@ -1742,8 +1800,18 @@ const SETUP_FIELDS: {
   mask?: boolean;
   required?: boolean;
 }[] = [
-  { key: "apiKey", label: "Anthropic API key", hint: "the Claude brain — required", mask: true, required: true },
-  { key: "baseUrl", label: "Gateway base URL", hint: "optional — Enter for Anthropic direct, or a proxy URL" },
+  {
+    key: "apiKey",
+    label: "Anthropic API key",
+    hint: "the Claude brain — required",
+    mask: true,
+    required: true,
+  },
+  {
+    key: "baseUrl",
+    label: "Gateway base URL",
+    hint: "optional — Enter for Anthropic direct, or a proxy URL",
+  },
   { key: "notionToken", label: "Notion token", hint: "optional — press Enter to skip" },
   { key: "tavilyKey", label: "Tavily key", hint: "optional (web search) — press Enter to skip" },
 ];
@@ -1751,7 +1819,12 @@ const SETUP_FIELDS: {
 function Setup({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [value, setValue] = useState("");
-  const valuesRef = useRef<SetupValues>({ apiKey: "", baseUrl: "", notionToken: "", tavilyKey: "" });
+  const valuesRef = useRef<SetupValues>({
+    apiKey: "",
+    baseUrl: "",
+    notionToken: "",
+    tavilyKey: "",
+  });
   const field = SETUP_FIELDS[step];
 
   const submit = (raw: string) => {
@@ -1777,7 +1850,9 @@ function Setup({ onDone }: { onDone: () => void }) {
     <Box flexDirection="column">
       <Banner />
       <Box marginTop={1} marginLeft={3}>
-        <Text color={SAND} bold>Welcome to Hemiunu — let's get you set up.</Text>
+        <Text color={SAND} bold>
+          Welcome to Hemiunu — let's get you set up.
+        </Text>
       </Box>
       <Box marginTop={1} marginLeft={3}>
         <Text>
@@ -1791,7 +1866,9 @@ function Setup({ onDone }: { onDone: () => void }) {
         </Text>
       </Box>
       <Box marginLeft={3}>
-        <Text dimColor>{`${field.hint}  ·  ${step + 1}/${SETUP_FIELDS.length}  ·  saved to ${join(configDir(), ".env")}`}</Text>
+        <Text
+          dimColor
+        >{`${field.hint}  ·  ${step + 1}/${SETUP_FIELDS.length}  ·  saved to ${join(configDir(), ".env")}`}</Text>
       </Box>
     </Box>
   );
@@ -1841,7 +1918,9 @@ function LaunchPicker({
     <Box flexDirection="column">
       <Banner />
       <Box marginTop={1} marginLeft={3} flexDirection="column">
-        <Text color={SAND} bold>Which team do you want to work on?</Text>
+        <Text color={SAND} bold>
+          Which team do you want to work on?
+        </Text>
         <Text dimColor>{"Open another terminal to work on a second team in parallel."}</Text>
       </Box>
       <Box marginTop={1} marginLeft={3} flexDirection="column">

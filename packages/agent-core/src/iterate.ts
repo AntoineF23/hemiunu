@@ -58,7 +58,9 @@ export function createWorkspaceServer() {
         if ("error" in prev) {
           return text(`Synced ${repo} (${synced.action}), but the preview failed: ${prev.error}`);
         }
-        const binNote = synced.binned ? " Prior un-pushed edits were saved to the recycle bin (/restore)." : "";
+        const binNote = synced.binned
+          ? " Prior un-pushed edits were saved to the recycle bin (/restore)."
+          : "";
         return text(
           `Iterating on ${repo} — synced to latest (${synced.action}).${binNote} Live preview: ${prev.url}. Edit files with write_workspace_file; the preview hot-reloads.`,
         );
@@ -80,7 +82,8 @@ export function createWorkspaceServer() {
     {},
     async () => {
       const dir = activeProtoDir();
-      if (!existsSync(dir)) return text("Nothing yet — run iterate_prototype or save a prototype first.");
+      if (!existsSync(dir))
+        return text("Nothing yet — run iterate_prototype or save a prototype first.");
       const files = listFiles(dir);
       return text(files.length ? files.join("\n") : "(empty)");
     },
@@ -90,7 +93,11 @@ export function createWorkspaceServer() {
   const readTool = tool(
     "read_workspace_file",
     "Read a file from the current prototype's workspace, to build on top of the existing code.",
-    { path: z.string().describe("Path relative to the workspace root, e.g. 'index.html' or 'app/page.tsx'.") },
+    {
+      path: z
+        .string()
+        .describe("Path relative to the workspace root, e.g. 'index.html' or 'app/page.tsx'."),
+    },
     async ({ path }) => {
       const dir = activeProtoDir();
       const file = confined(dir, path);

@@ -42,8 +42,14 @@ export function createTeamControlServer() {
   const createTool = tool(
     "create_team",
     "Create a new private team repo for the current work and switch into it (keeping this conversation). Use when the user has no team and wants this feature to have its own repo. Name it after the feature, short kebab-case.",
-    { name: z.string().describe("Short kebab-case repo name derived from the request, e.g. 'churn-dashboard'.") },
-    async ({ name }) => ({ content: [{ type: "text", text: await requestControl({ type: "create-team", name }) }] }),
+    {
+      name: z
+        .string()
+        .describe("Short kebab-case repo name derived from the request, e.g. 'churn-dashboard'."),
+    },
+    async ({ name }) => ({
+      content: [{ type: "text", text: await requestControl({ type: "create-team", name }) }],
+    }),
     { annotations: { title: "Create team", readOnlyHint: false } },
   );
 
@@ -51,7 +57,9 @@ export function createTeamControlServer() {
     "switch_team",
     "Switch the current work into one of the user's existing teams (call list_teams first to see them). Use when the user has no team and wants to work inside an existing one.",
     { repo: z.string().describe("The team repo to switch to, as owner/name.") },
-    async ({ repo }) => ({ content: [{ type: "text", text: await requestControl({ type: "switch-team", repo }) }] }),
+    async ({ repo }) => ({
+      content: [{ type: "text", text: await requestControl({ type: "switch-team", repo }) }],
+    }),
     { annotations: { title: "Switch team", readOnlyHint: false } },
   );
 
@@ -61,7 +69,9 @@ export function createTeamControlServer() {
     {},
     async () => {
       const teams = listTeams();
-      return { content: [{ type: "text", text: teams.length ? teams.join("\n") : "(no teams yet)" }] };
+      return {
+        content: [{ type: "text", text: teams.length ? teams.join("\n") : "(no teams yet)" }],
+      };
     },
     { annotations: { title: "List teams", readOnlyHint: true } },
   );

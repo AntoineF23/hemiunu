@@ -129,8 +129,16 @@ export function createSourcesServer(root: string = configDir()) {
     "Save (create or replace) the source map for an MCP server — a durable note of what's inside it: its structure, the ids of key pages/databases with one-line summaries, and how to query it. Use this after scanning a source, or when you notice during normal work that an existing map is out of date (correct or remove only facts you can verify are wrong; leave anything you can't confirm unchanged).",
     {
       mcp: z.string().describe("The MCP server name, e.g. 'notion' or 'filesystem'."),
-      description: z.string().describe("One line: what's inside this source and at what access level. This is the discovery surface other agents see."),
-      body: z.string().describe("The full map in Markdown: overview, key locations (with page/db ids + one-line summaries), and how to query."),
+      description: z
+        .string()
+        .describe(
+          "One line: what's inside this source and at what access level. This is the discovery surface other agents see.",
+        ),
+      body: z
+        .string()
+        .describe(
+          "The full map in Markdown: overview, key locations (with page/db ids + one-line summaries), and how to query.",
+        ),
     },
     async ({ mcp, description, body }) => {
       const s = saveSourceMap({ mcp, description, body, root });
@@ -146,11 +154,21 @@ export function createSourcesServer(root: string = configDir()) {
     async ({ mcp }) => {
       const m = loadSourceMap(mcp, root);
       if (!m) {
-        return { content: [{ type: "text", text: `No source map for '${mcp}' yet. Suggest the user run /scan ${mcp}.` }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No source map for '${mcp}' yet. Suggest the user run /scan ${mcp}.`,
+            },
+          ],
+        };
       }
       return {
         content: [
-          { type: "text", text: `---\nmcp: ${m.mcp}\ndescription: ${m.description}${m.scanned ? `\nscanned: ${m.scanned}` : ""}\n---\n\n${m.body}` },
+          {
+            type: "text",
+            text: `---\nmcp: ${m.mcp}\ndescription: ${m.description}${m.scanned ? `\nscanned: ${m.scanned}` : ""}\n---\n\n${m.body}`,
+          },
         ],
       };
     },
@@ -231,7 +249,10 @@ export async function runScan(opts: ScanOptions): Promise<string> {
         ANTHROPIC_API_KEY: cfg.apiKey,
         ...(cfg.baseUrl ? { ANTHROPIC_BASE_URL: cfg.baseUrl } : {}),
       } as Record<string, string>,
-      mcpServers: { ...(opts.mcpServers ?? {}), "hemiunu-sources": createSourcesServer() } as Options["mcpServers"],
+      mcpServers: {
+        ...(opts.mcpServers ?? {}),
+        "hemiunu-sources": createSourcesServer(),
+      } as Options["mcpServers"],
       tools,
       allowedTools: tools,
     },

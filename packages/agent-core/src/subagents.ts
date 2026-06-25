@@ -14,10 +14,7 @@ const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
  * install dir) rather than the launch folder — otherwise running hemiunu from
  * any other directory silently drops them (e.g. the prototyper's design guide).
  */
-function knowledge(
-  name: string,
-  root: string = process.env.HEMIUNU_HOME ?? process.cwd(),
-): string {
+function knowledge(name: string, root: string = process.env.HEMIUNU_HOME ?? process.cwd()): string {
   const path = join(root, "context", "knowledge", `${name}.md`);
   return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
 }
@@ -32,7 +29,9 @@ export function subagentPrompt(name: SubagentName): string {
   if (name === "researcher") {
     const maps = loadSourceMaps();
     if (maps.length) {
-      const list = maps.map((m) => `- ${m.mcp} — ${m.description || "(no description)"}`).join("\n");
+      const list = maps
+        .map((m) => `- ${m.mcp} — ${m.description || "(no description)"}`)
+        .join("\n");
       return `${base}
 
 # Source maps

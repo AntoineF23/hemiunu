@@ -3,13 +3,7 @@ import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
-import {
-  commitFile,
-  getFile,
-  githubViewer,
-  resolveGithubToken,
-  resolveRepo,
-} from "./github";
+import { commitFile, getFile, githubViewer, resolveGithubToken, resolveRepo } from "./github";
 import { slugify } from "./prototype";
 import { localWorkspaceDir } from "./workspace";
 
@@ -153,7 +147,8 @@ export async function addPrototypeNote(
     return `Saved ${kind} to ./PROTOTYPE.md (local — not pushed). ${LOCAL_HINT}`;
   }
   const token = opts?.token ?? resolveGithubToken();
-  if (!token) return "Not signed in to GitHub — run /github, or switch to “no team” (Shift+Tab) to work locally.";
+  if (!token)
+    return "Not signed in to GitHub — run /github, or switch to “no team” (Shift+Tab) to work locally.";
   try {
     const author = (await githubViewer(token)) ?? "unknown";
     const feature = featureName(repo);
@@ -175,7 +170,10 @@ export async function addPrototypeNote(
 export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> {
   const repo = opts?.repo ?? resolveRepo();
   if (!repo) {
-    return readLocal() ?? `No PROTOTYPE.md yet (local). Add knowledge and I'll create one here. ${LOCAL_HINT}`;
+    return (
+      readLocal() ??
+      `No PROTOTYPE.md yet (local). Add knowledge and I'll create one here. ${LOCAL_HINT}`
+    );
   }
   const token = opts?.token ?? resolveGithubToken();
   if (!token) return "Not signed in to GitHub — run /github, or work locally with no team.";
@@ -201,7 +199,11 @@ export async function updatePrototype(content: string, opts?: RemoteOpts): Promi
     const cur = readLocal();
     const meta = { ...(cur ? parseFrontmatter(cur).meta : {}), ...provided.meta };
     mkdirSync(localWorkspaceDir(), { recursive: true });
-    writeFileSync(localPath(), withFrontmatter(meta, "prototype", date, provided.body || content.trim()), "utf8");
+    writeFileSync(
+      localPath(),
+      withFrontmatter(meta, "prototype", date, provided.body || content.trim()),
+      "utf8",
+    );
     return `Updated ./PROTOTYPE.md (local). ${LOCAL_HINT}`;
   }
   const token = opts?.token ?? resolveGithubToken();

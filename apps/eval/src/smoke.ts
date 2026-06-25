@@ -9,7 +9,15 @@
  * prove the engine end-to-end, then a couple of lightweight behavioural evals.
  * Exits non-zero if any check fails, so it doubles as a CI/pre-push gate.
  */
-import { mkdtempSync, readFileSync, rmSync, mkdirSync, existsSync, copyFileSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  mkdirSync,
+  existsSync,
+  copyFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,12 +68,7 @@ import {
   requestControl,
 } from "@hemiunu/agent-core";
 import { execFileSync } from "node:child_process";
-import {
-  loadContext,
-  buildSystemPrompt,
-  remember,
-  seedContextFiles,
-} from "@hemiunu/memory";
+import { loadContext, buildSystemPrompt, remember, seedContextFiles } from "@hemiunu/memory";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 import { check, assert, collectTurn, report } from "./harness";
 
@@ -84,7 +87,10 @@ async function main() {
   await check("config loads (model, key; base URL optional)", () => {
     const cfg = loadConfig();
     // baseUrl is optional now (undefined = Anthropic direct).
-    assert(cfg.baseUrl === undefined || cfg.baseUrl.startsWith("http"), "baseUrl, if set, should be a URL");
+    assert(
+      cfg.baseUrl === undefined || cfg.baseUrl.startsWith("http"),
+      "baseUrl, if set, should be a URL",
+    );
     assert(cfg.model.length > 0, "model id should be set");
     assert(cfg.apiKey.length > 0, "ANTHROPIC_API_KEY should be set");
   });
@@ -148,7 +154,10 @@ async function main() {
       seedContextFiles({ appRoot, userRoot });
       // remember() appends facts as lines starting with "- "; a fresh template has none.
       const user = loadContext({ appRoot, userRoot }).user;
-      assert(!/^- \S/m.test(user), `seeded user.md should carry no learned facts, got: ${user.slice(0, 80)}`);
+      assert(
+        !/^- \S/m.test(user),
+        `seeded user.md should carry no learned facts, got: ${user.slice(0, 80)}`,
+      );
       assert(
         buildSystemPrompt(loadContext({ appRoot, userRoot })).includes("Hemiunu"),
         "persona still wires through on a fresh install",
@@ -167,7 +176,10 @@ async function main() {
         files: [{ path: "index.html", content: "<!doctype html><title>x</title>" }],
       });
       // index.html sits at the dir root (same level as PROTOTYPE.md would).
-      assert(saved.indexPath === join(dir, "index.html"), `index.html should be at the root, got: ${saved.indexPath}`);
+      assert(
+        saved.indexPath === join(dir, "index.html"),
+        `index.html should be at the root, got: ${saved.indexPath}`,
+      );
       assert(existsSync(join(dir, "index.html")), "index.html should be written");
       let threw = false;
       try {
@@ -202,10 +214,19 @@ async function main() {
 
   await check("prototyper prompt carries the design guideline; researcher doesn't", () => {
     const proto = subagentPrompt("prototyper");
-    assert(/design principles to apply/i.test(proto), "prototyper prompt should inject the design knowledge");
-    assert(/Purpose|Familiarity|earn its place/i.test(proto), "design principles should be present");
+    assert(
+      /design principles to apply/i.test(proto),
+      "prototyper prompt should inject the design knowledge",
+    );
+    assert(
+      /Purpose|Familiarity|earn its place/i.test(proto),
+      "design principles should be present",
+    );
     const researcher = subagentPrompt("researcher");
-    assert(!/design principles to apply/i.test(researcher), "researcher should NOT carry the design guideline");
+    assert(
+      !/design principles to apply/i.test(researcher),
+      "researcher should NOT carry the design guideline",
+    );
   });
 
   await check("writeUserEnv writes ~/.hemiunu/.env and a user mcp.json overlay merges", () => {
@@ -255,7 +276,10 @@ async function main() {
       const msg = await askModel({ provider: "openai", model: "gpt-4o", prompt: "hi" });
       assert(/OPENAI_API_KEY/.test(msg), `should name the missing key, got: ${msg.slice(0, 120)}`);
       const unknown = await askModel({ provider: "nope", model: "x", prompt: "hi" });
-      assert(/unknown provider/i.test(unknown), `should reject unknown provider, got: ${unknown.slice(0, 80)}`);
+      assert(
+        /unknown provider/i.test(unknown),
+        `should reject unknown provider, got: ${unknown.slice(0, 80)}`,
+      );
     } finally {
       if (prev === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = prev;
@@ -274,7 +298,10 @@ async function main() {
       assert(saved.name === "weekly-report", `name should be slugified, got: ${saved.name}`);
 
       const list = loadSkills(root);
-      assert(list.some((s) => s.name === "weekly-report"), "saved skill should be listed");
+      assert(
+        list.some((s) => s.name === "weekly-report"),
+        "saved skill should be listed",
+      );
       assert(
         list[0].description === "Draft the weekly status report.",
         "frontmatter description should round-trip",
@@ -300,79 +327,141 @@ async function main() {
     }
   });
 
-  await check("source maps: saveSourceMap writes a per-mcp file; load round-trips frontmatter + body", () => {
-    const root = mkdtempSync(join(tmpdir(), "hemiunu-sources-"));
-    try {
-      const saved = saveSourceMap({
-        mcp: "Notion",
-        description: "Product workspace — roadmap, specs (viewer).",
-        body: "## Key locations\n- **Roadmap** — page id `abc123` — quarterly OKRs.",
-        root,
-      });
-      assert(saved.mcp === "notion", `mcp name should be slugified, got: ${saved.mcp}`);
+  await check(
+    "source maps: saveSourceMap writes a per-mcp file; load round-trips frontmatter + body",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "hemiunu-sources-"));
+      try {
+        const saved = saveSourceMap({
+          mcp: "Notion",
+          description: "Product workspace — roadmap, specs (viewer).",
+          body: "## Key locations\n- **Roadmap** — page id `abc123` — quarterly OKRs.",
+          root,
+        });
+        assert(saved.mcp === "notion", `mcp name should be slugified, got: ${saved.mcp}`);
 
-      const list = loadSourceMaps(root);
-      assert(list.some((m) => m.mcp === "notion"), "saved map should be listed");
-      assert(
-        list[0].description === "Product workspace — roadmap, specs (viewer).",
-        "frontmatter description should round-trip",
+        const list = loadSourceMaps(root);
+        assert(
+          list.some((m) => m.mcp === "notion"),
+          "saved map should be listed",
+        );
+        assert(
+          list[0].description === "Product workspace — roadmap, specs (viewer).",
+          "frontmatter description should round-trip",
+        );
+        assert(!!list[0].scanned, "a scanned date should be recorded in frontmatter");
+
+        const full = loadSourceMap("notion", root);
+        assert(!!full && /abc123/.test(full.body), "full map body should load on demand");
+
+        assert(loadSourceMap("missing", root) === undefined, "absent map returns undefined");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  await check(
+    "tool cap: PostToolUse hook truncates oversized results, leaves small ones",
+    async () => {
+      const budget = 100; // tokens → 400 chars
+      const cb = createToolCapHook(budget).PostToolUse![0].hooks[0];
+      // Small result (MCP content shape) passes through untouched.
+      const small = await cb(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "mcp__notion__API-post-search",
+          tool_response: { content: [{ type: "text", text: "ok" }] },
+        } as any,
+        "id1",
+        {} as any,
       );
-      assert(!!list[0].scanned, "a scanned date should be recorded in frontmatter");
-
-      const full = loadSourceMap("notion", root);
-      assert(!!full && /abc123/.test(full.body), "full map body should load on demand");
-
-      assert(loadSourceMap("missing", root) === undefined, "absent map returns undefined");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  await check("tool cap: PostToolUse hook truncates oversized results, leaves small ones", async () => {
-    const budget = 100; // tokens → 400 chars
-    const cb = createToolCapHook(budget).PostToolUse![0].hooks[0];
-    // Small result (MCP content shape) passes through untouched.
-    const small = await cb(
-      { hook_event_name: "PostToolUse", tool_name: "mcp__notion__API-post-search", tool_response: { content: [{ type: "text", text: "ok" }] } } as any,
-      "id1",
-      {} as any,
-    );
-    assert(!(small as any).hookSpecificOutput, "small result should not be modified");
-    // Oversized result is replaced with a truncated string + a notice.
-    const big = { content: [{ type: "text", text: "x".repeat(5000) }] };
-    const out = (await cb(
-      { hook_event_name: "PostToolUse", tool_name: "mcp__notion__API-query-data-source", tool_response: big } as any,
-      "id2",
-      {} as any,
-    )) as any;
-    const replaced = out.hookSpecificOutput?.updatedToolOutput as string;
-    assert(typeof replaced === "string", "oversized result should be replaced");
-    assert(replaced.length < 5000 && /truncated/i.test(replaced), "replacement should be shorter and carry a truncation notice");
-  });
+      assert(!(small as any).hookSpecificOutput, "small result should not be modified");
+      // Oversized result is replaced with a truncated string + a notice.
+      const big = { content: [{ type: "text", text: "x".repeat(5000) }] };
+      const out = (await cb(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "mcp__notion__API-query-data-source",
+          tool_response: big,
+        } as any,
+        "id2",
+        {} as any,
+      )) as any;
+      const replaced = out.hookSpecificOutput?.updatedToolOutput as string;
+      assert(typeof replaced === "string", "oversized result should be replaced");
+      assert(
+        replaced.length < 5000 && /truncated/i.test(replaced),
+        "replacement should be shorter and carry a truncation notice",
+      );
+    },
+  );
 
   await check("prototype knowledge: appendKnowledge builds & appends sections", () => {
     // From scratch → frontmatter + a Decisions section.
-    const v1 = appendKnowledge(null, "Churn Dashboard", "decision", "Tabs over wizard.", "antoine", "2026-06-23");
+    const v1 = appendKnowledge(
+      null,
+      "Churn Dashboard",
+      "decision",
+      "Tabs over wizard.",
+      "antoine",
+      "2026-06-23",
+    );
     assert(/title: Churn Dashboard/.test(v1), `should set a title, got:\n${v1}`);
     assert(/feature: churn-dashboard/.test(v1), "should set the feature slug");
-    assert(/## Decisions\n- 2026-06-23 \(antoine\): Tabs over wizard\./.test(v1), `decision should be appended, got:\n${v1}`);
+    assert(
+      /## Decisions\n- 2026-06-23 \(antoine\): Tabs over wizard\./.test(v1),
+      `decision should be appended, got:\n${v1}`,
+    );
 
     // Append a question → new section, existing one preserved, checkbox bullet.
-    const v2 = appendKnowledge(v1, "churn-dashboard", "question", "Empty state range?", "marie", "2026-06-24");
-    assert(/## Decisions\n- 2026-06-23 \(antoine\): Tabs over wizard\./.test(v2), "prior decision preserved");
-    assert(/## Open questions\n- \[ \] Empty state range\? \(marie, 2026-06-24\)/.test(v2), `question appended as a checkbox, got:\n${v2}`);
+    const v2 = appendKnowledge(
+      v1,
+      "churn-dashboard",
+      "question",
+      "Empty state range?",
+      "marie",
+      "2026-06-24",
+    );
+    assert(
+      /## Decisions\n- 2026-06-23 \(antoine\): Tabs over wizard\./.test(v2),
+      "prior decision preserved",
+    );
+    assert(
+      /## Open questions\n- \[ \] Empty state range\? \(marie, 2026-06-24\)/.test(v2),
+      `question appended as a checkbox, got:\n${v2}`,
+    );
     assert(/updated: 2026-06-24/.test(v2), "updated date should advance");
 
     // A second decision lands under the existing Decisions heading.
-    const v3 = appendKnowledge(v2, "churn-dashboard", "decision", "Add cohort filter.", "antoine", "2026-06-25");
+    const v3 = appendKnowledge(
+      v2,
+      "churn-dashboard",
+      "decision",
+      "Add cohort filter.",
+      "antoine",
+      "2026-06-25",
+    );
     const decBlock = v3.slice(v3.indexOf("## Decisions"));
-    assert(/Tabs over wizard[\s\S]*Add cohort filter\./.test(decBlock), "second decision appends under Decisions");
+    assert(
+      /Tabs over wizard[\s\S]*Add cohort filter\./.test(decBlock),
+      "second decision appends under Decisions",
+    );
   });
 
   await check("github helpers: repo normalize + path + token resolution", () => {
-    assert(normalizeRepo("https://github.com/Acme/proto.git") === "Acme/proto", "https url should normalize");
-    assert(normalizeRepo("git@github.com:Acme/proto.git") === "Acme/proto", "ssh url should normalize");
-    assert(prototypePath() === "PROTOTYPE.md", `knowledge file should be at the repo root, got ${prototypePath()}`);
+    assert(
+      normalizeRepo("https://github.com/Acme/proto.git") === "Acme/proto",
+      "https url should normalize",
+    );
+    assert(
+      normalizeRepo("git@github.com:Acme/proto.git") === "Acme/proto",
+      "ssh url should normalize",
+    );
+    assert(
+      prototypePath() === "PROTOTYPE.md",
+      `knowledge file should be at the repo root, got ${prototypePath()}`,
+    );
 
     // Explicit env token takes precedence and is found without a network call.
     const prev = process.env.GITHUB_TOKEN;
@@ -398,7 +487,10 @@ async function main() {
       assert(/GITHUB_TOKEN=ghp_one/.test(env), "new key should be added");
       upsertUserEnv("GITHUB_TOKEN", "ghp_two");
       env = readFileSync(join(dir, ".env"), "utf8");
-      assert(/GITHUB_TOKEN=ghp_two/.test(env) && !/ghp_one/.test(env), "key should be updated in place");
+      assert(
+        /GITHUB_TOKEN=ghp_two/.test(env) && !/ghp_one/.test(env),
+        "key should be updated in place",
+      );
       assert((env.match(/GITHUB_TOKEN=/g) ?? []).length === 1, "no duplicate key lines");
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -419,7 +511,10 @@ async function main() {
       assert(listTeams().length === 0, "starts with no teams");
       addTeam("https://github.com/Acme/alpha.git");
       addTeam("Acme/beta");
-      assert(JSON.stringify(listTeams()) === '["Acme/alpha","Acme/beta"]', `two teams, got ${listTeams()}`);
+      assert(
+        JSON.stringify(listTeams()) === '["Acme/alpha","Acme/beta"]',
+        `two teams, got ${listTeams()}`,
+      );
       assert(currentTeam() === "Acme/beta", "the latest added becomes current");
       // The cycle ring includes a "no team" slot: beta → (no team) → alpha → beta.
       assert(cycleTeam() === "", "cycles past the last team to 'no team' (local)");
@@ -442,47 +537,53 @@ async function main() {
     }
   });
 
-  await check("workspace binding: a turn's repo is isolated from the global team & concurrent turns", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
-    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
-    const prevRepo = process.env.HEMIUNU_PROTOTYPE_REPO;
-    try {
-      process.env.HEMIUNU_CONFIG_DIR = dir;
-      delete process.env.HEMIUNU_PROTOTYPE_REPO; // env override must not mask the binding
-      addTeam("Acme/alpha"); // global selection
-      assert(resolveRepo() === "Acme/alpha", "outside a turn, resolveRepo uses the global team");
+  await check(
+    "workspace binding: a turn's repo is isolated from the global team & concurrent turns",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
+      const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+      const prevRepo = process.env.HEMIUNU_PROTOTYPE_REPO;
+      try {
+        process.env.HEMIUNU_CONFIG_DIR = dir;
+        delete process.env.HEMIUNU_PROTOTYPE_REPO; // env override must not mask the binding
+        addTeam("Acme/alpha"); // global selection
+        assert(resolveRepo() === "Acme/alpha", "outside a turn, resolveRepo uses the global team");
 
-      // A turn bound to a different repo sees ITS repo, not the global one.
-      withWorkspace({ repo: "Acme/beta" }, () => {
-        assert(resolveRepo() === "Acme/beta", "binding overrides the global selection");
-        assert(activeProtoDir().endsWith(join("Acme", "beta")), "activeProtoDir follows the binding");
-      });
-      // A no-team binding means local, even while a global team is set.
-      withWorkspace({ repo: null }, () => {
-        assert(resolveRepo() === undefined, "a null binding means no-team (local)");
-      });
-      // The binding doesn't leak out.
-      assert(resolveRepo() === "Acme/alpha", "the global selection is intact after the turn");
-
-      // Two concurrent turns must each keep their own repo across awaits — the
-      // core guarantee that makes running several teams at once safe.
-      const seen: string[] = [];
-      const turn = (repo: string) =>
-        withWorkspace({ repo }, async () => {
-          await new Promise((r) => setTimeout(r, repo === "Acme/beta" ? 5 : 15));
-          seen.push(`${repo}=${resolveRepo()}`);
+        // A turn bound to a different repo sees ITS repo, not the global one.
+        withWorkspace({ repo: "Acme/beta" }, () => {
+          assert(resolveRepo() === "Acme/beta", "binding overrides the global selection");
+          assert(
+            activeProtoDir().endsWith(join("Acme", "beta")),
+            "activeProtoDir follows the binding",
+          );
         });
-      await Promise.all([turn("Acme/beta"), turn("Acme/gamma")]);
-      assert(seen.includes("Acme/beta=Acme/beta"), "beta turn kept its repo across the await");
-      assert(seen.includes("Acme/gamma=Acme/gamma"), "gamma turn kept its repo across the await");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
-      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
-      if (prevRepo === undefined) delete process.env.HEMIUNU_PROTOTYPE_REPO;
-      else process.env.HEMIUNU_PROTOTYPE_REPO = prevRepo;
-    }
-  });
+        // A no-team binding means local, even while a global team is set.
+        withWorkspace({ repo: null }, () => {
+          assert(resolveRepo() === undefined, "a null binding means no-team (local)");
+        });
+        // The binding doesn't leak out.
+        assert(resolveRepo() === "Acme/alpha", "the global selection is intact after the turn");
+
+        // Two concurrent turns must each keep their own repo across awaits — the
+        // core guarantee that makes running several teams at once safe.
+        const seen: string[] = [];
+        const turn = (repo: string) =>
+          withWorkspace({ repo }, async () => {
+            await new Promise((r) => setTimeout(r, repo === "Acme/beta" ? 5 : 15));
+            seen.push(`${repo}=${resolveRepo()}`);
+          });
+        await Promise.all([turn("Acme/beta"), turn("Acme/gamma")]);
+        assert(seen.includes("Acme/beta=Acme/beta"), "beta turn kept its repo across the await");
+        assert(seen.includes("Acme/gamma=Acme/gamma"), "gamma turn kept its repo across the await");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+        if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+        else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+        if (prevRepo === undefined) delete process.env.HEMIUNU_PROTOTYPE_REPO;
+        else process.env.HEMIUNU_PROTOTYPE_REPO = prevRepo;
+      }
+    },
+  );
 
   await check("github device flow: client-id resolution + refuses without one", async () => {
     const prev = process.env.HEMIUNU_GITHUB_CLIENT_ID;
@@ -533,7 +634,10 @@ async function main() {
       g(["commit", "-aqm", "v2"], remote);
       r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
       assert(r.action === "reset", `should reset to latest, got ${r.action} ${r.note ?? ""}`);
-      assert(readFileSync(join(r.path, "index.html"), "utf8").includes("v2"), "workspace now at latest");
+      assert(
+        readFileSync(join(r.path, "index.html"), "utf8").includes("v2"),
+        "workspace now at latest",
+      );
       assert(!!r.binned, "discarded edits should be snapshotted to the recycle bin");
 
       // The bin holds the forgotten edit; restore recovers it.
@@ -591,7 +695,11 @@ async function main() {
       const r = await ensureWorkspace("acme/proto", { cloneUrl: bare });
       assert(r.action === "cloned", `should clone, got ${r.action} ${r.note ?? ""}`);
       writeFileSync(join(r.path, "index.html"), "<h1>v2 from agent</h1>");
-      const pr = await commitAndPush("acme/proto", { message: "v2", login: "tester", toMain: true });
+      const pr = await commitAndPush("acme/proto", {
+        message: "v2",
+        login: "tester",
+        toMain: true,
+      });
       assert(pr.ok, `push should succeed: ${pr.note}`);
 
       // the remote received it
@@ -654,7 +762,10 @@ async function main() {
         readFileSync(join(verify, "index.html"), "utf8").includes("spark"),
         "remote should have index.html at the root",
       );
-      assert(existsSync(join(verify, "PROTOTYPE.md")), "remote should have PROTOTYPE.md at the root");
+      assert(
+        existsSync(join(verify, "PROTOTYPE.md")),
+        "remote should have PROTOTYPE.md at the root",
+      );
     } finally {
       for (const d of [cfg, bare, seed, local, verify]) rmSync(d, { recursive: true, force: true });
       if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
@@ -664,9 +775,17 @@ async function main() {
 
   await check("control bridge: requestControl routes to the registered handler", async () => {
     try {
-      setControlHandler(async (e) => (e.type === "create-team" ? `made ${e.name}` : `switched ${e.repo}`));
-      assert((await requestControl({ type: "create-team", name: "foo" })) === "made foo", "should route create");
-      assert((await requestControl({ type: "switch-team", repo: "a/b" })) === "switched a/b", "should route switch");
+      setControlHandler(async (e) =>
+        e.type === "create-team" ? `made ${e.name}` : `switched ${e.repo}`,
+      );
+      assert(
+        (await requestControl({ type: "create-team", name: "foo" })) === "made foo",
+        "should route create",
+      );
+      assert(
+        (await requestControl({ type: "switch-team", repo: "a/b" })) === "switched a/b",
+        "should route switch",
+      );
     } finally {
       setControlHandler(null);
     }
@@ -702,7 +821,10 @@ async function main() {
         if (typeof msg.total_cost_usd === "number") liveCost += msg.total_cost_usd;
       }
     }
-    assert(/hemiunu/i.test(text), `expected the agent to call itself Hemiunu, got: ${text.slice(0, 120)}`);
+    assert(
+      /hemiunu/i.test(text),
+      `expected the agent to call itself Hemiunu, got: ${text.slice(0, 120)}`,
+    );
   });
 
   await check("delegates to the researcher subagent and grounds the answer", async () => {
@@ -728,8 +850,11 @@ async function main() {
       const msg = m as Record<string, any>;
       if (msg.type === "assistant") {
         for (const b of msg.message?.content ?? []) {
-          if (b.type === "tool_use" && (b.name === "Agent" || b.name === "Task") &&
-              b.input?.subagent_type === "researcher") {
+          if (
+            b.type === "tool_use" &&
+            (b.name === "Agent" || b.name === "Task") &&
+            b.input?.subagent_type === "researcher"
+          ) {
             delegated = true;
           }
         }
@@ -740,7 +865,10 @@ async function main() {
       }
     }
     assert(delegated, "expected the main loop to delegate to the researcher subagent");
-    assert(/product agent/i.test(text), `expected a grounded answer from the README, got: ${text.slice(0, 120)}`);
+    assert(
+      /product agent/i.test(text),
+      `expected a grounded answer from the README, got: ${text.slice(0, 120)}`,
+    );
   });
 
   await check("ask_model reaches a configured provider", async () => {
@@ -766,10 +894,15 @@ async function main() {
       if (!/HTTP 5\d\d|timeout/i.test(text)) break; // a real error — stop and fail
     }
     if (/HTTP 5\d\d|timeout/i.test(text)) {
-      console.log(`      \x1b[2m(skipped: ${provider} upstream unavailable — ${text.slice(0, 50)})\x1b[0m`);
+      console.log(
+        `      \x1b[2m(skipped: ${provider} upstream unavailable — ${text.slice(0, 50)})\x1b[0m`,
+      );
       return;
     }
-    assert(/pong/i.test(text), `expected PONG from ${provider}/${model}, got: ${text.slice(0, 120)}`);
+    assert(
+      /pong/i.test(text),
+      `expected PONG from ${provider}/${model}, got: ${text.slice(0, 120)}`,
+    );
   });
 
   console.log(`\n\x1b[2m  live turns cost ~$${liveCost.toFixed(4)}\x1b[0m`);

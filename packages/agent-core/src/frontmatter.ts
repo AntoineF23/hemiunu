@@ -18,7 +18,10 @@ export function parseFrontmatter(raw: string): Frontmatter {
     const i = line.indexOf(":");
     if (i === -1) continue;
     const key = line.slice(0, i).trim();
-    const val = line.slice(i + 1).trim().replace(/^["']|["']$/g, "");
+    const val = line
+      .slice(i + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
     if (key) meta[key] = val;
   }
   return { meta, body: m[2].trim() };
@@ -33,10 +36,7 @@ function needsQuote(v: string): boolean {
  * Render frontmatter + body back to canonical text. Key order follows the
  * object's insertion order; undefined values are skipped.
  */
-export function renderFrontmatter(
-  meta: Record<string, string | undefined>,
-  body: string,
-): string {
+export function renderFrontmatter(meta: Record<string, string | undefined>, body: string): string {
   const lines: string[] = [];
   for (const [k, v] of Object.entries(meta)) {
     if (v === undefined) continue;

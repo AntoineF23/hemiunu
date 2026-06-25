@@ -16,13 +16,48 @@ export interface ProviderSpec {
 export const PROVIDERS: Record<string, ProviderSpec> = {
   // Your own gateway/proxy (LiteLLM, etc.), reusing the brain's endpoint+key if
   // it's OpenAI-compatible. Lets proxy users reach every model with one key.
-  proxy: { chatUrl: "", keyEnv: "ANTHROPIC_API_KEY", urlEnv: "ANTHROPIC_BASE_URL", label: "your gateway/proxy" },
-  openai: { chatUrl: "https://api.openai.com/v1/chat/completions", keyEnv: "OPENAI_API_KEY", urlEnv: "OPENAI_BASE_URL", label: "OpenAI" },
-  google: { chatUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", keyEnv: "GEMINI_API_KEY", urlEnv: "GOOGLE_BASE_URL", label: "Google Gemini" },
-  groq: { chatUrl: "https://api.groq.com/openai/v1/chat/completions", keyEnv: "GROQ_API_KEY", urlEnv: "GROQ_BASE_URL", label: "Groq" },
-  xai: { chatUrl: "https://api.x.ai/v1/chat/completions", keyEnv: "XAI_API_KEY", urlEnv: "XAI_BASE_URL", label: "xAI Grok" },
-  deepseek: { chatUrl: "https://api.deepseek.com/chat/completions", keyEnv: "DEEPSEEK_API_KEY", urlEnv: "DEEPSEEK_BASE_URL", label: "DeepSeek" },
-  mistral: { chatUrl: "https://api.mistral.ai/v1/chat/completions", keyEnv: "MISTRAL_API_KEY", urlEnv: "MISTRAL_BASE_URL", label: "Mistral" },
+  proxy: {
+    chatUrl: "",
+    keyEnv: "ANTHROPIC_API_KEY",
+    urlEnv: "ANTHROPIC_BASE_URL",
+    label: "your gateway/proxy",
+  },
+  openai: {
+    chatUrl: "https://api.openai.com/v1/chat/completions",
+    keyEnv: "OPENAI_API_KEY",
+    urlEnv: "OPENAI_BASE_URL",
+    label: "OpenAI",
+  },
+  google: {
+    chatUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    keyEnv: "GEMINI_API_KEY",
+    urlEnv: "GOOGLE_BASE_URL",
+    label: "Google Gemini",
+  },
+  groq: {
+    chatUrl: "https://api.groq.com/openai/v1/chat/completions",
+    keyEnv: "GROQ_API_KEY",
+    urlEnv: "GROQ_BASE_URL",
+    label: "Groq",
+  },
+  xai: {
+    chatUrl: "https://api.x.ai/v1/chat/completions",
+    keyEnv: "XAI_API_KEY",
+    urlEnv: "XAI_BASE_URL",
+    label: "xAI Grok",
+  },
+  deepseek: {
+    chatUrl: "https://api.deepseek.com/chat/completions",
+    keyEnv: "DEEPSEEK_API_KEY",
+    urlEnv: "DEEPSEEK_BASE_URL",
+    label: "DeepSeek",
+  },
+  mistral: {
+    chatUrl: "https://api.mistral.ai/v1/chat/completions",
+    keyEnv: "MISTRAL_API_KEY",
+    urlEnv: "MISTRAL_BASE_URL",
+    label: "Mistral",
+  },
 };
 
 export const PROVIDER_NAMES = Object.keys(PROVIDERS);
@@ -52,7 +87,9 @@ export function resolveProvider(name: string): ResolvedProvider | { error: strin
     chatUrl = name === "proxy" ? `${base}/v1/chat/completions` : `${base}/chat/completions`;
   }
   if (!chatUrl) {
-    return { error: `Provider '${name}' needs a base URL — set ${spec.urlEnv} in ~/.hemiunu/.env.` };
+    return {
+      error: `Provider '${name}' needs a base URL — set ${spec.urlEnv} in ~/.hemiunu/.env.`,
+    };
   }
   return { chatUrl, apiKey };
 }

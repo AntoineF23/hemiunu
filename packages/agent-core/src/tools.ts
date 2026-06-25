@@ -116,7 +116,10 @@ export async function askAnthropic({
 }: AskAnthropicOptions): Promise<{ text: string } | { error: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) return { error: "No ANTHROPIC_API_KEY configured." };
-  const base = (process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com").replace(/\/$/, "");
+  const base = (process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com").replace(
+    /\/$/,
+    "",
+  );
   try {
     const res = await fetch(`${base}/v1/messages`, {
       method: "POST",
@@ -148,10 +151,15 @@ export async function askAnthropic({
       .map((b) => b.text as string)
       .join("")
       .trim();
-    if (!text) return { error: `Anthropic ${model} returned no text (stop_reason: ${json.stop_reason ?? "unknown"}).` };
+    if (!text)
+      return {
+        error: `Anthropic ${model} returned no text (stop_reason: ${json.stop_reason ?? "unknown"}).`,
+      };
     return { text };
   } catch (e) {
-    return { error: `Failed to reach Anthropic ${model}: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      error: `Failed to reach Anthropic ${model}: ${e instanceof Error ? e.message : String(e)}`,
+    };
   }
 }
 
@@ -167,10 +175,14 @@ export function createModelsServer() {
     {
       provider: z
         .enum(PROVIDER_NAMES as [string, ...string[]])
-        .describe("Which provider to use: openai, google, groq, xai, deepseek, mistral, or proxy (the user's own gateway)."),
+        .describe(
+          "Which provider to use: openai, google, groq, xai, deepseek, mistral, or proxy (the user's own gateway).",
+        ),
       model: z
         .string()
-        .describe("The provider's exact model id, e.g. 'gpt-5.5' (openai), 'gemini-2.5-flash' (google), 'grok-4.3' (xai)."),
+        .describe(
+          "The provider's exact model id, e.g. 'gpt-5.5' (openai), 'gemini-2.5-flash' (google), 'grok-4.3' (xai).",
+        ),
       prompt: z.string().describe("The full request/question to send to that model."),
       system: z.string().optional().describe("Optional system instruction for that model."),
       max_tokens: z
@@ -178,7 +190,9 @@ export function createModelsServer() {
         .int()
         .positive()
         .optional()
-        .describe("Max output tokens (default 2000; raise for reasoning models, which spend tokens thinking)."),
+        .describe(
+          "Max output tokens (default 2000; raise for reasoning models, which spend tokens thinking).",
+        ),
     },
     async ({ provider, model, prompt, system, max_tokens }) => {
       const text = await askModel({ provider, model, prompt, system, maxTokens: max_tokens });

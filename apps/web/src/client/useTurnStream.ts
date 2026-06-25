@@ -3,10 +3,7 @@
 // and a turn needs a POST body). Upstream control — permission replies and
 // abort — are ordinary POSTs keyed by the turnId the worker hands back.
 import { useCallback, useRef, useState } from "react";
-import type {
-  PermissionDecision,
-  ServerEvent,
-} from "../shared/protocol";
+import type { PermissionDecision, ServerEvent } from "../shared/protocol";
 
 export interface ChatItem {
   id: number;
@@ -62,8 +59,7 @@ export function useTurnStream(): TurnState {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [permission, setPermission] = useState<PermissionPrompt | null>(null);
-  const [lastCost, setLastCost] =
-    useState<TurnState["lastCost"]>(null);
+  const [lastCost, setLastCost] = useState<TurnState["lastCost"]>(null);
 
   const idRef = useRef(0);
   const turnIdRef = useRef<string | null>(null);

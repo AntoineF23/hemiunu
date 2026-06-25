@@ -26,15 +26,31 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
-  { test: /notion.*search|search.*notion|API-post-search/i, label: "Searching Notion", icon: Search },
+  {
+    test: /notion.*search|search.*notion|API-post-search/i,
+    label: "Searching Notion",
+    icon: Search,
+  },
   { test: /notion.*(fetch|retrieve|get)|-fetch$/i, label: "Reading a Notion page", icon: FileText },
   { test: /tavily|web.*search|search.*web/i, label: "Searching the web", icon: Globe },
-  { test: /server-filesystem|read_file|list_directory|read_text/i, label: "Reading your files", icon: FolderOpen },
+  {
+    test: /server-filesystem|read_file|list_directory|read_text/i,
+    label: "Reading your files",
+    icon: FolderOpen,
+  },
   { test: /save_prototype/i, label: "Building the prototype", icon: Layers },
   { test: /commit_prototype/i, label: "Saving to the repo", icon: GitBranch },
   { test: /deploy_prototype/i, label: "Publishing a shareable link", icon: Link2 },
-  { test: /iterate_prototype|write_workspace|read_workspace|list_workspace/i, label: "Working on the prototype", icon: Layers },
-  { test: /add_prototype_note|update_prototype|get_prototype/i, label: "Updating feature notes", icon: NotebookPen },
+  {
+    test: /iterate_prototype|write_workspace|read_workspace|list_workspace/i,
+    label: "Working on the prototype",
+    icon: Layers,
+  },
+  {
+    test: /add_prototype_note|update_prototype|get_prototype/i,
+    label: "Updating feature notes",
+    icon: NotebookPen,
+  },
   { test: /remember/i, label: "Noting that down", icon: PencilLine },
   { test: /ask_model/i, label: "Asking another model", icon: MessageSquare },
   { test: /get_source_map|save_source_map|scan/i, label: "Mapping a data source", icon: Map },

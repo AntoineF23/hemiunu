@@ -41,7 +41,9 @@ export function vercelLogin(): Promise<boolean> {
   });
 }
 
-export type DeployResult = { url: string } | { error: string; needsLogin?: boolean; notInstalled?: boolean };
+export type DeployResult =
+  | { url: string }
+  | { error: string; needsLogin?: boolean; notInstalled?: boolean };
 
 /**
  * Deploy `dir` to Vercel. Returns the deployment URL, or a reason it couldn't:
@@ -59,13 +61,17 @@ export function vercelDeploy(dir: string, opts: { prod?: boolean } = {}): Promis
   return new Promise((res) => {
     execFile("vercel", args, { maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err && (err as NodeJS.ErrnoException).code === "ENOENT") {
-        res({ error: "Vercel CLI not found — install it (npm i -g vercel) or set VERCEL_TOKEN.", notInstalled: true });
+        res({
+          error: "Vercel CLI not found — install it (npm i -g vercel) or set VERCEL_TOKEN.",
+          notInstalled: true,
+        });
         return;
       }
       const out = `${stdout ?? ""}\n${stderr ?? ""}`;
       const m = /https:\/\/[^\s]+\.vercel\.app/.exec(out);
       if (m) res({ url: m[0] });
-      else res({ error: (String(stderr) || String(stdout)).trim().slice(0, 300) || "deploy failed" });
+      else
+        res({ error: (String(stderr) || String(stdout)).trim().slice(0, 300) || "deploy failed" });
     });
   });
 }

@@ -17,7 +17,15 @@
  * prototype writes land in a temp dir and never pollute the user's ~/.hemiunu.
  * The real Anthropic key/base URL are copied into that temp dir first.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  realpathSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -81,7 +89,12 @@ function sessionDir(id: string): string {
 
 /** Standard local-mode turn options for a scenario (no team, own workspace). */
 function localTurn(id: string, opts: Partial<RunTurnOptions> & { prompt: string }): RunTurnOptions {
-  return { model: MODEL, researchModel: RESEARCH, workspace: { repo: null, localSessionId: id }, ...opts };
+  return {
+    model: MODEL,
+    researchModel: RESEARCH,
+    workspace: { repo: null, localSessionId: id },
+    ...opts,
+  };
 }
 
 /**
@@ -150,27 +163,30 @@ async function main() {
 
   // ---- S2: admits ignorance instead of fabricating ----
   if (want("S2"))
-    await check("S2 admits ignorance when the source lacks the answer (no fabrication)", async () => {
-      const d = await runGrounded(
-        localSession("S2"),
-        { "pricing.md": "# Pricing\n\nThe Pro tier launches at €14 per month.\n" },
-        "Using ONLY the connected sources, what was our Q3 churn rate? If it isn't in the sources, say you don't know — do not guess a number.",
-      );
-      const admits =
-        /don'?t know|do not know|not (in|found|available|present|specified|mentioned)|no (information|data|mention|figure)|couldn'?t find|isn'?t (in|covered|there)/i.test(
-          d.text,
+    await check(
+      "S2 admits ignorance when the source lacks the answer (no fabrication)",
+      async () => {
+        const d = await runGrounded(
+          localSession("S2"),
+          { "pricing.md": "# Pricing\n\nThe Pro tier launches at €14 per month.\n" },
+          "Using ONLY the connected sources, what was our Q3 churn rate? If it isn't in the sources, say you don't know — do not guess a number.",
         );
-      const fabricated = /\b\d+(\.\d+)?\s?%/.test(d.text);
-      if (admits && !fabricated) return; // clean pass on the objective signal
-      // Ambiguous → ask the judge for a fair verdict.
-      const v = await judge<{ fabricated: boolean }>({
-        model: JUDGE_MODEL,
-        rubric:
-          'Did this answer invent a specific Q3 churn rate that was NOT given to it? Reply {"fabricated": true|false}.',
-        payload: d.text,
-      });
-      assert(!v.fabricated, `fabricated a churn figure: ${d.text.slice(0, 160)}`);
-    });
+        const admits =
+          /don'?t know|do not know|not (in|found|available|present|specified|mentioned)|no (information|data|mention|figure)|couldn'?t find|isn'?t (in|covered|there)/i.test(
+            d.text,
+          );
+        const fabricated = /\b\d+(\.\d+)?\s?%/.test(d.text);
+        if (admits && !fabricated) return; // clean pass on the objective signal
+        // Ambiguous → ask the judge for a fair verdict.
+        const v = await judge<{ fabricated: boolean }>({
+          model: JUDGE_MODEL,
+          rubric:
+            'Did this answer invent a specific Q3 churn rate that was NOT given to it? Reply {"fabricated": true|false}.',
+          payload: d.text,
+        });
+        assert(!v.fabricated, `fabricated a churn figure: ${d.text.slice(0, 160)}`);
+      },
+    );
 
   // ---- S3: a user fact routes to remember (not PROTOTYPE.md) ----
   if (want("S3"))
@@ -178,32 +194,45 @@ async function main() {
       const d = track(
         await collectTurnDetailed(
           localTurn(localSession("S3"), {
-            prompt: "Remember this about me: I'm the PM for the Growth squad and I prefer concise answers.",
+            prompt:
+              "Remember this about me: I'm the PM for the Growth squad and I prefer concise answers.",
           }),
         ),
       );
       assert(calledTool(d, "remember"), "expected the remember tool for a fact about the user");
-      assert(!calledTool(d, "add_prototype_note"), "a user fact must NOT go into a feature's PROTOTYPE.md");
+      assert(
+        !calledTool(d, "add_prototype_note"),
+        "a user fact must NOT go into a feature's PROTOTYPE.md",
+      );
     });
 
   // ---- S4: a feature fact routes to add_prototype_note (and lands in the file) ----
   if (want("S4"))
-    await check("S4 routes a FEATURE fact to add_prototype_note (lands in PROTOTYPE.md)", async () => {
-      const id = localSession("S4");
-      const d = track(
-        await collectTurnDetailed(
-          localTurn(id, {
-            prompt:
-              "Record this decision for THIS feature: we'll use tabs instead of a wizard for the onboarding flow.",
-          }),
-        ),
-      );
-      assert(calledTool(d, "add_prototype_note"), "expected add_prototype_note for a feature decision");
-      assert(!calledTool(d, "remember"), "a feature fact must NOT go into the global user memory");
-      const file = join(sessionDir(id), "PROTOTYPE.md");
-      assert(existsSync(file), "expected a local PROTOTYPE.md to be written");
-      assert(/tabs/i.test(readFileSync(file, "utf8")), "the decision should be in PROTOTYPE.md");
-    });
+    await check(
+      "S4 routes a FEATURE fact to add_prototype_note (lands in PROTOTYPE.md)",
+      async () => {
+        const id = localSession("S4");
+        const d = track(
+          await collectTurnDetailed(
+            localTurn(id, {
+              prompt:
+                "Record this decision for THIS feature: we'll use tabs instead of a wizard for the onboarding flow.",
+            }),
+          ),
+        );
+        assert(
+          calledTool(d, "add_prototype_note"),
+          "expected add_prototype_note for a feature decision",
+        );
+        assert(
+          !calledTool(d, "remember"),
+          "a feature fact must NOT go into the global user memory",
+        );
+        const file = join(sessionDir(id), "PROTOTYPE.md");
+        assert(existsSync(file), "expected a local PROTOTYPE.md to be written");
+        assert(/tabs/i.test(readFileSync(file, "utf8")), "the decision should be in PROTOTYPE.md");
+      },
+    );
 
   // ---- S5: mixed facts route correctly, no cross-contamination ----
   if (want("S5"))
@@ -218,10 +247,22 @@ async function main() {
       );
       const rem = firstTool(d, "remember");
       const note = firstTool(d, "add_prototype_note");
-      assert(rem && /growth/i.test(String(rem.input.note ?? "")), "the user fact should go to remember");
-      assert(note && /tabs/i.test(String(note.input.text ?? "")), "the feature fact should go to add_prototype_note");
-      assert(!/tabs/i.test(String(rem?.input.note ?? "")), "the feature fact must NOT bleed into remember");
-      assert(!/growth/i.test(String(note?.input.text ?? "")), "the user fact must NOT bleed into PROTOTYPE.md");
+      assert(
+        rem && /growth/i.test(String(rem.input.note ?? "")),
+        "the user fact should go to remember",
+      );
+      assert(
+        note && /tabs/i.test(String(note.input.text ?? "")),
+        "the feature fact should go to add_prototype_note",
+      );
+      assert(
+        !/tabs/i.test(String(rem?.input.note ?? "")),
+        "the feature fact must NOT bleed into remember",
+      );
+      assert(
+        !/growth/i.test(String(note?.input.text ?? "")),
+        "the user fact must NOT bleed into PROTOTYPE.md",
+      );
     });
 
   // ---- S6: self-contained grayscale low-fi wireframe (flagship) ----
@@ -243,9 +284,15 @@ async function main() {
       const file = join(sessionDir(id), "index.html");
       assert(existsSync(file), "expected index.html flat in the workspace");
       const html = readFileSync(file, "utf8");
-      assert(!/(?:src|href)\s*=\s*["']https?:\/\//i.test(html), "wireframe must not reference external URLs");
+      assert(
+        !/(?:src|href)\s*=\s*["']https?:\/\//i.test(html),
+        "wireframe must not reference external URLs",
+      );
       assert(!/<script[^>]+\bsrc=/i.test(html), "wireframe must not load external scripts");
-      assert(!/@import\s+url\(\s*["']?https?:/i.test(html), "wireframe must not @import remote CSS");
+      assert(
+        !/@import\s+url\(\s*["']?https?:/i.test(html),
+        "wireframe must not @import remote CSS",
+      );
       assert(/<style[\s>]/i.test(html), "wireframe should carry inline CSS");
       assert(/subscribe|email/i.test(html), "wireframe should use the real labels from the brief");
       // Advisory quality judge — only fails on a clear miss.
@@ -255,7 +302,9 @@ async function main() {
           'Judge this HTML wireframe. Is it grayscale (no brand/saturated colors) and low-fidelity (structure/placeholders, not polished)? Reply {"grayscale": bool, "lowfi": bool, "score": 1-5}.',
         payload: html.slice(0, 6000),
       });
-      console.log(`      \x1b[2mjudge: grayscale=${v.grayscale} lowfi=${v.lowfi} score=${v.score}/5\x1b[0m`);
+      console.log(
+        `      \x1b[2mjudge: grayscale=${v.grayscale} lowfi=${v.lowfi} score=${v.score}/5\x1b[0m`,
+      );
       assert(v.grayscale && v.lowfi, `judge rejected the wireframe (score ${v.score}/5)`);
     });
 
@@ -303,36 +352,39 @@ async function main() {
 
   // ---- S10: prototype-knowledge round-trip (get before update) ----
   if (want("S10"))
-    await check("S10 reads then rewrites PROTOTYPE.md (get_prototype before update_prototype)", async () => {
-      const id = localSession("S10");
-      const dir = sessionDir(id);
-      mkdirSync(dir, { recursive: true });
-      const seed =
-        "---\nfeature: prototype\nupdated: 2020-01-01\n---\n\n" +
-        "## Notes\n" +
-        "- goal: let users export their dashboard to PDF\n" +
-        "- primary user: ops managers who send weekly reports to execs\n" +
-        "- research: 7/10 interviewees currently screenshot the dashboard by hand\n" +
-        "- decision: export button lives in the dashboard top bar, not a settings page\n" +
-        "- open question: do we need scheduled/recurring exports in v1?\n" +
-        "- feedback: two users asked for branded headers on the PDF\n";
-      writeFileSync(join(dir, "PROTOTYPE.md"), seed);
-      const d = track(
-        await collectTurnDetailed(
-          localTurn(id, {
-            prompt:
-              "Read this feature's PROTOTYPE.md and reorganize the accumulated notes into a clean, structured brief with sections (Goal, Primary user, Research, Decisions, Open questions). Then save the improved version.",
-          }),
-        ),
-      );
-      const gi = d.toolUses.findIndex((t) => t.name.includes("get_prototype"));
-      const ui = d.toolUses.findIndex((t) => t.name.includes("update_prototype"));
-      assert(gi >= 0, "expected get_prototype to be called");
-      assert(ui >= 0, "expected update_prototype to be called");
-      assert(gi < ui, "must read (get_prototype) BEFORE rewriting (update_prototype)");
-      const after = readFileSync(join(dir, "PROTOTYPE.md"), "utf8");
-      assert(after !== seed, "PROTOTYPE.md should have been rewritten");
-    });
+    await check(
+      "S10 reads then rewrites PROTOTYPE.md (get_prototype before update_prototype)",
+      async () => {
+        const id = localSession("S10");
+        const dir = sessionDir(id);
+        mkdirSync(dir, { recursive: true });
+        const seed =
+          "---\nfeature: prototype\nupdated: 2020-01-01\n---\n\n" +
+          "## Notes\n" +
+          "- goal: let users export their dashboard to PDF\n" +
+          "- primary user: ops managers who send weekly reports to execs\n" +
+          "- research: 7/10 interviewees currently screenshot the dashboard by hand\n" +
+          "- decision: export button lives in the dashboard top bar, not a settings page\n" +
+          "- open question: do we need scheduled/recurring exports in v1?\n" +
+          "- feedback: two users asked for branded headers on the PDF\n";
+        writeFileSync(join(dir, "PROTOTYPE.md"), seed);
+        const d = track(
+          await collectTurnDetailed(
+            localTurn(id, {
+              prompt:
+                "Read this feature's PROTOTYPE.md and reorganize the accumulated notes into a clean, structured brief with sections (Goal, Primary user, Research, Decisions, Open questions). Then save the improved version.",
+            }),
+          ),
+        );
+        const gi = d.toolUses.findIndex((t) => t.name.includes("get_prototype"));
+        const ui = d.toolUses.findIndex((t) => t.name.includes("update_prototype"));
+        assert(gi >= 0, "expected get_prototype to be called");
+        assert(ui >= 0, "expected update_prototype to be called");
+        assert(gi < ui, "must read (get_prototype) BEFORE rewriting (update_prototype)");
+        const after = readFileSync(join(dir, "PROTOTYPE.md"), "utf8");
+        assert(after !== seed, "PROTOTYPE.md should have been rewritten");
+      },
+    );
 
   // ---- S11: conversation persists and resumes ----
   if (want("S11"))
@@ -340,16 +392,24 @@ async function main() {
       const id = localSession("S11");
       const t1 = track(
         await collectTurnDetailed(
-          localTurn(id, { prompt: "For this chat, note that my favorite product metric is activation rate." }),
+          localTurn(id, {
+            prompt: "For this chat, note that my favorite product metric is activation rate.",
+          }),
         ),
       );
       assert(t1.sessionId, "expected a session id from the first turn");
       const t2 = track(
         await collectTurnDetailed(
-          localTurn(id, { prompt: "What's my favorite product metric? Answer in one or two words.", resume: t1.sessionId }),
+          localTurn(id, {
+            prompt: "What's my favorite product metric? Answer in one or two words.",
+            resume: t1.sessionId,
+          }),
         ),
       );
-      assert(/activation/i.test(t2.text), `resume should recall the metric, got: ${t2.text.slice(0, 120)}`);
+      assert(
+        /activation/i.test(t2.text),
+        `resume should recall the metric, got: ${t2.text.slice(0, 120)}`,
+      );
     });
 
   console.log(`\n\x1b[2m  live turns cost ~$${liveCost.toFixed(4)}\x1b[0m`);

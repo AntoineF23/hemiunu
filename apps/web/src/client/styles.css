@@ -8,16 +8,16 @@
 
 :root {
   /* Surfaces — warm neutrals */
-  --ground: #faf9f5;      /* page */
-  --paper: #ffffff;       /* cards, composer */
-  --raised: #f4f2ea;      /* user bubble, hovers */
+  --ground: #faf9f5; /* page */
+  --paper: #ffffff; /* cards, composer */
+  --raised: #f4f2ea; /* user bubble, hovers */
   --raised-2: #ece9df;
 
   /* Ink */
-  --ink: #20201c;         /* primary text */
-  --ink-2: #56544c;       /* secondary */
-  --ink-3: #86837a;       /* muted */
-  --ink-4: #a8a499;       /* faint */
+  --ink: #20201c; /* primary text */
+  --ink-2: #56544c; /* secondary */
+  --ink-3: #86837a; /* muted */
+  --ink-4: #a8a499; /* faint */
 
   /* Lines — hairline, translucent */
   --line: rgba(28, 26, 20, 0.08);
@@ -31,12 +31,12 @@
   --danger: #b3402b;
 
   /* Egyptian palette (from the CLI): weathered sandstone + lapis for motion */
-  --stone: #ece7da;          /* carved-tablet surface */
+  --stone: #ece7da; /* carved-tablet surface */
   --stone-2: #e3ddcc;
   --stone-line: #d3cab6;
-  --lapis: #2f8a99;          /* hieroglyphs / motion */
+  --lapis: #2f8a99; /* hieroglyphs / motion */
   --lapis-bright: #5bb8c4;
-  --gold: #b8894e;           /* ankh + fine accents */
+  --gold: #b8894e; /* ankh + fine accents */
 
   /* Code */
   --code-bg: #282c34;
@@ -55,7 +55,7 @@
   --font-hiero: "Noto Sans Egyptian Hieroglyphs", serif;
 
   /* Layout */
-  --measure: 720px;        /* chat column */
+  --measure: 720px; /* chat column */
   --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
@@ -243,7 +243,9 @@ body::before {
   color: var(--ink);
   font-size: 15px;
   /* engraved-tablet edge: light top inset + soft drop */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(28, 26, 20, 0.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 2px rgba(28, 26, 20, 0.05);
 }
 .agent-turn {
   max-width: 100%;
@@ -404,7 +406,9 @@ body::before {
   font-size: 11.5px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.16s var(--ease), background 0.16s var(--ease);
+  transition:
+    opacity 0.16s var(--ease),
+    background 0.16s var(--ease);
 }
 .code-block:hover .code-copy {
   opacity: 1;
@@ -488,7 +492,9 @@ body::before {
   border-left: 3px solid var(--clay);
   border-radius: var(--r-md);
   padding: 14px 16px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--shadow-sm);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    var(--shadow-sm);
   animation: rise 0.28s var(--ease);
 }
 .perm-head {
@@ -523,7 +529,9 @@ body::before {
   background: var(--paper);
   color: var(--ink);
   cursor: pointer;
-  transition: border-color 0.16s var(--ease), background 0.16s var(--ease);
+  transition:
+    border-color 0.16s var(--ease),
+    background 0.16s var(--ease);
 }
 .btn:hover {
   border-color: var(--ink-4);
@@ -585,11 +593,15 @@ body::before {
   border-radius: var(--r-lg);
   padding: 9px 9px 9px 16px;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
+  transition:
+    border-color 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
 }
 .composer:focus-within {
   border-color: rgba(196, 99, 63, 0.5);
-  box-shadow: var(--shadow-sm), 0 0 0 3px var(--clay-soft);
+  box-shadow:
+    var(--shadow-sm),
+    0 0 0 3px var(--clay-soft);
 }
 .composer textarea {
   flex: 1;
@@ -621,7 +633,9 @@ body::before {
   background: var(--clay);
   color: #fff;
   cursor: pointer;
-  transition: background 0.16s var(--ease), transform 0.1s var(--ease);
+  transition:
+    background 0.16s var(--ease),
+    transform 0.1s var(--ease);
 }
 .send:hover:not(:disabled) {
   background: var(--clay-strong);

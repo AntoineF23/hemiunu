@@ -15,17 +15,8 @@ export {
 export type { AskModelOptions, AskAnthropicOptions } from "./tools";
 export { PROVIDERS, PROVIDER_NAMES, resolveProvider } from "./providers";
 export type { ProviderSpec } from "./providers";
-export {
-  createPrototypeServer,
-  SAVE_PROTOTYPE_TOOL_ID,
-  savePrototype,
-  slugify,
-} from "./prototype";
-export type {
-  PrototypeFile,
-  SavePrototypeOptions,
-  SavedPrototype,
-} from "./prototype";
+export { createPrototypeServer, SAVE_PROTOTYPE_TOOL_ID, savePrototype, slugify } from "./prototype";
+export type { PrototypeFile, SavePrototypeOptions, SavedPrototype } from "./prototype";
 export { createOrchestratorServer, PARALLEL_TOOL_ID, pool } from "./orchestrator";
 export {
   loadSkills,
@@ -106,10 +97,5 @@ export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from ".
 export type { DeployResult } from "./vercel";
 export { setControlHandler, requestControl } from "./control";
 export type { ControlEvent } from "./control";
-export {
-  runSubagent,
-  subagentPrompt,
-  SUBAGENTS,
-  SUBAGENT_NAMES,
-} from "./subagents";
+export { runSubagent, subagentPrompt, SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
 export type { SubagentName, SubagentSpec, SubagentRunContext, SubagentEvent } from "./subagents";

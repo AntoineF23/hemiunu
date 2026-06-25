@@ -71,11 +71,7 @@ export function savePrototype({
 function openInBrowser(target: string): void {
   if (process.env.HEMIUNU_NO_OPEN) return; // headless / test runs
   const cmd =
-    process.platform === "darwin"
-      ? "open"
-      : process.platform === "win32"
-        ? "start"
-        : "xdg-open";
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   try {
     spawn(cmd, [target], { detached: true, stdio: "ignore" }).unref();
   } catch {
@@ -99,7 +95,9 @@ export function createPrototypeServer() {
           z.object({
             path: z
               .string()
-              .describe("Path relative to the prototype root, e.g. 'index.html' or 'assets/app.css'."),
+              .describe(
+                "Path relative to the prototype root, e.g. 'index.html' or 'assets/app.css'.",
+              ),
             content: z.string().describe("Full file contents."),
           }),
         )

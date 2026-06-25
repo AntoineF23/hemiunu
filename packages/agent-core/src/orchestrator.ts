@@ -1,10 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import {
-  runSubagent,
-  type SubagentName,
-  type SubagentRunContext,
-} from "./subagents";
+import { runSubagent, type SubagentName, type SubagentRunContext } from "./subagents";
 
 /**
  * Run `fn` over `items` with at most `limit` in flight at once, preserving
@@ -17,16 +13,13 @@ export async function pool<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
-  const workers = Array.from(
-    { length: Math.max(1, Math.min(limit, items.length)) },
-    async () => {
-      while (true) {
-        const i = next++;
-        if (i >= items.length) break;
-        results[i] = await fn(items[i], i);
-      }
-    },
-  );
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i], i);
+    }
+  });
   await Promise.all(workers);
   return results;
 }
@@ -48,12 +41,12 @@ export function createOrchestratorServer(ctx: SubagentRunContext) {
       tasks: z
         .array(
           z.object({
-            agent: z
-              .enum(["researcher", "prototyper"])
-              .describe("Which subagent runs this task."),
+            agent: z.enum(["researcher", "prototyper"]).describe("Which subagent runs this task."),
             prompt: z
               .string()
-              .describe("Self-contained instruction for that subagent (it shares none of the others' context)."),
+              .describe(
+                "Self-contained instruction for that subagent (it shares none of the others' context).",
+              ),
             label: z
               .string()
               .optional()

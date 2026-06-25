@@ -1,0 +1,10 @@
+node_modules
+dist
+.turbo
+.vercel
+pnpm-lock.yaml
+prototypes
+assets
+*.svg
+# Prose docs are hand-wrapped intentionally — don't reflow them.
+*.md

@@ -48,7 +48,10 @@ export function tally() {
 }
 
 /** Drain a runTurn stream into final text + cost. */
-export async function collectTurn(prompt: string, model: string): Promise<{ text: string; cost: number }> {
+export async function collectTurn(
+  prompt: string,
+  model: string,
+): Promise<{ text: string; cost: number }> {
   let text = "";
   let cost = 0;
   for await (const m of runTurn({ prompt, model })) {
@@ -134,7 +137,10 @@ export function calledTool(d: TurnDetail, needle: string): boolean {
 }
 
 /** Pull the first matching tool call (for inspecting its input). */
-export function firstTool(d: TurnDetail, needle: string): { name: string; input: Record<string, any> } | undefined {
+export function firstTool(
+  d: TurnDetail,
+  needle: string,
+): { name: string; input: Record<string, any> } | undefined {
   return d.toolUses.find((t) => t.name.includes(needle));
 }
 
