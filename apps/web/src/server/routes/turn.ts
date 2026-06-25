@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   activeProtoDir,
+  applyMcpOAuth,
   asStream,
   generateTitle,
   GET_SOURCE_MAP_TOOL_ID,
@@ -96,7 +97,10 @@ turnRoute.post("/api/turn", async (c) => {
             recordSeenTool(toolName);
             const policy = resolveToolPolicy(toolName);
             if (policy === "block") {
-              emit({ type: "note", text: `⛔ blocked by your MCP settings: ${prettyTool(toolName)}` });
+              emit({
+                type: "note",
+                text: `⛔ blocked by your MCP settings: ${prettyTool(toolName)}`,
+              });
               resolve({ behavior: "deny", message: "Blocked by your MCP settings." });
               return;
             }
@@ -140,7 +144,9 @@ turnRoute.post("/api/turn", async (c) => {
         systemPrompt: effectiveSystem(rt, Object.keys(servers)),
         resume: body.resume,
         canUseTool,
-        mcpServers: servers,
+        // Inject a fresh OAuth bearer (refreshed if needed) for any remote server
+        // the user authorized; a no-op when none are.
+        mcpServers: await applyMcpOAuth(servers),
         toolPatterns: patterns,
         abortController: session.ac,
         workspace: { repo: turnRepo() },
@@ -218,7 +224,8 @@ turnRoute.post("/api/turn", async (c) => {
           lastPreviewUrl = preview.url;
           const t = preview.repo || "Prototype";
           await emit({ type: "artifact", url: preview.url, title: t });
-          if (sessionId) recordArtifact(sessionId, { dir: activeProtoDir(), repo: turnRepo(), title: t });
+          if (sessionId)
+            recordArtifact(sessionId, { dir: activeProtoDir(), repo: turnRepo(), title: t });
         }
       }
 

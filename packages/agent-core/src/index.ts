@@ -138,3 +138,16 @@ export { setControlHandler, requestControl, addTeammate, removeTeammate } from "
 export type { ControlEvent } from "./control";
 export { runSubagent, subagentPrompt, SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
 export type { SubagentName, SubagentSpec, SubagentRunContext, SubagentEvent } from "./subagents";
+export {
+  startMcpAuth,
+  completeMcpAuth,
+  applyMcpOAuth,
+  bearerFor,
+  probeMcpServer,
+  mcpOAuthStatus,
+  removeMcpOAuth,
+  discoverMcpAuth,
+  pkceChallenge,
+  parseWwwAuthenticate,
+} from "./mcp-oauth";
+export type { McpOAuthRecord, DiscoveredAuth, McpProbe } from "./mcp-oauth";

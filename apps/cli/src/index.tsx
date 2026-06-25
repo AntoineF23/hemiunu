@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   runTurn,
+  applyMcpOAuth,
   REMEMBER_TOOL_ID,
   PARALLEL_TOOL_ID,
   configDir,
@@ -706,7 +707,7 @@ function App({
         systemPrompt: effectiveSystem(),
         resume: sessionId.current,
         canUseTool,
-        mcpServers: activeServers,
+        mcpServers: await applyMcpOAuth(activeServers),
         toolPatterns: activePatterns,
         abortController: ac,
         // Pin this turn to the team it started in, so its file/GitHub tools
@@ -1028,7 +1029,7 @@ function App({
         model,
         systemPrompt: effectiveSystem(),
         resume: sessionId.current,
-        mcpServers: activeServers,
+        mcpServers: await applyMcpOAuth(activeServers),
         toolPatterns: activePatterns,
         abortController: ac,
         workspace: { repo: currentProjectRef.current || null },
@@ -1088,7 +1089,7 @@ function App({
           try {
             const summary = await runScan({
               mcp,
-              mcpServers: activeServers,
+              mcpServers: await applyMcpOAuth(activeServers),
               onTool: (t) =>
                 push({ kind: "tool", name: `${mcp} · ${prettyTool(t)}`, input: "", sub: true }),
             });
