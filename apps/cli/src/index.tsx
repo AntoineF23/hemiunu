@@ -34,6 +34,11 @@ import {
   githubClientId,
   requestDeviceCode,
   pollDeviceToken,
+  githubStatus,
+  currentGithubLogin,
+  connectGithubAccount,
+  switchGithubAccount,
+  disconnectGithub,
   listTrash,
   restoreTrash,
   setLocalSession,
@@ -117,7 +122,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "mcp", desc: "show connected MCP servers" },
   { name: "scan", desc: "map connected sources (/scan or /scan <name>)" },
   { name: "skills", desc: "list saved skills" },
-  { name: "github", desc: "sign in to GitHub (remembered)" },
+  { name: "github", desc: "connect / switch / disconnect GitHub accounts" },
   { name: "vercel", desc: "connect Vercel (for sharing)" },
   { name: "team", desc: "switch team (feature/repo)" },
   { name: "team-new", desc: "new feature (name → create) or add a repo by URL" },
@@ -439,7 +444,14 @@ function App({
   const [team, setTeam] = useState<string | undefined>(initialTeam ?? undefined);
   const [device, setDevice] = useState<{ userCode: string; url: string } | null>(null);
   const githubLoginCancel = useRef(false);
+  const [githubLogin, setGithubLogin] = useState<string | null>(null); // active GitHub account (footer)
   const [paused, setPaused] = useState(false); // hand the terminal to an interactive child (vercel login)
+
+  // Keep the footer's GitHub account label current after any auth change.
+  const refreshGithubLogin = () => {
+    void (async () => setGithubLogin((await currentGithubLogin()) ?? null))();
+  };
+  useEffect(refreshGithubLogin, []);
 
   // Detect a local filesystem server (it grants access to the launch folder).
   const fsName = Object.keys(registry.mcpServers).find(
@@ -1170,9 +1182,17 @@ function App({
       const poll = await pollDeviceToken(dc.deviceCode);
       if (poll.status === "authorized") {
         const login = await githubViewer(poll.token);
-        upsertUserEnv("GITHUB_TOKEN", poll.token);
+        if (!login) {
+          setDevice(null);
+          return push({
+            kind: "error",
+            text: "GitHub sign-in: the token was rejected — try again",
+          });
+        }
+        connectGithubAccount(login, poll.token);
         setDevice(null);
-        return push({ kind: "note", text: `· signed in to GitHub as ${login ?? "you"} (saved)` });
+        refreshGithubLogin();
+        return push({ kind: "note", text: `· connected to GitHub as ${login}` });
       }
       if (poll.status === "slow_down") {
         interval = poll.interval;
@@ -1305,47 +1325,90 @@ function App({
       });
     }
     if (cmd === "github") {
-      const token = rest.join(" ").trim();
-      // Explicit token paste (fallback) → verify + save.
-      if (token) {
+      const arg = rest.join(" ").trim();
+      // Explicit sub-commands / token paste.
+      if (arg === "logout" || arg === "disconnect") {
+        disconnectGithub();
+        refreshGithubLogin();
+        return push({ kind: "note", text: "· disconnected from GitHub" });
+      }
+      if (arg && arg !== "connect" && arg !== "switch") {
+        // Treat any other arg as a pasted token (power-user / no-OAuth fallback).
         void (async () => {
-          const login = await githubViewer(token);
+          const login = await githubViewer(arg);
           if (!login)
             return push({
               kind: "error",
               text: "that token didn't work — make sure it has repo contents read/write, then /github <token>",
             });
-          const path = upsertUserEnv("GITHUB_TOKEN", token);
-          push({ kind: "note", text: `· signed in to GitHub as ${login} (saved to ${path})` });
+          connectGithubAccount(login, arg);
+          refreshGithubLogin();
+          push({ kind: "note", text: `· connected to GitHub as ${login}` });
         })();
         return;
       }
-      // Already connected? report who.
-      const existing = resolveGithubToken();
-      if (existing) {
-        void (async () => {
-          const login = await githubViewer(existing);
+
+      const status = githubStatus();
+      const CONNECT = "＋ Connect another account";
+      const CONNECT_FIRST = "＋ Connect a GitHub account";
+      const DISCONNECT = "✕ Disconnect";
+
+      // No accounts AND no usable token → connect straight away (device flow).
+      if (!status.accounts.length && !resolveGithubToken()) {
+        if (githubClientId()) void startGithubLogin();
+        else
           push({
             kind: "note",
-            text: login
-              ? `· signed in to GitHub as ${login}`
-              : "· a GitHub token is set but was rejected — run /github <token> with a valid one",
+            text:
+              "· not connected to GitHub.\n" +
+              "  device sign-in isn't configured (no OAuth client id) — paste a token instead:\n" +
+              "  create a fine-grained token (repo contents: read & write) and run /github <token>.",
           });
-        })();
         return;
       }
-      // Not connected: prefer the in-CLI device flow; fall back to a pasted token.
-      if (githubClientId()) {
-        void startGithubLogin();
-      } else {
-        push({
-          kind: "note",
-          text:
-            "· not signed in to GitHub.\n" +
-            "  device sign-in isn't configured (no OAuth client id) — paste a token instead:\n" +
-            "  create a fine-grained token (repo contents: read & write) and run /github <token>.",
-        });
-      }
+
+      // Otherwise show the account manager: switch / connect / disconnect.
+      const accountRows = status.accounts.map(
+        (login) => `${status.connected && login === status.login ? "● " : "○ "}${login}`,
+      );
+      const options = [
+        ...accountRows,
+        status.accounts.length ? CONNECT : CONNECT_FIRST,
+        ...(status.connected ? [DISCONNECT] : []),
+      ];
+      const active = accountRows.findIndex((r) => r.startsWith("● "));
+      setSel(active >= 0 ? active : 0);
+      setPicker({
+        title: status.connected
+          ? `GitHub · connected as ${status.login}  (↑/↓ · Enter · Esc)`
+          : "GitHub · not connected  (↑/↓ · Enter · Esc)",
+        options,
+        onChoice: (v) => {
+          setPicker(null);
+          if (v === null) return;
+          if (v === CONNECT || v === CONNECT_FIRST) {
+            if (githubClientId()) void startGithubLogin();
+            else
+              push({
+                kind: "note",
+                text: "· device sign-in isn't configured — paste a token with /github <token>.",
+              });
+            return;
+          }
+          if (v === DISCONNECT) {
+            disconnectGithub();
+            refreshGithubLogin();
+            push({ kind: "note", text: "· disconnected from GitHub" });
+            return;
+          }
+          const login = v.replace(/^[●○]\s*/, "");
+          if (login === status.login && status.connected) return; // already active
+          if (switchGithubAccount(login)) {
+            refreshGithubLogin();
+            push({ kind: "note", text: `· switched GitHub account to ${login}` });
+          }
+        },
+      });
       return;
     }
     if (cmd === "vercel") {
@@ -1855,6 +1918,11 @@ function App({
             {teamLabel}
           </Text>
           {teams.length >= 1 ? <Text dimColor>{"  · shift+tab to switch"}</Text> : null}
+          <Text dimColor>
+            {"   "}
+            {githubLogin ? `⎇ ${githubLogin}` : "⎇ no GitHub"}
+            {"  · /github"}
+          </Text>
         </Text>
         <Text color={SAGE}>{`${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
       </Box>

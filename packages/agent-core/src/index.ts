@@ -61,8 +61,21 @@ export {
   removeCollaborator,
   listCollaborators,
   listOrgMembers,
+  githubStatus,
+  currentGithubLogin,
+  connectGithubAccount,
+  switchGithubAccount,
+  disconnectGithub,
+  removeGithubAccount,
 } from "./github";
-export type { TeamsConfig, DeviceCode, DevicePoll, RepoAccess, Collaborator } from "./github";
+export type {
+  TeamsConfig,
+  DeviceCode,
+  DevicePoll,
+  RepoAccess,
+  Collaborator,
+  GithubStatus,
+} from "./github";
 export {
   addPrototypeNote,
   getPrototypeKnowledge,

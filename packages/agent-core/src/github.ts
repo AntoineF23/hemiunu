@@ -33,12 +33,129 @@ function apiHeaders(token: string): Record<string, string> {
   };
 }
 
+// --- GitHub accounts (connect / switch / disconnect) -------------------------
+// Hemiunu can hold several connected GitHub identities and switch between them
+// instantly. Stored in ~/.hemiunu/github.json; the token travels with each
+// account. `disconnected` is an explicit "use no GitHub" state the user sets
+// from /github. Once this file exists it is AUTHORITATIVE (the UI is then fully
+// predictable); with no file we fall back to env/`gh` as before (fresh user, CI).
+
+interface GithubAccount {
+  login: string;
+  token: string;
+}
+interface GithubAuthFile {
+  accounts: GithubAccount[];
+  active?: string;
+  disconnected?: boolean;
+}
+
+function githubAuthPath(): string {
+  return join(configDir(), "github.json");
+}
+
+function loadGithubAuth(): GithubAuthFile {
+  try {
+    const raw = JSON.parse(readFileSync(githubAuthPath(), "utf8")) as Partial<GithubAuthFile>;
+    const accounts = Array.isArray(raw.accounts)
+      ? raw.accounts.filter(
+          (a): a is GithubAccount =>
+            !!a && typeof a.login === "string" && typeof a.token === "string",
+        )
+      : [];
+    return {
+      accounts,
+      active: typeof raw.active === "string" ? raw.active : undefined,
+      disconnected: !!raw.disconnected,
+    };
+  } catch {
+    return { accounts: [] };
+  }
+}
+
+function saveGithubAuth(f: GithubAuthFile): void {
+  mkdirSync(configDir(), { recursive: true });
+  writeFileSync(githubAuthPath(), `${JSON.stringify(f, null, 2)}\n`, "utf8");
+}
+
+function activeAccountToken(): string | undefined {
+  const f = loadGithubAuth();
+  if (f.disconnected) return undefined;
+  return f.accounts.find((a) => a.login === f.active)?.token;
+}
+
+export interface GithubStatus {
+  /** The active account's login, or undefined when not connected. */
+  login?: string;
+  /** Whether Hemiunu currently has a usable GitHub identity. */
+  connected: boolean;
+  /** All known account logins (for the switcher). */
+  accounts: string[];
+}
+
+/** GitHub status for the UI footer/picker — synchronous, from the store only. */
+export function githubStatus(): GithubStatus {
+  const f = loadGithubAuth();
+  const connected = !f.disconnected && !!activeAccountToken();
+  return {
+    login: connected ? f.active : undefined,
+    connected,
+    accounts: f.accounts.map((a) => a.login),
+  };
+}
+
+/** Add or update a connected account and make it active (clears 'disconnected'). */
+export function connectGithubAccount(login: string, token: string): void {
+  const f = loadGithubAuth();
+  const i = f.accounts.findIndex((a) => a.login === login);
+  if (i >= 0) f.accounts[i] = { login, token };
+  else f.accounts.push({ login, token });
+  f.active = login;
+  f.disconnected = false;
+  saveGithubAuth(f);
+}
+
+/** Switch the active account (reconnecting if disconnected). False if unknown. */
+export function switchGithubAccount(login: string): boolean {
+  const f = loadGithubAuth();
+  if (!f.accounts.some((a) => a.login === login)) return false;
+  f.active = login;
+  f.disconnected = false;
+  saveGithubAuth(f);
+  return true;
+}
+
+/** Disconnect: stop using GitHub. Accounts are kept so the user can reconnect. */
+export function disconnectGithub(): void {
+  const f = loadGithubAuth();
+  // Only persist a store if there's something to disconnect from (an account,
+  // or a pre-existing store); otherwise leave env/gh fallback untouched.
+  f.disconnected = true;
+  saveGithubAuth(f);
+}
+
+/** Forget a stored account entirely (used for a hard sign-out). */
+export function removeGithubAccount(login: string): void {
+  const f = loadGithubAuth();
+  f.accounts = f.accounts.filter((a) => a.login !== login);
+  if (f.active === login) f.active = f.accounts[0]?.login;
+  saveGithubAuth(f);
+}
+
 /**
- * Resolve a GitHub token without re-prompting: an explicit token in the env
- * (GITHUB_TOKEN / GH_TOKEN, which Hemiunu persists to ~/.hemiunu/.env), else the
- * locally-installed `gh` CLI if the user is already logged in there.
+ * Resolve a GitHub token. Once the user has used Hemiunu's connect/disconnect
+ * (a github.json exists) that store is authoritative — including an explicit
+ * disconnect. With no store, fall back to an env token (GITHUB_TOKEN / GH_TOKEN)
+ * or the locally-installed `gh` CLI, as before.
  */
 export function resolveGithubToken(): string | undefined {
+  if (existsSync(githubAuthPath())) {
+    const f = loadGithubAuth();
+    if (f.disconnected) return undefined; // explicit "no GitHub" — honor it
+    const t = activeAccountToken();
+    if (t) return t;
+    // Store exists but no usable account → fall through to env/gh.
+  }
   const env = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
   if (env) return env;
   try {
@@ -50,6 +167,18 @@ export function resolveGithubToken(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The login Hemiunu is currently acting as: the active account (sync, from the
+ * store) or — when relying on an env/`gh` token — looked up via the API. Returns
+ * undefined when not connected.
+ */
+export async function currentGithubLogin(): Promise<string | undefined> {
+  const s = githubStatus();
+  if (s.login) return s.login;
+  const token = resolveGithubToken();
+  return token ? await githubViewer(token) : undefined;
 }
 
 // --- OAuth device flow (connect a GitHub account entirely from the CLI) ------
