@@ -5,12 +5,15 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import {
   configDir,
+  deleteSourceMap,
   loadSourceMap,
   loadSourceMaps,
   loadToolPolicy,
   runScan,
+  saveSourceMap,
   setServerPolicy,
   setToolPolicy,
+  slugify,
   type ToolPolicy,
 } from "@hemiunu/agent-core";
 import {
@@ -47,15 +50,20 @@ const KNOWN_DOMAINS: Record<string, string> = {
   canva: "canva.com",
   sentry: "sentry.io",
   stripe: "stripe.com",
+  playwright: "playwright.dev",
+  puppeteer: "pptr.dev",
+  supabase: "supabase.com",
+  cloudflare: "cloudflare.com",
 };
 
 /** Best brand domain for a server's favicon: its own URL host first (so ANY
- *  remote server resolves automatically), else a known-name match, else none. */
+ *  remote server resolves automatically), else a keyword match against the
+ *  server name AND its stdio command/args (so `npx @playwright/mcp` resolves). */
 function iconDomain(name: string, config: unknown): string | null {
-  const url = (config as { url?: unknown })?.url;
-  if (typeof url === "string") {
+  const cfg = (config ?? {}) as { url?: unknown; command?: unknown; args?: unknown };
+  if (typeof cfg.url === "string") {
     try {
-      const host = new URL(url).hostname;
+      const host = new URL(cfg.url).hostname;
       if (host && host !== "localhost" && !/^\d/.test(host)) {
         return host.replace(/^(mcp|api|www|app)\./, ""); // prefer the brand root
       }
@@ -63,10 +71,10 @@ function iconDomain(name: string, config: unknown): string | null {
       /* not a URL — fall through */
     }
   }
-  const key = name.toLowerCase();
-  if (KNOWN_DOMAINS[key]) return KNOWN_DOMAINS[key];
-  const fuzzy = Object.keys(KNOWN_DOMAINS).find((k) => key.includes(k));
-  return fuzzy ? KNOWN_DOMAINS[fuzzy] : null;
+  const args = Array.isArray(cfg.args) ? cfg.args.join(" ") : "";
+  const haystack = `${name} ${typeof cfg.command === "string" ? cfg.command : ""} ${args}`.toLowerCase();
+  const key = Object.keys(KNOWN_DOMAINS).find((k) => haystack.includes(k));
+  return key ? KNOWN_DOMAINS[key] : null;
 }
 
 mcpRoute.get("/api/mcp", (c) => {
@@ -80,13 +88,18 @@ mcpRoute.get("/api/mcp", (c) => {
   const skipped = (rt.registry.skipped ?? []) as { name: string; reason?: string }[];
 
   const describe = (name: string, isConnected: boolean, reason?: string) => {
-    const sm = maps.get(name);
+    // Source maps are saved under the slugified name (e.g. "Playwright" →
+    // playwright.md), so match on the slug, not the raw server name.
+    const sm = maps.get(slugify(name));
     const config = rt.registry.mcpServers[name] ?? userServers[name];
     return {
       name,
       connected: isConnected,
       reason: reason ?? null,
       userAdded: userAdded.has(name),
+      // Raw overlay config for the edit form — only for user-added servers, so
+      // app-default servers' interpolated secrets never reach the browser.
+      config: userServers[name] ?? null,
       iconDomain: iconDomain(name, config),
       serverPolicy: policy.servers[name] ?? "ask",
       tools: (policy.seen[name] ?? []).map((id) => ({
@@ -127,8 +140,12 @@ mcpRoute.post("/api/mcp/server", async (c) => {
 });
 
 mcpRoute.delete("/api/mcp/server/:name", (c) => {
-  const ok = removeUserServer(userMcpPath(), c.req.param("name"));
+  const name = c.req.param("name");
+  const ok = removeUserServer(userMcpPath(), name);
   if (ok) reloadRegistry();
+  // Remove the scan map too, regardless — a deleted server shouldn't leave its
+  // source map behind. (deleteSourceMap is a no-op if there isn't one.)
+  deleteSourceMap(name);
   return ok ? c.json({ ok: true }) : c.json({ error: "Not a user-added server." }, 404);
 });
 
@@ -155,6 +172,29 @@ mcpRoute.get("/api/mcp/:name/sourcemap", (c) => {
     scanned: m.scanned ?? null,
     body: m.body,
   });
+});
+
+// Save a hand-edited source map (.md). Preserves the existing one-line
+// description unless a new one is supplied.
+mcpRoute.put("/api/mcp/:name/sourcemap", async (c) => {
+  const name = c.req.param("name");
+  const { body, description } = (await c.req.json().catch(() => ({}))) as {
+    body?: string;
+    description?: string;
+  };
+  if (typeof body !== "string") return c.json({ error: "Missing body." }, 400);
+  const existing = loadSourceMap(name);
+  saveSourceMap({
+    mcp: name,
+    description: description ?? existing?.description ?? "",
+    body,
+  });
+  return c.json({ ok: true });
+});
+
+mcpRoute.delete("/api/mcp/:name/sourcemap", (c) => {
+  deleteSourceMap(c.req.param("name"));
+  return c.json({ ok: true });
 });
 
 // Re-scan a connected server (runs the scanner subagent — costs a turn).

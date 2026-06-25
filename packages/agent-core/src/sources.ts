@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createSdkMcpServer, tool, query } from "@anthropic-ai/claude-agent-sdk";
@@ -104,6 +104,14 @@ function today(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Delete a source map by mcp name (slugified to the filename). False if absent. */
+export function deleteSourceMap(mcp: string, root: string = configDir()): boolean {
+  const file = join(sourceMapsDir(root), `${slugify(mcp)}.md`);
+  if (!existsSync(file)) return false;
+  rmSync(file);
+  return true;
 }
 
 /** Create or replace a source map. The mcp name is slugified into the filename. */

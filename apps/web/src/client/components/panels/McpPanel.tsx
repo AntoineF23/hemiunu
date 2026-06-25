@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Loader2, Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { FileText, Loader2, Pencil, Plug, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,11 +41,22 @@ interface ServerInfo {
   connected: boolean;
   reason: string | null;
   userAdded: boolean;
+  /** Raw overlay config (for the edit form), or null for app-default servers. */
+  config: McpConfig | null;
   /** Brand domain for the favicon (from the server's URL or a known name). */
   iconDomain: string | null;
   serverPolicy: Policy;
   tools: ToolInfo[];
   sourceMap: { description: string; scanned: string | null } | null;
+}
+
+interface McpConfig {
+  type?: "stdio" | "http" | "sse";
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
 }
 
 interface McpPanelProps {
@@ -77,6 +96,8 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
   const [scanning, setScanning] = useState<string | null>(null);
   const [mapView, setMapView] = useState<{ name: string; body: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<ServerInfo | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -96,6 +117,8 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
     if (open) {
       setMapView(null);
       setAdding(false);
+      setEditing(null);
+      setConfirmDelete(null);
       setFlash(null);
       void load();
     }
@@ -103,8 +126,10 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
 
   const removeServer = async (name: string) => {
     setError(null);
+    setConfirmDelete(null);
     try {
       await fetch(`/api/mcp/server/${encodeURIComponent(name)}`, { method: "DELETE" });
+      if (editing?.name === name) setEditing(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -151,14 +176,22 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
       <SheetContent side="left" className="w-full !max-w-xl gap-4 overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
-            {mapView ? `${mapView.name} · source map` : adding ? "Add MCP server" : "MCP servers"}
+            {mapView
+              ? `${mapView.name} · source map`
+              : adding
+                ? "Add MCP server"
+                : editing
+                  ? `Edit ${editing.name}`
+                  : "MCP servers"}
           </SheetTitle>
           <SheetDescription>
             {mapView
               ? "What the scanner mapped inside this source."
               : adding
                 ? "Connect a new MCP server — it applies on your next message, no restart."
-                : "Connected tools, their permissions (allow / ask / block), and scan maps."}
+                : editing
+                  ? "Change its configuration and edit its scan map."
+                  : "Connected tools, their permissions (allow / ask / block), and scan maps."}
           </SheetDescription>
         </SheetHeader>
 
@@ -174,15 +207,53 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
         )}
 
         {adding ? (
-          <AddServerForm
+          <ServerForm
             onCancel={() => setAdding(false)}
-            onAdded={async (name) => {
+            onDone={async (name) => {
               setAdding(false);
               setFlash(`Added “${name}” — it connects on your next message.`);
               await load();
             }}
             onError={setError}
           />
+        ) : editing ? (
+          <div className="flex flex-col gap-4">
+            <button
+              onClick={() => setEditing(null)}
+              className="w-fit text-sm text-ink-3 hover:text-ink"
+            >
+              ← Back to servers
+            </button>
+
+            <h3 className="text-sm font-medium text-ink-2">Configuration</h3>
+            {editing.userAdded ? (
+              <ServerForm
+                initial={{ name: editing.name, config: editing.config }}
+                showBack={false}
+                onCancel={() => setEditing(null)}
+                onDone={async () => {
+                  setFlash(`Saved ${editing.name}.`);
+                  await load();
+                }}
+                onError={setError}
+              />
+            ) : (
+              <p className="rounded-lg border border-border bg-card/50 px-3 py-2.5 text-sm text-ink-3">
+                This server is configured by Hemiunu (mcp.json) and isn't editable here. You can
+                still edit its scan map below.
+              </p>
+            )}
+
+            <h3 className="border-t border-border pt-3 text-sm font-medium text-ink-2">
+              Scan map (.md)
+            </h3>
+            <SourceMapEditor
+              name={editing.name}
+              hasMap={!!editing.sourceMap}
+              onError={setError}
+              onChanged={load}
+            />
+          </div>
         ) : mapView ? (
           <div className="flex flex-col gap-3">
             <Button variant="ghost" size="sm" className="w-fit" onClick={() => setMapView(null)}>
@@ -219,9 +290,17 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
                     </span>
                   )}
                   <div className="ml-auto flex items-center gap-1.5">
+                    <button
+                      onClick={() => setEditing(s)}
+                      aria-label={`Edit ${s.name}`}
+                      className="rounded p-1 text-ink-4 hover:text-ink"
+                      title="Edit server & scan map"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
                     {s.userAdded && (
                       <button
-                        onClick={() => removeServer(s.name)}
+                        onClick={() => setConfirmDelete(s.name)}
                         aria-label={`Remove ${s.name}`}
                         className="rounded p-1 text-ink-4 hover:text-destructive"
                         title="Remove this server"
@@ -294,6 +373,30 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
             )}
           </div>
         )}
+
+        {/* Delete confirmation */}
+        <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Remove “{confirmDelete}”?</DialogTitle>
+              <DialogDescription>
+                This deletes the server from your config and removes its scan map (.md). This can't
+                be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => confirmDelete && removeServer(confirmDelete)}
+              >
+                <Trash2 className="size-4" /> Remove
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   );
@@ -313,22 +416,40 @@ function parseKV(text: string): Record<string, string> {
   return out;
 }
 
-function AddServerForm({
+/** Object → "KEY=value" lines (inverse of parseKV), for prefilling the form. */
+function kvToText(obj?: Record<string, string>): string {
+  return obj
+    ? Object.entries(obj)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n")
+    : "";
+}
+
+function ServerForm({
+  initial,
+  showBack = true,
   onCancel,
-  onAdded,
+  onDone,
   onError,
 }: {
+  /** Present when editing an existing server (name locked, fields prefilled). */
+  initial?: { name: string; config: McpConfig | null };
+  showBack?: boolean;
   onCancel: () => void;
-  onAdded: (name: string) => void;
+  onDone: (name: string) => void;
   onError: (msg: string) => void;
 }) {
-  const [name, setName] = useState("");
-  const [transport, setTransport] = useState<Transport>("stdio");
-  const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
-  const [url, setUrl] = useState("");
-  const [env, setEnv] = useState("");
-  const [headers, setHeaders] = useState("");
+  const cfg = initial?.config ?? null;
+  const editing = !!initial;
+  const initTransport: Transport = cfg?.type === "http" || cfg?.type === "sse" ? cfg.type : "stdio";
+
+  const [name, setName] = useState(initial?.name ?? "");
+  const [transport, setTransport] = useState<Transport>(initTransport);
+  const [command, setCommand] = useState(cfg?.command ?? "");
+  const [args, setArgs] = useState((cfg?.args ?? []).join("\n"));
+  const [url, setUrl] = useState(cfg?.url ?? "");
+  const [env, setEnv] = useState(kvToText(cfg?.env));
+  const [headers, setHeaders] = useState(kvToText(cfg?.headers));
   const [busy, setBusy] = useState(false);
 
   const stdio = transport === "stdio";
@@ -354,7 +475,7 @@ function AddServerForm({
         };
     try {
       await sendJSON("/api/mcp/server", { name: name.trim(), config });
-      onAdded(name.trim());
+      onDone(name.trim());
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -364,9 +485,11 @@ function AddServerForm({
 
   return (
     <div className="flex flex-col gap-3">
-      <button onClick={onCancel} className="w-fit text-sm text-ink-3 hover:text-ink">
-        ← Back to servers
-      </button>
+      {showBack && (
+        <button onClick={onCancel} className="w-fit text-sm text-ink-3 hover:text-ink">
+          ← Back to servers
+        </button>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="mcp-name">Name</Label>
@@ -374,6 +497,7 @@ function AddServerForm({
           id="mcp-name"
           placeholder="linear"
           value={name}
+          disabled={editing}
           onChange={(e) => setName(e.target.value)}
         />
       </div>
@@ -449,9 +573,104 @@ function AddServerForm({
       )}
 
       <Button onClick={submit} disabled={busy || !valid} className="self-start">
-        {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-        Add server
+        {busy ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : editing ? (
+          <Save className="size-4" />
+        ) : (
+          <Plus className="size-4" />
+        )}
+        {editing ? "Save changes" : "Add server"}
       </Button>
+    </div>
+  );
+}
+
+/** Edit (and save / delete) a server's scan source-map .md inline. */
+function SourceMapEditor({
+  name,
+  hasMap,
+  onError,
+  onChanged,
+}: {
+  name: string;
+  hasMap: boolean;
+  onError: (msg: string) => void;
+  onChanged: () => void;
+}) {
+  const [body, setBody] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    getJSON<{ exists: boolean; body: string }>(`/api/mcp/${encodeURIComponent(name)}/sourcemap`)
+      .then((m) => alive && setBody(m.exists ? m.body : ""))
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [name, onError]);
+
+  const save = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      await sendJSON(`/api/mcp/${encodeURIComponent(name)}/sourcemap`, { body }, "PUT");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+      onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearMap = async () => {
+    setBusy(true);
+    try {
+      await fetch(`/api/mcp/${encodeURIComponent(name)}/sourcemap`, { method: "DELETE" });
+      setBody("");
+      onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-ink-3">
+        <Loader2 className="size-4 animate-spin" /> Loading…
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="# Source map (Markdown)…"
+        className="min-h-72 font-mono text-[13px]"
+      />
+      <div className="flex items-center gap-2">
+        <Button onClick={save} disabled={busy} className="self-start">
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          Save scan map
+        </Button>
+        {hasMap && (
+          <Button variant="ghost" onClick={clearMap} disabled={busy} className="text-ink-3">
+            <Trash2 className="size-4" /> Delete map
+          </Button>
+        )}
+        {saved && <span className="text-xs text-sage">Saved</span>}
+      </div>
     </div>
   );
 }

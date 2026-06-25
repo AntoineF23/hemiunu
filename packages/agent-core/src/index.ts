@@ -112,6 +112,7 @@ export {
   loadSourceMaps,
   loadSourceMap,
   saveSourceMap,
+  deleteSourceMap,
   sourceMapsDir,
   createSourcesServer,
   runScan,
