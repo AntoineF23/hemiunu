@@ -63,6 +63,9 @@ The team's knowledge lives in **many MCP servers**, and the agent pulls from the
 - **Web research is part of the backbone**, not a side concern — the Tavily MCP gives the agent public/current/external knowledge (competitor moves, market data, design patterns, standards) to weigh against the team's own sources when proposing ideas.
 - **The design-system MCP is part of the backbone too** — **whatever design system the team connects via an MCP server**: Figma, shadcn, a custom component registry, or any in-house design system exposed over MCP. The pipeline is design-system-agnostic; it reads the connected DS's components, tokens, and guidelines. This is what makes Stage B prototypes on-brand and component-accurate.
 
+### From pointers to synthesized memory (planned — see MVP_PLAN M4)
+Today the agent reaches sources two ways: live, on demand (search/read per turn) and via **source maps** — per-MCP pointer indexes of *where* things live (`packages/agent-core/src/sources.ts`, refreshed by `/scan`). What's still missing for the "shared context built from all your apps" promise is an **aggregation/synthesis layer**: a triggered/periodic ingestion that pulls the *substance* across many sources (Notion + Slack + Linear + Granola + Intercom …) into the feature's `PROTOTYPE.md` (or a richer store) as structured, **attributed, time-stamped** notes — so a feature's shared memory accrues automatically instead of being re-discovered each turn. This is the highest-leverage post-MVP investment; design it before building (provenance, freshness/staleness, and de-duplication are the hard parts).
+
 ---
 
 ## The prototyping pipeline (the product's centerpiece)

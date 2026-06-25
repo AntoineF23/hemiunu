@@ -16,6 +16,7 @@
     "@fontsource-variable/newsreader": "^5.1.0",
     "@fontsource/noto-sans-egyptian-hieroglyphs": "^5.1.0",
     "@hemiunu/agent-core": "workspace:*",
+    "@hemiunu/format": "workspace:*",
     "@hemiunu/mcp": "workspace:*",
     "@hemiunu/memory": "workspace:*",
     "@hono/node-server": "^1.13.0",

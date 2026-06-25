@@ -12,10 +12,13 @@ import "@fontsource/noto-sans-egyptian-hieroglyphs";
 // matching the gold-standard chat UIs).
 import "highlight.js/styles/atom-one-dark.css";
 import { App } from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

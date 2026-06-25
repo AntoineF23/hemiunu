@@ -5,6 +5,9 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireNode } from "./require-node.mjs";
+
+requireNode();
 
 const home = join(dirname(fileURLToPath(import.meta.url)), "..");
 const tsx = join(home, "node_modules", ".bin", "tsx");

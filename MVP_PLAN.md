@@ -88,6 +88,15 @@ No `web/`, `auth/`, `prototyper/`, `evals/` packages yet — created when their 
 - ✅ Concise `README.md`: setup, env vars, MCP, slash commands, how to run.
 - **Done:** smooth streamed chat, persisted to SQLite, grounded in connected sources; `corepack pnpm dev` launches Hemiunu; `corepack pnpm smoke` is green (7/7).
 
+### M4 — Shared multi-source memory (NEXT — design first) ⏳
+The product's core promise is a *shared context filled from all the team's apps*. Today that's partial: live per-turn source reads + **source maps** (pointer indexes of where things live, via `/scan` → `packages/agent-core/src/sources.ts`). The gap is an **aggregation/synthesis layer**.
+- **Ingestion:** a triggered (and later periodic) pass that pulls substance across connected MCPs (Notion, Slack, Linear, Granola, Intercom, …) for the current feature.
+- **Synthesis → memory:** distil it into the feature's `PROTOTYPE.md` (or a richer store) as structured notes, each with **provenance (source + id/url) and a timestamp**.
+- **Freshness & dedup:** mark stale notes; never duplicate a fact already captured; keep human-written notes the source can't confirm/deny (same reconcile rule `/scan` already uses).
+- **Surface:** a "refresh sources / build feature context" action in CLI + web.
+- **Done when:** from a few connected apps, Hemiunu assembles one attributed, de-duplicated, dated feature brief — without the user hand-collecting it.
+- **Design before building:** provenance, freshness, and de-duplication are the hard parts (see FINAL_PLAN "From pointers to synthesized memory"). Steer this milestone here before writing code.
+
 ## Needed from you
 - **LiteLLM key** → `.env` (`ANTHROPIC_API_KEY`). You add it directly so it never passes through me.
 - **Notion** internal integration token + shared workspace (M2).

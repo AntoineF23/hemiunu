@@ -2,6 +2,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { remember } from "@hemiunu/memory";
 import { z } from "zod";
 import { configDir } from "./config";
+import { isTimeoutError, timeoutSignal } from "./net";
 import { PROVIDER_NAMES, resolveProvider } from "./providers";
 
 /**
@@ -74,6 +75,7 @@ export async function askModel({
         ],
         max_tokens: maxTokens,
       }),
+      signal: timeoutSignal(),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -89,6 +91,9 @@ export async function askModel({
     }
     return text;
   } catch (e) {
+    if (isTimeoutError(e)) {
+      return `${provider}/${model} timed out (no response in time). Try again, or raise HEMIUNU_FETCH_TIMEOUT_MS.`;
+    }
     return `Failed to reach ${provider}/${model}: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
@@ -137,6 +142,7 @@ export async function askAnthropic({
         ...(system ? { system } : {}),
         messages: [{ role: "user", content: prompt }],
       }),
+      signal: timeoutSignal(),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -157,6 +163,11 @@ export async function askAnthropic({
       };
     return { text };
   } catch (e) {
+    if (isTimeoutError(e)) {
+      return {
+        error: `Anthropic ${model} timed out (no response in time). Try again, or raise HEMIUNU_FETCH_TIMEOUT_MS.`,
+      };
+    }
     return {
       error: `Failed to reach Anthropic ${model}: ${e instanceof Error ? e.message : String(e)}`,
     };

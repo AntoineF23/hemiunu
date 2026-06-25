@@ -24,22 +24,24 @@ function confined(dir: string, rel: string): string | null {
   return target === dir || target.startsWith(dir + sep) ? target : null;
 }
 
-function listFiles(dir: string, max = 500): string[] {
-  const out: string[] = [];
+/** List files under `dir`, capped at `max`. `total` is the true count so the
+ *  caller can tell the agent when the listing was truncated. */
+function listFiles(dir: string, max = 500): { files: string[]; total: number } {
+  const files: string[] = [];
+  let total = 0;
   const walk = (d: string) => {
-    if (out.length >= max) return;
     for (const e of readdirSync(d, { withFileTypes: true })) {
       if (IGNORE.has(e.name)) continue;
       const full = join(d, e.name);
       if (e.isDirectory()) walk(full);
       else {
-        out.push(relative(dir, full));
-        if (out.length >= max) return;
+        total++;
+        if (files.length < max) files.push(relative(dir, full));
       }
     }
   };
   if (existsSync(dir)) walk(dir);
-  return out;
+  return { files, total };
 }
 
 export function createWorkspaceServer() {
@@ -84,8 +86,13 @@ export function createWorkspaceServer() {
       const dir = activeProtoDir();
       if (!existsSync(dir))
         return text("Nothing yet — run iterate_prototype or save a prototype first.");
-      const files = listFiles(dir);
-      return text(files.length ? files.join("\n") : "(empty)");
+      const { files, total } = listFiles(dir);
+      if (!files.length) return text("(empty)");
+      const more =
+        total > files.length
+          ? `\n\n(… and ${total - files.length} more — showing the first ${files.length})`
+          : "";
+      return text(files.join("\n") + more);
     },
     { annotations: { title: "List workspace files", readOnlyHint: true } },
   );

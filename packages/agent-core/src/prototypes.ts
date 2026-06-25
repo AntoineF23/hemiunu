@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { explainError } from "./explain";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
 import { commitFile, getFile, githubViewer, resolveGithubToken, resolveRepo } from "./github";
 import { slugify } from "./prototype";
@@ -110,7 +111,9 @@ interface RemoteOpts {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function featureName(repo: string): string {
@@ -162,7 +165,7 @@ export async function addPrototypeNote(
     );
     return `Added ${kind} to ${repo}'s PROTOTYPE.md${commitUrl ? ` — ${commitUrl}` : ""}.`;
   } catch (e) {
-    return `Couldn't update PROTOTYPE.md: ${e instanceof Error ? e.message : String(e)}`;
+    return `Couldn't update PROTOTYPE.md: ${explainError(e)}`;
   }
 }
 
@@ -182,7 +185,7 @@ export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> 
     if (!file) return `No PROTOTYPE.md yet in ${repo} — add knowledge and I'll create it.`;
     return file.content;
   } catch (e) {
-    return `Couldn't read PROTOTYPE.md: ${e instanceof Error ? e.message : String(e)}`;
+    return `Couldn't read PROTOTYPE.md: ${explainError(e)}`;
   }
 }
 
@@ -224,7 +227,7 @@ export async function updatePrototype(content: string, opts?: RemoteOpts): Promi
     );
     return `Updated ${repo}'s PROTOTYPE.md${commitUrl ? ` — ${commitUrl}` : ""}.`;
   } catch (e) {
-    return `Couldn't update PROTOTYPE.md: ${e instanceof Error ? e.message : String(e)}`;
+    return `Couldn't update PROTOTYPE.md: ${explainError(e)}`;
   }
 }
 

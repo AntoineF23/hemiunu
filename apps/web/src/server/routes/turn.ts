@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
+  asStream,
   GET_SOURCE_MAP_TOOL_ID,
   PARALLEL_TOOL_ID,
   REMEMBER_TOOL_ID,
@@ -20,6 +21,7 @@ import {
   endSession,
   getSession,
   type PermissionResult,
+  resetAlwaysAllow,
   resolvePermission,
 } from "../session";
 import type { PermissionReply, ServerEvent, TurnRequest } from "../../shared/protocol";
@@ -32,6 +34,9 @@ turnRoute.post("/api/turn", async (c) => {
   if (!prompt) return c.json({ error: "empty prompt" }, 400);
 
   const rt = bootRuntime();
+  // A brand-new conversation (no resume id) starts with a clean permission slate
+  // so "always allow" grants never leak from a previous chat.
+  if (!body.resume) resetAlwaysAllow();
   const turnId = randomUUID();
   const session = createSession(turnId);
   const { servers, patterns } = activeMcp(rt);
@@ -41,6 +46,17 @@ turnRoute.post("/api/turn", async (c) => {
     session.emit = emit;
     // Browser closed the tab / navigated away → abort the live turn.
     stream.onAbort(() => session.ac.abort());
+
+    // Hard ceiling: if a turn never completes (upstream hang, model stall), abort
+    // it instead of streaming forever and burning tokens. Override with
+    // HEMIUNU_WEB_TURN_TIMEOUT_MS; default 10 min.
+    const maxTurnMs = Number(process.env.HEMIUNU_WEB_TURN_TIMEOUT_MS) || 10 * 60_000;
+    const turnTimeout = setTimeout(() => {
+      if (!session.ac.signal.aborted) {
+        emit({ type: "note", text: "⏱ turn exceeded the time limit — stopping." });
+        session.ac.abort();
+      }
+    }, maxTurnMs);
 
     await emit({ type: "turn", turnId });
 
@@ -112,24 +128,25 @@ turnRoute.post("/api/turn", async (c) => {
           }
         },
       })) {
-        const msg = m as any;
+        const msg = asStream(m);
         if (msg.type === "system" && msg.subtype === "init") {
           sessionId = msg.session_id;
           if (sessionId) await emit({ type: "session", sessionId });
         } else if (msg.type === "assistant") {
           const sub = !!msg.parent_tool_use_id;
-          for (const b of msg.message.content) {
+          for (const b of msg.message?.content ?? []) {
             if (b.type === "text") {
+              const txt = b.text ?? "";
               if (sub) {
-                const tx = b.text.trim();
+                const tx = txt.trim();
                 if (tx) emit({ type: "subagent", label: "", detail: clip(tx, 240), sub: true });
                 continue;
               }
-              fullText += b.text;
-              emit({ type: "text", delta: b.text });
+              fullText += txt;
+              emit({ type: "text", delta: txt });
             } else if (b.type === "tool_use") {
               if (b.name === PARALLEL_TOOL_ID) {
-                delegateIds.add(b.id);
+                if (b.id) delegateIds.add(b.id);
                 const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
                 const summary = tasks
                   .map((t: Record<string, unknown>) => String(t.label ?? t.agent ?? "task"))
@@ -143,12 +160,12 @@ turnRoute.post("/api/turn", async (c) => {
                   delegate: true,
                 });
               } else if (b.name === "Agent" || b.name === "Task") {
-                delegateIds.add(b.id);
+                if (b.id) delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
                 const desc = clip(String(b.input?.description ?? ""), 56);
                 emit({ type: "tool", name: who, preview: desc, delegate: true });
               } else {
-                emit({ type: "tool", name: b.name, preview: toolPreview(b.input), sub });
+                emit({ type: "tool", name: b.name ?? "tool", preview: toolPreview(b.input), sub });
               }
             }
           }
@@ -169,6 +186,8 @@ turnRoute.post("/api/turn", async (c) => {
     } catch (e) {
       if (session.ac.signal.aborted) emit({ type: "interrupted" });
       else emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      clearTimeout(turnTimeout);
     }
 
     const ctxTokens =

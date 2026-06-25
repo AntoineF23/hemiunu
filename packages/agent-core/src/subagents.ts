@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { asStream } from "./messages";
 import { SOURCE_TOOLS, loadSourceMaps } from "./sources";
 import { createToolCapHook } from "./toolcap";
 
@@ -169,7 +170,7 @@ export async function runSubagent(
       allowedTools: tools,
     },
   })) {
-    const msg = m as Record<string, any>;
+    const msg = asStream(m);
     if (onTool && msg.type === "assistant") {
       for (const b of msg.message?.content ?? []) {
         if (b.type === "tool_use" && typeof b.name === "string") onTool(b.name);

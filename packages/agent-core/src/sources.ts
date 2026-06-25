@@ -6,6 +6,7 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { configDir, loadConfig } from "./config";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
+import { asStream } from "./messages";
 import { slugify } from "./prototype";
 import { createToolCapHook } from "./toolcap";
 
@@ -74,9 +75,13 @@ export function loadSourceMaps(root: string = configDir()): SourceMapMeta[] {
   const out: SourceMapMeta[] = [];
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (!entry.endsWith(".md") || !statSync(full).isFile()) continue;
-    const { meta } = parseFrontmatter(readFileSync(full, "utf8"));
-    out.push(metaFrom(meta, entry.slice(0, -3), full));
+    try {
+      if (!entry.endsWith(".md") || !statSync(full).isFile()) continue;
+      const { meta } = parseFrontmatter(readFileSync(full, "utf8"));
+      out.push(metaFrom(meta, entry.slice(0, -3), full));
+    } catch {
+      // Skip one unreadable/corrupt map rather than losing every map.
+    }
   }
   return out.sort((a, b) => a.mcp.localeCompare(b.mcp));
 }
@@ -94,9 +99,11 @@ export function loadSourceMap(mcp: string, root: string = configDir()): SourceMa
   return { ...metaFrom(meta, slug, file), body };
 }
 
-/** Today's date as YYYY-MM-DD (local). */
+/** Today's date as YYYY-MM-DD in the user's LOCAL timezone (toISOString is UTC). */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 /** Create or replace a source map. The mcp name is slugified into the filename. */
@@ -257,7 +264,7 @@ export async function runScan(opts: ScanOptions): Promise<string> {
       allowedTools: tools,
     },
   })) {
-    const msg = m as Record<string, any>;
+    const msg = asStream(m);
     if (opts.onTool && msg.type === "assistant") {
       for (const b of msg.message?.content ?? []) {
         if (b.type === "tool_use" && typeof b.name === "string") opts.onTool(b.name);

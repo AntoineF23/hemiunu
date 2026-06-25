@@ -26,9 +26,16 @@ export interface TurnSession {
 
 const sessions = new Map<string, TurnSession>();
 
-// "Always allow this tool" persists for the life of the worker process (one
-// local user), mirroring the CLI's session-scoped alwaysAllow ref.
+// "Always allow this tool" for one local user. Trust boundary: the OS user who
+// launched the worker. It is scoped to the current conversation — starting a
+// fresh (non-resumed) conversation clears it via resetAlwaysAllow(), so a grant
+// can't silently outlive the chat it was made in or leak into the next one.
 export const alwaysAllow = new Set<string>();
+
+/** Forget all "always allow" grants — called when a brand-new conversation starts. */
+export function resetAlwaysAllow(): void {
+  alwaysAllow.clear();
+}
 
 export function createSession(turnId: string): TurnSession {
   const s: TurnSession = {

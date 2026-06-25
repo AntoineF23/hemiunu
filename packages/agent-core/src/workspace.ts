@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -25,6 +26,9 @@ import { currentWorkspace } from "./workspace-context";
 const TRASH_META = "_hemiunu_trash.json";
 const TRASH_KEEP = 12; // keep the most recent N snapshots
 const TRASH_MAX_AGE_DAYS = 21;
+// Hard cap on total recycle-bin size so 12 snapshots of a large repo can't
+// quietly eat tens of GB. Newest snapshots are kept; older ones drop first.
+const TRASH_MAX_TOTAL_MB = 500;
 
 export function workspacesRoot(): string {
   return join(configDir(), "tmp", "teams");
@@ -84,22 +88,34 @@ interface GitResult {
   stderr: string;
 }
 
-/** Auth for network git ops without persisting the token anywhere on disk. */
-function authArgs(token: string): string[] {
+// The token is read from this env var by the credential helper below — NOT
+// embedded in the command line, so it never appears in the process list (`ps`).
+const GIT_TOKEN_ENV = "HEMIUNU_GIT_TOKEN";
+
+/** Auth for network git ops without persisting the token anywhere on disk. The
+ *  `-c` value carries only the env var NAME; the secret travels in the child's
+ *  environment (see `git()`), keeping it out of argv. */
+function authArgs(): string[] {
   return [
     "-c",
     "credential.helper=",
     "-c",
-    `credential.https://github.com.helper=!f() { echo username=x-access-token; echo "password=${token}"; }; f`,
+    `credential.https://github.com.helper=!f() { echo username=x-access-token; echo "password=$${GIT_TOKEN_ENV}"; }; f`,
   ];
 }
 
 function git(args: string[], opts: { cwd?: string; token?: string } = {}): Promise<GitResult> {
-  const full = [...(opts.token ? authArgs(opts.token) : []), ...args];
+  const full = [...(opts.token ? authArgs() : []), ...args];
+  const env = opts.token ? { ...process.env, [GIT_TOKEN_ENV]: opts.token } : process.env;
   return new Promise((resolve) => {
-    execFile("git", full, { cwd: opts.cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
-    });
+    execFile(
+      "git",
+      full,
+      { cwd: opts.cwd, env, maxBuffer: 64 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        resolve({ ok: !err, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
+      },
+    );
   });
 }
 
@@ -197,15 +213,45 @@ export function restoreTrash(id: string): string {
   return dest;
 }
 
-/** Keep the newest TRASH_KEEP entries and drop anything older than the max age. */
+/** Total size of a directory tree in bytes (best-effort; skips unreadable files). */
+function dirSize(p: string): number {
+  let total = 0;
+  for (const e of readdirSync(p, { withFileTypes: true })) {
+    const full = join(p, e.name);
+    try {
+      total += e.isDirectory() ? dirSize(full) : statSync(full).size;
+    } catch {
+      // skip a vanished/unreadable file
+    }
+  }
+  return total;
+}
+
+/**
+ * Keep the newest TRASH_KEEP entries, drop anything older than the max age, and
+ * enforce a total-size budget (oldest survivors drop first; the newest snapshot
+ * is always kept). Bounds disk use without ever touching an active checkout.
+ */
 function pruneTrash(): void {
-  const entries = listTrash();
+  const entries = listTrash(); // newest first
   const cutoff = Date.now() - TRASH_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const survivors: string[] = [];
   entries.forEach((e, i) => {
     const tooOld = e.time ? new Date(e.time).getTime() < cutoff : false;
     if (i >= TRASH_KEEP || tooOld) {
       rmSync(join(trashRoot(), e.id), { recursive: true, force: true });
+    } else {
+      survivors.push(e.id);
     }
+  });
+
+  const budget = TRASH_MAX_TOTAL_MB * 1024 * 1024;
+  let used = 0;
+  survivors.forEach((id, i) => {
+    const entry = join(trashRoot(), id);
+    if (!existsSync(entry)) return;
+    used += dirSize(entry);
+    if (i > 0 && used > budget) rmSync(entry, { recursive: true, force: true });
   });
 }
 
@@ -387,7 +433,9 @@ export async function migrateLocalIntoTeam(
         }
       }
       if (!merged || !merged.trim()) {
-        const day = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
         merged = `${remote.trimEnd()}\n\n<!-- merged from local session ${day} -->\n\n${local.trim()}\n`;
       }
       writeFileSync(remoteProto, merged, "utf8");

@@ -8,6 +8,9 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireNode } from "./require-node.mjs";
+
+requireNode();
 
 const home = join(dirname(fileURLToPath(import.meta.url)), ".."); // repo / install root
 const webDir = join(home, "apps", "web");

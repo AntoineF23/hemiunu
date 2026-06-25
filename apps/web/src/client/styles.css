@@ -708,6 +708,20 @@ body::before {
   background: var(--ink-4);
 }
 
+/* ── Error fallbacks ───────────────────────────────────── */
+.error-boundary {
+  padding: 12px 16px;
+  margin: 8px 0;
+  border: 1px solid var(--ink-4);
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
+.markdown-fallback {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 880px) {
   .app {

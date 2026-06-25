@@ -32,8 +32,14 @@ function loadEnvFiles(): void {
         if (/^"[\s\S]*"$/.test(val) || /^'[\s\S]*'$/.test(val)) val = val.slice(1, -1);
         if (process.env[key] === undefined) process.env[key] = val;
       }
-    } catch {
-      // ignore — env may already be populated by the shell
+    } catch (e) {
+      // A missing file is fine (env may come from the shell), but a real read
+      // failure on a secrets file (e.g. permission denied) should be visible.
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn(
+          `hemiunu: couldn't read ${path}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
   }
 }

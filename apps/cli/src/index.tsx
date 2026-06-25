@@ -39,8 +39,10 @@ import {
   vercelLoggedIn,
   vercelLogin,
   setControlHandler,
+  asStream,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
+import { clip, title, prettyTool, resultText, toolPreview, summarizeResult } from "@hemiunu/format";
 import { loadMcpRegistry } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
@@ -214,96 +216,8 @@ const MENU_CHOICES: { label: string; value: PermValue }[] = [
   { label: "No, and tell the agent what to do differently", value: "no" },
 ];
 
-function prettyTool(name: string): string {
-  if (name.startsWith("mcp__")) {
-    const rest = name.slice(5);
-    const i = rest.indexOf("__");
-    if (i >= 0) return `${rest.slice(0, i)}·${rest.slice(i + 2)}`;
-  }
-  return name;
-}
-
-function resultText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((b) =>
-        b && typeof b === "object" && (b as { type?: string }).type === "text"
-          ? (b as { text: string }).text
-          : "",
-      )
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-  return "";
-}
-
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-const title = (p: string) => clip(p.replace(/\s+/g, " ").trim(), 60);
-
-const HOME_DIR = process.env.HOME ?? "";
-/** A long uuid → its first segment, so ids read as `38835e52…` not a wall. */
-const shortId = (id: string) => (id.length > 12 ? `${id.split("-")[0]}…` : id);
-const shortPath = (p: string) =>
-  HOME_DIR && p.startsWith(HOME_DIR) ? `~${p.slice(HOME_DIR.length)}` : p;
-
-/** Render a tool call's input as the one argument that matters, not raw JSON. */
-function toolPreview(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const i = input as Record<string, unknown>;
-  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-  if (str(i.query)) return `“${clip(str(i.query), 60)}”`;
-  if (str(i.pattern)) return clip(str(i.pattern), 60);
-  if (str(i.path)) return clip(shortPath(str(i.path)), 60);
-  if (str(i.page_id)) return shortId(str(i.page_id));
-  if (str(i.data_source_id)) return shortId(str(i.data_source_id));
-  if (str(i.mcp)) return str(i.mcp);
-  if (str(i.prompt)) return `“${clip(str(i.prompt), 60)}”`;
-  const firstStr = Object.values(i).find((v) => typeof v === "string" && v.trim()) as
-    | string
-    | undefined;
-  return firstStr ? clip(firstStr.trim(), 60) : "";
-}
-
-/** Turn a tool result into a short human line instead of dumping its JSON. */
-function summarizeResult(text: string): string {
-  const t = text.trim();
-  if (!t) return "done";
-  if (/^(Error|EPERM|ENOENT|EACCES|EISDIR)/i.test(t))
-    return `⚠ ${clip(t.replace(/\s+/g, " "), 120)}`;
-  let j: any;
-  try {
-    j = JSON.parse(t);
-  } catch {
-    return clip(t.replace(/\s+/g, " "), 140);
-  }
-  if (j && typeof j === "object") {
-    if (Array.isArray(j.results)) {
-      const n = j.results.length;
-      return n === 0 ? "no results" : `${n}${j.has_more ? "+" : ""} result${n === 1 ? "" : "s"}`;
-    }
-    if (typeof j.markdown === "string") {
-      const first =
-        j.markdown
-          .replace(/^[>#\s]+/, "")
-          .split("\n")
-          .find((l: string) => l.trim()) ?? "";
-      return first ? `“${clip(first.trim(), 90)}”` : "empty page";
-    }
-    if (typeof j.content === "string") {
-      const c = j.content;
-      const files = (c.match(/\[FILE\]/g) ?? []).length;
-      const dirs = (c.match(/\[DIR\]/g) ?? []).length;
-      if (files || dirs)
-        return `${dirs} dir${dirs === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`;
-      return clip(c.replace(/\s+/g, " "), 120);
-    }
-    const keys = Object.keys(j);
-    if (keys.length) return clip(keys.join(", "), 80);
-  }
-  return clip(t.replace(/\s+/g, " "), 140);
-}
+// Presentation formatters are shared with the web worker via @hemiunu/format
+// (imported above) — one source of truth, no hand-kept duplication.
 
 // Minimal inline markdown → Ink nodes: **bold**, `code`.
 function mdInline(line: string, li: number): React.ReactNode[] {
@@ -787,31 +701,32 @@ function App({
           setStatusLabel("parallel");
         },
       })) {
-        const msg = m as any;
+        const msg = asStream(m);
         if (msg.type === "system" && msg.subtype === "init") {
           sessionId.current = msg.session_id;
         } else if (msg.type === "assistant") {
           const sub = !!msg.parent_tool_use_id;
-          for (const b of msg.message.content) {
+          for (const b of msg.message?.content ?? []) {
             if (b.type === "text") {
+              const txt = b.text ?? "";
               // A subagent's narration (what it's looking for / found) — show it
               // dim & indented so the work is transparent, but keep it out of the
               // saved transcript and the main answer (that's the coordinator's).
               if (sub) {
-                const tx = b.text.trim();
+                const tx = txt.trim();
                 if (tx) push({ kind: "text", text: clip(tx, 240), sub: true });
                 continue;
               }
-              fullText += b.text;
-              liveRef.current += b.text;
-              turnTokensRef.current += Math.ceil(b.text.length / 4);
+              fullText += txt;
+              liveRef.current += txt;
+              turnTokensRef.current += Math.ceil(txt.length / 4);
               setLive(liveRef.current);
             } else if (b.type === "tool_use") {
               if (liveRef.current.trim()) push({ kind: "text", text: liveRef.current });
               liveRef.current = "";
               setLive("");
               if (b.name === PARALLEL_TOOL_ID) {
-                delegateIds.add(b.id);
+                if (b.id) delegateIds.add(b.id);
                 const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
                 const summary = tasks
                   .map((t: Record<string, unknown>) => String(t.label ?? t.agent ?? "task"))
@@ -824,7 +739,7 @@ function App({
                 });
                 setStatusLabel("parallel");
               } else if (b.name === "Agent" || b.name === "Task") {
-                delegateIds.add(b.id);
+                if (b.id) delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
                 const desc = clip(String(b.input?.description ?? ""), 56);
                 // researcher runs on the cheap retrieval tier; others (e.g.
@@ -838,7 +753,7 @@ function App({
                 });
                 setStatusLabel(who === "prototyper" ? "prototyping" : "researching");
               } else {
-                push({ kind: "tool", name: b.name, input: toolPreview(b.input), sub });
+                push({ kind: "tool", name: b.name ?? "tool", input: toolPreview(b.input), sub });
                 setStatusLabel(sub ? "researching" : "running");
               }
             }
@@ -1045,12 +960,13 @@ function App({
         abortController: ac,
         workspace: { repo: currentProjectRef.current || null },
       })) {
-        const msg = m as any;
+        const msg = asStream(m);
         if (msg.type === "assistant")
-          for (const b of msg.message.content)
+          for (const b of msg.message?.content ?? [])
             if (b.type === "text") {
-              summary += b.text;
-              turnTokensRef.current += Math.ceil(b.text.length / 4);
+              const txt = b.text ?? "";
+              summary += txt;
+              turnTokensRef.current += Math.ceil(txt.length / 4);
             }
       }
     } catch (e) {

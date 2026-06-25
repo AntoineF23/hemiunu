@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { Check, Copy } from "lucide-react";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 function CodeBlock({ children }: { children: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
@@ -40,20 +41,24 @@ function extractText(node: React.ReactNode): string {
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="prose">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-        components={{
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer noopener">
-              {children}
-            </a>
-          ),
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+      {/* If markdown parsing/rendering ever throws, show the raw text rather than
+          blanking the message. */}
+      <ErrorBoundary fallback={<pre className="markdown-fallback">{text}</pre>}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+          components={{
+            pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+            a: ({ href, children }) => (
+              <a href={href} target="_blank" rel="noreferrer noopener">
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {text}
+        </ReactMarkdown>
+      </ErrorBoundary>
     </div>
   );
 });

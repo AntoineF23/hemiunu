@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "./config";
+import { timeoutSignal } from "./net";
 import { currentWorkspace } from "./workspace-context";
 
 /**
@@ -88,6 +89,7 @@ export async function requestDeviceCode(scope: string = DEVICE_SCOPE): Promise<D
       "User-Agent": "hemiunu",
     },
     body: JSON.stringify({ client_id: clientId, scope }),
+    signal: timeoutSignal(),
   });
   if (!res.ok) throw new Error(`device-code request failed: ${res.status} ${await res.text()}`);
   const j = (await res.json()) as {
@@ -128,6 +130,7 @@ export async function pollDeviceToken(deviceCode: string): Promise<DevicePoll> {
       device_code: deviceCode,
       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
     }),
+    signal: timeoutSignal(),
   });
   const j = (await res.json()) as {
     access_token?: string;
@@ -253,7 +256,10 @@ export function setCurrentTeam(repo: string | null): void {
 /** Whether a repo exists and is accessible to the token (false on 404/403/401). */
 export async function repoExists(token: string, repo: string): Promise<boolean> {
   try {
-    const res = await fetch(`${API}/repos/${normalizeRepo(repo)}`, { headers: apiHeaders(token) });
+    const res = await fetch(`${API}/repos/${normalizeRepo(repo)}`, {
+      headers: apiHeaders(token),
+      signal: timeoutSignal(),
+    });
     if (res.ok) return true;
     if (res.status === 404 || res.status === 403 || res.status === 401) return false;
     return true; // transient (5xx/other) → keep, don't prune on uncertainty
@@ -318,7 +324,7 @@ export function resolveRepo(): string | undefined {
 /** The authenticated user's login (for attribution), or undefined if the token is bad. */
 export async function githubViewer(token: string): Promise<string | undefined> {
   try {
-    const res = await fetch(`${API}/user`, { headers: apiHeaders(token) });
+    const res = await fetch(`${API}/user`, { headers: apiHeaders(token), signal: timeoutSignal() });
     if (!res.ok) return undefined;
     const json = (await res.json()) as { login?: string };
     return json.login;
@@ -353,6 +359,7 @@ export async function createRepo(
     method: "POST",
     headers: { ...apiHeaders(token), "Content-Type": "application/json" },
     body: JSON.stringify({ name: repoName, private: isPrivate, auto_init: true }),
+    signal: timeoutSignal(),
   });
   if (!res.ok) return { error: `${res.status} ${await res.text()}` };
   const json = (await res.json()) as { full_name?: string };
@@ -372,7 +379,7 @@ export async function getFile(
   branch?: string,
 ): Promise<RepoFile | null> {
   const url = `${API}/repos/${repo}/contents/${path}${branch ? `?ref=${encodeURIComponent(branch)}` : ""}`;
-  const res = await fetch(url, { headers: apiHeaders(token) });
+  const res = await fetch(url, { headers: apiHeaders(token), signal: timeoutSignal() });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitHub GET ${path}: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { content?: string; sha: string };
@@ -403,6 +410,7 @@ async function putFile(
       ...(sha ? { sha } : {}),
       ...(branch ? { branch } : {}),
     }),
+    signal: timeoutSignal(),
   });
   if (!res.ok) {
     const err = new Error(`GitHub PUT ${path}: ${res.status} ${await res.text()}`) as Error & {

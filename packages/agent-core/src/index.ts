@@ -30,6 +30,10 @@ export {
 export type { Skill, SkillMeta, SaveSkillOptions, SavedSkill } from "./skills";
 export { upsertUserEnv } from "./config";
 export { parseFrontmatter, renderFrontmatter } from "./frontmatter";
+export { explainError } from "./explain";
+export { fetchTimeoutMs, timeoutSignal, isTimeoutError } from "./net";
+export { asStream, assistantBlocks } from "./messages";
+export type { StreamMessage, ContentBlock } from "./messages";
 export {
   resolveGithubToken,
   resolveRepo,
