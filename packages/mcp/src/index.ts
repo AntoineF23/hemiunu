@@ -1,2 +1,8 @@
-export { loadMcpRegistry } from "./config";
-export type { LoadedRegistry } from "./config";
+export {
+  loadMcpRegistry,
+  parseServerConfig,
+  readUserServers,
+  upsertUserServer,
+  removeUserServer,
+} from "./config";
+export type { LoadedRegistry, McpServerConfig } from "./config";

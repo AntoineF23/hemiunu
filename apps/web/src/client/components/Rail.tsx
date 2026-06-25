@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Check,
   type LucideIcon,
   MessagesSquare,
   PanelLeft,
@@ -9,6 +10,14 @@ import {
   SquareSlash,
   Users,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./Avatar";
@@ -24,6 +33,9 @@ interface RailProps {
   team: string | null;
   user: string | null;
   githubLogin: string | null;
+  /** Connected GitHub account logins, for the profile switcher. */
+  accounts: string[];
+  onSwitchAccount: (login: string) => void;
 }
 
 interface NavItem {
@@ -54,8 +66,10 @@ export function Rail({
   team,
   user,
   githubLogin,
+  accounts,
+  onSwitchAccount,
 }: RailProps) {
-  const avatarInitial = (user ?? team?.split("/")[1] ?? "H").charAt(0).toUpperCase();
+  const avatarInitial = (githubLogin ?? user ?? team?.split("/")[1] ?? "H").charAt(0).toUpperCase();
 
   return (
     <aside
@@ -111,27 +125,49 @@ export function Rail({
 
       <div className="flex-1" />
 
-      {/* User / team profile row */}
-      <button
-        onClick={() => onSelectPanel("teams")}
-        title={team ?? "Local workspace"}
-        className={cn(
-          "flex items-center gap-2.5 rounded-lg py-1.5 transition-colors hover:bg-white/[0.04]",
-          collapsed ? "justify-center px-0" : "px-1.5",
-        )}
-      >
-        <Avatar
-          login={githubLogin}
-          fallback={avatarInitial}
-          className="size-8 rounded-md bg-clay text-sm font-semibold text-primary-foreground"
-        />
-        {!collapsed && (
-          <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
-            <span className="truncate text-sm text-ink">{user ?? "You"}</span>
-            <span className="truncate text-xs text-ink-4">{team ?? "Local workspace"}</span>
-          </span>
-        )}
-      </button>
+      {/* User / account profile row — click to switch GitHub profile */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          title={githubLogin ?? "Not signed in"}
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg py-1.5 outline-none transition-colors hover:bg-white/[0.04]",
+            collapsed ? "justify-center px-0" : "px-1.5",
+          )}
+        >
+          <Avatar
+            login={githubLogin}
+            fallback={avatarInitial}
+            className="size-8 rounded-md bg-clay text-sm font-semibold text-primary-foreground"
+          />
+          {!collapsed && (
+            <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
+              <span className="truncate text-sm text-ink">{githubLogin ?? user ?? "You"}</span>
+              <span className="truncate text-xs text-ink-4">{team ?? "Local workspace"}</span>
+            </span>
+          )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="min-w-56">
+          <DropdownMenuLabel>GitHub account</DropdownMenuLabel>
+          {accounts.length === 0 && (
+            <DropdownMenuItem disabled>No account connected</DropdownMenuItem>
+          )}
+          {accounts.map((login) => (
+            <DropdownMenuItem key={login} onSelect={() => onSwitchAccount(login)}>
+              <Avatar
+                login={login}
+                fallback={login.charAt(0).toUpperCase()}
+                className="size-5 rounded bg-raised text-[10px] font-semibold text-ink-2"
+              />
+              <span className="flex-1 truncate">{login}</span>
+              {login === githubLogin && <Check className="size-4 text-clay" />}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => onSelectPanel("teams")}>
+            Manage accounts & teams…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </aside>
   );
 }

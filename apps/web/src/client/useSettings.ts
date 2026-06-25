@@ -4,6 +4,7 @@ export interface Settings {
   model: string;
   user: string | null;
   githubLogin: string | null;
+  githubAccounts: string[];
   hasApiKey: boolean;
   github: boolean;
   vercel: boolean;

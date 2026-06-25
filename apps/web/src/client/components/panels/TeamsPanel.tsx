@@ -18,6 +18,10 @@ interface TeamsData {
   teams: string[];
   current: string | null;
   github: boolean;
+  /** Active GitHub account login (teams are scoped to it), or null. */
+  account: string | null;
+  /** All connected account logins, for the switcher. */
+  accounts: string[];
 }
 
 interface DeviceInfo {
@@ -158,6 +162,21 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
     }
   };
 
+  const switchAccount = (login: string) =>
+    run(async () => {
+      const d = await sendJSON<TeamsData>("/api/github/switch", { login });
+      await loadTeammates();
+      onChanged();
+      return d;
+    });
+
+  const disconnect = () =>
+    run(async () => {
+      const d = await sendJSON<TeamsData>("/api/github/disconnect", {});
+      onChanged();
+      return d;
+    });
+
   const connectGithub = async () => {
     setError(null);
     setConnecting(true);
@@ -195,8 +214,7 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
         <SheetHeader>
           <SheetTitle>Teams</SheetTitle>
           <SheetDescription>
-            A team is one prototype repo. Switch the active team, add an existing repo, or create a
-            new one.
+            Teams belong to a GitHub account. Switch profile to see that account's teams.
           </SheetDescription>
         </SheetHeader>
 
@@ -206,7 +224,82 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
           </p>
         )}
 
-        {/* Selection list */}
+        {/* GitHub account — teams below are scoped to the active one */}
+        <div className="flex flex-col gap-2">
+          <Label>GitHub account</Label>
+          <div className="flex flex-col gap-1">
+            {data && !data.accounts.length && (
+              <p className="px-1 text-sm text-ink-3">No GitHub account connected yet.</p>
+            )}
+            {data?.accounts.map((login) => {
+              const active = login === data.account;
+              return (
+                <button
+                  key={login}
+                  onClick={() => !active && switchAccount(login)}
+                  disabled={busy}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors",
+                    active ? "border-clay/40 bg-clay-soft" : "border-border hover:bg-accent",
+                  )}
+                >
+                  <Avatar
+                    login={login}
+                    fallback={login.charAt(0).toUpperCase()}
+                    className="size-7 rounded-full bg-raised text-xs font-semibold text-ink-2"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-ink">{login}</span>
+                    {active && <span className="block text-xs text-ink-4">active</span>}
+                  </span>
+                  {active ? (
+                    <Check className="size-4 shrink-0 text-clay" />
+                  ) : (
+                    <span className="shrink-0 text-xs text-ink-4">switch</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {device ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-border p-3 text-sm">
+              <p className="text-ink-2">Enter this code at the GitHub page that opened:</p>
+              <code className="self-start rounded-md bg-raised px-3 py-1.5 font-mono text-base tracking-widest text-ink">
+                {device.userCode}
+              </code>
+              <a
+                href={device.verificationUri}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1 text-clay-strong hover:underline"
+              >
+                Open github.com/login/device <ExternalLink className="size-3.5" />
+              </a>
+              <p className="flex items-center gap-2 text-ink-3">
+                <Loader2 className="size-3.5 animate-spin" /> Waiting for authorization…
+              </p>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={connectGithub} disabled={connecting}>
+                {connecting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Github className="size-4" />
+                )}
+                Connect {data?.accounts.length ? "another account" : "GitHub"}
+              </Button>
+              {data?.github && (
+                <Button variant="ghost" onClick={disconnect} disabled={busy}>
+                  Disconnect
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Teams for the active account */}
         <div className="flex flex-col gap-1">
           <TeamRow
             label="Local workspace"
@@ -263,43 +356,6 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
           </div>
         </div>
 
-        {/* GitHub connection */}
-        <div className="mt-1 rounded-lg border border-border p-3">
-          {data?.github ? (
-            <p className="flex items-center gap-2 text-sm text-ink-2">
-              <Check className="size-4 text-sage" />
-              Connected to GitHub
-            </p>
-          ) : device ? (
-            <div className="flex flex-col gap-2 text-sm">
-              <p className="text-ink-2">Enter this code at the GitHub page that opened:</p>
-              <code className="self-start rounded-md bg-raised px-3 py-1.5 font-mono text-base tracking-widest text-ink">
-                {device.userCode}
-              </code>
-              <a
-                href={device.verificationUri}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex items-center gap-1 text-clay-strong hover:underline"
-              >
-                Open github.com/login/device <ExternalLink className="size-3.5" />
-              </a>
-              <p className="flex items-center gap-2 text-ink-3">
-                <Loader2 className="size-3.5 animate-spin" /> Waiting for authorization…
-              </p>
-            </div>
-          ) : (
-            <Button variant="secondary" onClick={connectGithub} disabled={connecting}>
-              {connecting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Github className="size-4" />
-              )}
-              Connect GitHub
-            </Button>
-          )}
-        </div>
-
         {/* Teammates on the current team's repo */}
         {current && (
           <div className="flex flex-col gap-2">
@@ -346,8 +402,16 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
                     onChange={(e) => setTmInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && inviteTeammate()}
                   />
-                  <Button variant="secondary" onClick={inviteTeammate} disabled={tmBusy || !tmInput.trim()}>
-                    {tmBusy ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+                  <Button
+                    variant="secondary"
+                    onClick={inviteTeammate}
+                    disabled={tmBusy || !tmInput.trim()}
+                  >
+                    {tmBusy ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="size-4" />
+                    )}
                     Invite
                   </Button>
                 </div>

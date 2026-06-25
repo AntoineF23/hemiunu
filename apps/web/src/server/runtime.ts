@@ -47,17 +47,33 @@ export function bootRuntime(): Runtime {
   seedContextFiles(contextRoots);
   const baseSystemPrompt = buildSystemPrompt(loadContext(contextRoots));
 
-  const servers = registry.mcpServers as Record<string, { args?: unknown[] }>;
-  const fsName = Object.keys(servers).find(
+  const fsName = findFsName(registry.mcpServers);
+
+  rt = { store, registry, baseSystemPrompt, model, fsName };
+  return rt;
+}
+
+function findFsName(mcpServers: Record<string, unknown>): string | undefined {
+  const servers = mcpServers as Record<string, { args?: unknown[] }>;
+  return Object.keys(servers).find(
     (n) =>
       n === "filesystem" ||
       ((servers[n]?.args ?? []) as unknown[]).some(
         (a) => typeof a === "string" && a.includes("server-filesystem"),
       ),
   );
+}
 
-  rt = { store, registry, baseSystemPrompt, model, fsName };
-  return rt;
+/**
+ * Re-read mcp.json (app default + ~/.hemiunu overlay) and swap it into the live
+ * runtime. MCP servers connect per-turn from rt.registry, so a server added via
+ * the UI takes effect on the NEXT turn — no worker restart needed.
+ */
+export function reloadRegistry(): void {
+  const r = bootRuntime();
+  const home = process.env.HEMIUNU_HOME ?? join(import.meta.dirname, "..", "..", "..", "..");
+  r.registry = loadMcpRegistry(home, join(configDir(), "mcp.json"));
+  r.fsName = findFsName(r.registry.mcpServers);
 }
 
 /**

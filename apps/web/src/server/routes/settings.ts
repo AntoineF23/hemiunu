@@ -7,8 +7,9 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import {
   configDir,
+  currentGithubLogin,
   currentTeam,
-  githubViewer,
+  githubStatus,
   hasApiKey,
   listTeams,
   resolveGithubToken,
@@ -47,15 +48,17 @@ function userName(): string | null {
 
 settingsRoute.get("/api/settings", async (c) => {
   const rt = bootRuntime();
-  const token = resolveGithubToken();
-  // The signed-in GitHub login powers the avatar (github.com/<login>.png).
-  const githubLogin = token ? ((await githubViewer(token)) ?? null) : null;
+  const status = githubStatus();
+  // The active GitHub login powers the avatar (github.com/<login>.png) and the
+  // profile switcher; currentGithubLogin() also covers an env/`gh` token.
+  const githubLogin = (await currentGithubLogin()) ?? null;
   return c.json({
     model: rt.model,
     user: userName(),
     githubLogin,
+    githubAccounts: status.accounts,
     hasApiKey: hasApiKey(),
-    github: !!token,
+    github: !!resolveGithubToken(),
     vercel: vercelLoggedIn(),
     team: currentTeam() ?? null,
     teams: listTeams(),

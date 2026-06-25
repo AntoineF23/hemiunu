@@ -63,6 +63,16 @@ export function App() {
     [reset],
   );
 
+  // Switch the active GitHub profile — teams are scoped per account, so the
+  // visible team list (and avatar) update after refreshing settings.
+  const switchAccount = useCallback(
+    async (login: string) => {
+      await sendJSON("/api/github/switch", { login }).catch(() => {});
+      refresh();
+    },
+    [refresh],
+  );
+
   const submit = useCallback(async () => {
     const text = draft.trim();
     if (!text || busy) return;
@@ -128,6 +138,8 @@ export function App() {
         team={settings?.team ?? null}
         user={settings?.user ?? null}
         githubLogin={settings?.githubLogin ?? null}
+        accounts={settings?.githubAccounts ?? []}
+        onSwitchAccount={switchAccount}
       />
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
