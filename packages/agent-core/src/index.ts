@@ -62,6 +62,7 @@ export {
   listCollaborators,
   listOrgMembers,
   githubStatus,
+  syncGithubStatus,
   currentGithubLogin,
   connectGithubAccount,
   switchGithubAccount,

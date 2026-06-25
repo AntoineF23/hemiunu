@@ -463,14 +463,22 @@ async function main() {
       `knowledge file should be at the repo root, got ${prototypePath()}`,
     );
 
-    // Explicit env token takes precedence and is found without a network call.
-    const prev = process.env.GITHUB_TOKEN;
+    // With no connected-account store, an env token resolves (no network call).
+    // Sandbox the config dir so this doesn't depend on the dev's ~/.hemiunu
+    // (a real github.json store would take precedence by design).
+    const prevTok = process.env.GITHUB_TOKEN;
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-gh-"));
+    process.env.HEMIUNU_CONFIG_DIR = dir;
     process.env.GITHUB_TOKEN = "ghp_smoke";
     try {
       assert(resolveGithubToken() === "ghp_smoke", "env token should resolve");
     } finally {
-      if (prev === undefined) delete process.env.GITHUB_TOKEN;
-      else process.env.GITHUB_TOKEN = prev;
+      if (prevTok === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prevTok;
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

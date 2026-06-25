@@ -93,15 +93,43 @@ export interface GithubStatus {
   accounts: string[];
 }
 
-/** GitHub status for the UI footer/picker — synchronous, from the store only. */
+/**
+ * GitHub status for the UI footer/picker (synchronous). `connected` is honest
+ * about ANY usable token — store account OR an env/`gh` token — so a user who
+ * signed in the old way isn't shown as "not connected". `login` is only known
+ * synchronously for a store account; call syncGithubStatus() to resolve+adopt
+ * an env/`gh` identity so its name shows and it becomes switchable.
+ */
 export function githubStatus(): GithubStatus {
   const f = loadGithubAuth();
-  const connected = !f.disconnected && !!activeAccountToken();
+  if (f.disconnected) {
+    return { login: undefined, connected: false, accounts: f.accounts.map((a) => a.login) };
+  }
+  const storeLogin = f.accounts.some((a) => a.login === f.active) ? f.active : undefined;
   return {
-    login: connected ? f.active : undefined,
-    connected,
+    login: storeLogin,
+    connected: !!storeLogin || !!resolveGithubToken(),
     accounts: f.accounts.map((a) => a.login),
   };
+}
+
+/**
+ * Like githubStatus(), but first ADOPTS an existing env/`gh` identity into the
+ * store (looks up its login and saves it as an account) when there's a usable
+ * token but no active store account. This migrates a previously-connected user
+ * into the managed model so their account shows up and can be switched. Honors
+ * an explicit disconnect (won't re-adopt).
+ */
+export async function syncGithubStatus(): Promise<GithubStatus> {
+  const f = loadGithubAuth();
+  if (!f.disconnected && !activeAccountToken()) {
+    const token = resolveGithubToken();
+    if (token) {
+      const login = await githubViewer(token);
+      if (login) connectGithubAccount(login, token);
+    }
+  }
+  return githubStatus();
 }
 
 /** Add or update a connected account and make it active (clears 'disconnected'). */
@@ -317,36 +345,79 @@ function teamsPath(): string {
   return join(configDir(), "team.json");
 }
 
-/** Read saved teams, migrating the older single-repo `{ repo }` shape. */
-export function loadTeams(): TeamsConfig {
+// Teams are scoped to the active GitHub account, so switching account switches
+// the visible team list. On disk: { accounts: { <login>: { teams, current } } },
+// with a "(local)" bucket used when no GitHub account is connected. The login
+// can't collide with that sentinel (GitHub logins are alphanumeric + hyphens).
+const LOCAL_TEAMS_KEY = "(local)";
+
+interface TeamsFile {
+  accounts: Record<string, TeamsConfig>;
+}
+
+/** The bucket key for the currently-active account (or local when none). */
+function activeTeamsKey(): string {
+  return githubStatus().login ?? LOCAL_TEAMS_KEY;
+}
+
+function normalizeTeamsConfig(v: unknown): TeamsConfig {
+  const o = (v ?? {}) as { teams?: unknown; current?: unknown };
+  const teams = Array.isArray(o.teams)
+    ? o.teams.filter((t): t is string => typeof t === "string").map(normalizeRepo)
+    : [];
+  // Preserve `current` verbatim ("" = explicit no-team); interpretation is left
+  // to currentTeam()/cycleTeam() so the no-team selection survives.
+  const current = typeof o.current === "string" ? normalizeRepo(o.current) : undefined;
+  return { teams, current };
+}
+
+/** Read the whole per-account file, migrating legacy flat shapes into the
+ *  currently-active account's bucket (and persisting that migration). */
+function loadTeamsFile(): TeamsFile {
   const path = teamsPath();
-  if (!existsSync(path)) return { teams: [] };
+  if (!existsSync(path)) return { accounts: {} };
   try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as {
-      teams?: unknown;
-      current?: unknown;
-      repo?: unknown;
-    };
-    if (Array.isArray(raw.teams)) {
-      const teams = raw.teams.filter((t): t is string => typeof t === "string").map(normalizeRepo);
-      // Preserve `current` verbatim ("" = explicit no-team); interpretation is
-      // left to currentTeam()/cycleTeam() so the no-team selection survives.
-      const current = typeof raw.current === "string" ? normalizeRepo(raw.current) : undefined;
-      return { teams, current };
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    if (raw.accounts && typeof raw.accounts === "object") {
+      const accounts: Record<string, TeamsConfig> = {};
+      for (const [k, v] of Object.entries(raw.accounts as Record<string, unknown>)) {
+        accounts[k] = normalizeTeamsConfig(v);
+      }
+      return { accounts };
     }
-    if (typeof raw.repo === "string") {
-      const r = normalizeRepo(raw.repo); // migrate legacy { repo }
-      return { teams: [r], current: r };
+    // Legacy: flat { teams, current } or single { repo } → migrate under the
+    // active account so existing users keep their teams after the upgrade.
+    let legacy: TeamsConfig | undefined;
+    if (Array.isArray(raw.teams)) legacy = normalizeTeamsConfig(raw);
+    else if (typeof raw.repo === "string") {
+      const r = normalizeRepo(raw.repo);
+      legacy = { teams: [r], current: r };
+    }
+    if (legacy) {
+      const file: TeamsFile = { accounts: { [activeTeamsKey()]: legacy } };
+      saveTeamsFile(file);
+      return file;
     }
   } catch {
     // malformed — treat as empty
   }
-  return { teams: [] };
+  return { accounts: {} };
+}
+
+function saveTeamsFile(file: TeamsFile): void {
+  mkdirSync(configDir(), { recursive: true });
+  writeFileSync(teamsPath(), `${JSON.stringify(file, null, 2)}\n`, "utf8");
+}
+
+/** Saved teams for the active account (or the local bucket when not connected). */
+export function loadTeams(): TeamsConfig {
+  return loadTeamsFile().accounts[activeTeamsKey()] ?? { teams: [] };
 }
 
 function saveTeams(cfg: TeamsConfig): void {
-  mkdirSync(configDir(), { recursive: true });
-  writeFileSync(teamsPath(), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+  const file = loadTeamsFile();
+  file.accounts[activeTeamsKey()] = cfg;
+  saveTeamsFile(file);
 }
 
 /** All saved teams (repos), in order. */

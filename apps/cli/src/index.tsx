@@ -34,8 +34,7 @@ import {
   githubClientId,
   requestDeviceCode,
   pollDeviceToken,
-  githubStatus,
-  currentGithubLogin,
+  syncGithubStatus,
   connectGithubAccount,
   switchGithubAccount,
   disconnectGithub,
@@ -449,7 +448,9 @@ function App({
 
   // Keep the footer's GitHub account label current after any auth change.
   const refreshGithubLogin = () => {
-    void (async () => setGithubLogin((await currentGithubLogin()) ?? null))();
+    // syncGithubStatus adopts an existing env/`gh` identity into the store so the
+    // footer shows it (and it becomes switchable), then returns the active login.
+    void (async () => setGithubLogin((await syncGithubStatus()).login ?? null))();
   };
   useEffect(refreshGithubLogin, []);
 
@@ -1348,67 +1349,73 @@ function App({
         return;
       }
 
-      const status = githubStatus();
       const CONNECT = "＋ Connect another account";
       const CONNECT_FIRST = "＋ Connect a GitHub account";
       const DISCONNECT = "✕ Disconnect";
 
-      // No accounts AND no usable token → connect straight away (device flow).
-      if (!status.accounts.length && !resolveGithubToken()) {
-        if (githubClientId()) void startGithubLogin();
-        else
-          push({
-            kind: "note",
-            text:
-              "· not connected to GitHub.\n" +
-              "  device sign-in isn't configured (no OAuth client id) — paste a token instead:\n" +
-              "  create a fine-grained token (repo contents: read & write) and run /github <token>.",
-          });
-        return;
-      }
+      // Resolve (and adopt) the current identity first, so a user signed in via
+      // env/`gh` shows as a real, switchable account rather than "not connected".
+      void (async () => {
+        const status = await syncGithubStatus();
+        refreshGithubLogin();
 
-      // Otherwise show the account manager: switch / connect / disconnect.
-      const accountRows = status.accounts.map(
-        (login) => `${status.connected && login === status.login ? "● " : "○ "}${login}`,
-      );
-      const options = [
-        ...accountRows,
-        status.accounts.length ? CONNECT : CONNECT_FIRST,
-        ...(status.connected ? [DISCONNECT] : []),
-      ];
-      const active = accountRows.findIndex((r) => r.startsWith("● "));
-      setSel(active >= 0 ? active : 0);
-      setPicker({
-        title: status.connected
-          ? `GitHub · connected as ${status.login}  (↑/↓ · Enter · Esc)`
-          : "GitHub · not connected  (↑/↓ · Enter · Esc)",
-        options,
-        onChoice: (v) => {
-          setPicker(null);
-          if (v === null) return;
-          if (v === CONNECT || v === CONNECT_FIRST) {
-            if (githubClientId()) void startGithubLogin();
-            else
-              push({
-                kind: "note",
-                text: "· device sign-in isn't configured — paste a token with /github <token>.",
-              });
-            return;
-          }
-          if (v === DISCONNECT) {
-            disconnectGithub();
-            refreshGithubLogin();
-            push({ kind: "note", text: "· disconnected from GitHub" });
-            return;
-          }
-          const login = v.replace(/^[●○]\s*/, "");
-          if (login === status.login && status.connected) return; // already active
-          if (switchGithubAccount(login)) {
-            refreshGithubLogin();
-            push({ kind: "note", text: `· switched GitHub account to ${login}` });
-          }
-        },
-      });
+        // Nothing connectable yet → connect straight away (device flow).
+        if (!status.accounts.length && !status.connected) {
+          if (githubClientId()) void startGithubLogin();
+          else
+            push({
+              kind: "note",
+              text:
+                "· not connected to GitHub.\n" +
+                "  device sign-in isn't configured (no OAuth client id) — paste a token instead:\n" +
+                "  create a fine-grained token (repo contents: read & write) and run /github <token>.",
+            });
+          return;
+        }
+
+        // Otherwise show the account manager: switch / connect / disconnect.
+        const accountRows = status.accounts.map(
+          (login) => `${status.connected && login === status.login ? "● " : "○ "}${login}`,
+        );
+        const options = [
+          ...accountRows,
+          status.accounts.length ? CONNECT : CONNECT_FIRST,
+          ...(status.connected ? [DISCONNECT] : []),
+        ];
+        const active = accountRows.findIndex((r) => r.startsWith("● "));
+        setSel(active >= 0 ? active : 0);
+        setPicker({
+          title: status.connected
+            ? `GitHub · connected as ${status.login}  (↑/↓ · Enter · Esc)`
+            : "GitHub · not connected  (↑/↓ · Enter · Esc)",
+          options,
+          onChoice: (v) => {
+            setPicker(null);
+            if (v === null) return;
+            if (v === CONNECT || v === CONNECT_FIRST) {
+              if (githubClientId()) void startGithubLogin();
+              else
+                push({
+                  kind: "note",
+                  text: "· device sign-in isn't configured — paste a token with /github <token>.",
+                });
+              return;
+            }
+            if (v === DISCONNECT) {
+              disconnectGithub();
+              refreshGithubLogin();
+              push({ kind: "note", text: "· disconnected from GitHub" });
+              return;
+            }
+            const login = v.replace(/^[●○]\s*/, "");
+            if (login === status.login && status.connected) return; // already active
+            if (switchGithubAccount(login)) {
+              refreshGithubLogin();
+              push({ kind: "note", text: `· switched GitHub account to ${login}` });
+            }
+          },
+        });
+      })();
       return;
     }
     if (cmd === "vercel") {

@@ -5,24 +5,63 @@
 import { Hono } from "hono";
 import {
   addTeam,
+  connectGithubAccount,
   createRepo,
   currentTeam,
+  disconnectGithub,
+  syncGithubStatus,
+  githubViewer,
   listTeams,
   pollDeviceToken,
+  removeGithubAccount,
   removeTeam,
   repoExists,
   requestDeviceCode,
   resolveGithubToken,
   setCurrentTeam,
+  switchGithubAccount,
   switchTeam,
   upsertUserEnv,
 } from "@hemiunu/agent-core";
 
 export const teamsRoute = new Hono();
 
-const snapshot = () => ({ teams: listTeams(), current: currentTeam() ?? null });
+// Teams are scoped to the active GitHub account, so include the account in the
+// snapshot — switching account changes both the team list and `account`.
+// syncGithubStatus() adopts an existing env/`gh` identity into the store so a
+// previously-connected user shows up (and is switchable) instead of "not
+// connected". It's async, so snapshot() is too.
+const snapshot = async () => {
+  const s = await syncGithubStatus();
+  return {
+    teams: listTeams(),
+    current: currentTeam() ?? null,
+    github: s.connected,
+    account: s.login ?? null,
+    accounts: s.accounts,
+  };
+};
 
-teamsRoute.get("/api/teams", (c) => c.json({ ...snapshot(), github: !!resolveGithubToken() }));
+teamsRoute.get("/api/teams", async (c) => c.json(await snapshot()));
+
+// --- GitHub accounts (the profile switcher) ----------------------------------
+teamsRoute.get("/api/github", async (c) => c.json(await syncGithubStatus()));
+
+teamsRoute.post("/api/github/switch", async (c) => {
+  const { login } = (await c.req.json().catch(() => ({}))) as { login?: string };
+  if (!login || !switchGithubAccount(login)) return c.json({ error: "Unknown account." }, 400);
+  return c.json(await snapshot());
+});
+
+teamsRoute.post("/api/github/disconnect", async (c) => {
+  disconnectGithub();
+  return c.json(await snapshot());
+});
+
+teamsRoute.delete("/api/github/account/:login", async (c) => {
+  removeGithubAccount(c.req.param("login"));
+  return c.json(await snapshot());
+});
 
 // Switch to a team, or "" / null for local (no-team) mode.
 teamsRoute.post("/api/teams/switch", async (c) => {
@@ -32,7 +71,7 @@ teamsRoute.post("/api/teams/switch", async (c) => {
   } else if (!switchTeam(repo)) {
     addTeam(repo); // not in the list yet — add + select
   }
-  return c.json(snapshot());
+  return c.json(await snapshot());
 });
 
 // Add an existing repo by owner/name (validated against GitHub when signed in).
@@ -44,7 +83,7 @@ teamsRoute.post("/api/teams/add", async (c) => {
     return c.json({ error: `Repo ${ref} not found or not accessible.` }, 404);
   }
   addTeam(ref);
-  return c.json(snapshot());
+  return c.json(await snapshot());
 });
 
 // Create a new GitHub repo (private) and select it as the current team.
@@ -56,14 +95,14 @@ teamsRoute.post("/api/teams/create", async (c) => {
   const res = await createRepo(token, name);
   if ("error" in res) return c.json({ error: res.error }, 502);
   addTeam(res.repo);
-  return c.json({ ...snapshot(), created: res.repo });
+  return c.json({ ...(await snapshot()), created: res.repo });
 });
 
 teamsRoute.post("/api/teams/remove", async (c) => {
   const { ref } = (await c.req.json().catch(() => ({}))) as { ref?: string };
   if (!ref?.trim()) return c.json({ error: "Missing repo." }, 400);
   removeTeam(ref);
-  return c.json(snapshot());
+  return c.json(await snapshot());
 });
 
 // --- GitHub OAuth device flow -------------------------------------------------
@@ -80,7 +119,13 @@ teamsRoute.post("/api/github/auth/poll", async (c) => {
   const { deviceCode } = (await c.req.json().catch(() => ({}))) as { deviceCode?: string };
   if (!deviceCode) return c.json({ error: "Missing deviceCode." }, 400);
   const res = await pollDeviceToken(deviceCode);
-  // On success, persist the token so resolveGithubToken() finds it from now on.
-  if (res.status === "authorized") upsertUserEnv("GITHUB_TOKEN", res.token);
-  return c.json(res.status === "authorized" ? { status: "authorized" } : res);
+  // On success, register it as a connected account (login + token) and make it
+  // active — so it joins the profile switcher and scopes its own teams.
+  if (res.status === "authorized") {
+    const login = await githubViewer(res.token);
+    if (login) connectGithubAccount(login, res.token);
+    else upsertUserEnv("GITHUB_TOKEN", res.token); // viewer lookup failed — keep token usable
+    return c.json({ status: "authorized", login: login ?? null });
+  }
+  return c.json(res);
 });
