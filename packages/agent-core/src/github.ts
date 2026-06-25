@@ -430,6 +430,95 @@ export async function renameRepo(
   return { repo: json.full_name ?? `${owner}/${name}` };
 }
 
+// --- Collaborators / teammates ----------------------------------------------
+
+export interface RepoAccess {
+  /** Whether the repo is owned by a user or an organization. */
+  ownerType: "User" | "Organization" | "unknown";
+  /** The token holder has admin (owner) rights — required to remove people. */
+  admin: boolean;
+  /** The token holder has push (write) rights. */
+  push: boolean;
+}
+
+/** The token holder's access to a repo (owner type + admin/push rights). */
+export async function repoAccess(token: string, repo: string): Promise<RepoAccess | { error: string }> {
+  try {
+    const res = await fetch(`${API}/repos/${normalizeRepo(repo)}`, {
+      headers: apiHeaders(token),
+      signal: timeoutSignal(githubTimeout()),
+    });
+    if (!res.ok) return { error: `${res.status} ${await res.text()}` };
+    const j = (await res.json()) as {
+      owner?: { type?: string };
+      permissions?: { admin?: boolean; push?: boolean };
+    };
+    const t = j.owner?.type;
+    return {
+      ownerType: t === "Organization" ? "Organization" : t === "User" ? "User" : "unknown",
+      admin: !!j.permissions?.admin,
+      push: !!j.permissions?.push,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Add a collaborator to a repo (write access by default). On an org/private repo
+ * GitHub creates an INVITATION the person must accept (201); a direct add or an
+ * existing collaborator returns 204.
+ */
+export async function addCollaborator(
+  token: string,
+  repo: string,
+  username: string,
+  permission: "pull" | "push" | "admin" = "push",
+): Promise<{ ok: true; status: "invited" | "added" } | { error: string }> {
+  const res = await fetch(
+    `${API}/repos/${normalizeRepo(repo)}/collaborators/${encodeURIComponent(username)}`,
+    {
+      method: "PUT",
+      headers: { ...apiHeaders(token), "Content-Type": "application/json" },
+      body: JSON.stringify({ permission }),
+      signal: timeoutSignal(githubTimeout()),
+    },
+  );
+  if (res.status === 201) return { ok: true, status: "invited" };
+  if (res.status === 204) return { ok: true, status: "added" };
+  return { error: `${res.status} ${await res.text()}` };
+}
+
+/** Remove a collaborator from a repo (requires admin rights → 204 on success). */
+export async function removeCollaborator(
+  token: string,
+  repo: string,
+  username: string,
+): Promise<{ ok: true } | { error: string }> {
+  const res = await fetch(
+    `${API}/repos/${normalizeRepo(repo)}/collaborators/${encodeURIComponent(username)}`,
+    { method: "DELETE", headers: apiHeaders(token), signal: timeoutSignal(githubTimeout()) },
+  );
+  if (res.status === 204) return { ok: true };
+  return { error: `${res.status} ${await res.text()}` };
+}
+
+/** Members of an organization (logins), for teammate autocomplete. Empty when
+ *  the owner isn't an org or the token can't list its members. */
+export async function listOrgMembers(token: string, org: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${API}/orgs/${encodeURIComponent(org)}/members?per_page=100`, {
+      headers: apiHeaders(token),
+      signal: timeoutSignal(githubTimeout()),
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as { login?: string }[];
+    return j.map((m) => m.login).filter((l): l is string => !!l);
+  } catch {
+    return [];
+  }
+}
+
 export interface RepoFile {
   content: string;
   sha: string;

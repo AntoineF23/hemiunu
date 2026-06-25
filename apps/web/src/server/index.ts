@@ -11,6 +11,7 @@ import { bootRuntime } from "./runtime";
 import { conversationsRoute } from "./routes/conversations";
 import { prototypeRoute } from "./routes/prototype";
 import { settingsRoute } from "./routes/settings";
+import { skillsRoute } from "./routes/skills";
 import { teamsRoute } from "./routes/teams";
 import { turnRoute } from "./routes/turn";
 
@@ -44,6 +45,7 @@ app.route("/", settingsRoute);
 app.route("/", teamsRoute);
 app.route("/", prototypeRoute);
 app.route("/", conversationsRoute);
+app.route("/", skillsRoute);
 app.route("/", turnRoute);
 
 // In production the worker also serves the built SPA. In dev the client is

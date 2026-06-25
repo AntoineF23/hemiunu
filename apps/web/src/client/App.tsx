@@ -6,20 +6,35 @@ import { Home } from "@/components/Home";
 import { ConversationsPanel } from "@/components/panels/ConversationsPanel";
 import { PrototypePanel } from "@/components/panels/PrototypePanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
+import { SkillsPanel } from "@/components/panels/SkillsPanel";
 import { TeamsPanel } from "@/components/panels/TeamsPanel";
 import { type Panel, Rail } from "@/components/Rail";
 import { friendlyTool } from "./friendly";
 import { StatusWord } from "./Hieroglyphs";
+import { sendJSON } from "./lib/api";
 import { Markdown } from "./Markdown";
 import { useSettings } from "./useSettings";
+import { useSkills } from "./useSkills";
 import { type ChatItem, useTurnStream } from "./useTurnStream";
 
 const RAIL_KEY = "hemiunu.rail.collapsed";
+
+// Built-in slash commands — they map to UI actions (a panel or new chat), run
+// immediately on select. Skills (user-defined) are merged in by the composer.
+const COMMANDS: { name: string; desc: string; panel: Panel | null }[] = [
+  { name: "new", desc: "start a new conversation", panel: null },
+  { name: "conversations", desc: "browse past conversations", panel: "conversations" },
+  { name: "teams", desc: "switch / manage teams", panel: "teams" },
+  { name: "prototypes", desc: "view the prototype brief", panel: "prototypes" },
+  { name: "skills", desc: "manage commands & skills", panel: "skills" },
+  { name: "settings", desc: "model, key, connections", panel: "settings" },
+];
 
 export function App() {
   const { items, busy, permission, lastCost, send, respond, stop, reset, loadConversation } =
     useTurnStream();
   const { settings, refresh, setModel } = useSettings();
+  const { skills, refresh: refreshSkills } = useSkills();
   const [draft, setDraft] = useState("");
   const [showDetails, setShowDetails] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) === "1");
@@ -36,11 +51,48 @@ export function App() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [items, permission, busy]);
 
-  const submit = useCallback(() => {
-    if (!draft.trim() || busy) return;
-    send(draft);
+  const runCommand = useCallback(
+    (name: string) => {
+      const cmd = COMMANDS.find((c) => c.name === name);
+      if (!cmd) return;
+      if (cmd.panel === null) reset();
+      else setPanel(cmd.panel);
+    },
+    [reset],
+  );
+
+  const submit = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || busy) return;
+
+    // Slash dispatch: built-in command → UI action; saved skill → expand + send
+    // (showing the typed /command, sending the expanded body); else send as-is.
+    if (text.startsWith("/")) {
+      const sp = text.indexOf(" ");
+      const name = (sp === -1 ? text.slice(1) : text.slice(1, sp)).toLowerCase();
+      const args = sp === -1 ? "" : text.slice(sp + 1);
+      if (COMMANDS.some((c) => c.name === name)) {
+        setDraft("");
+        runCommand(name);
+        return;
+      }
+      if (skills.some((s) => s.name === name)) {
+        setDraft("");
+        try {
+          const { prompt } = await sendJSON<{ prompt: string }>(
+            `/api/skills/${encodeURIComponent(name)}/expand`,
+            { args },
+          );
+          send(prompt, text);
+        } catch {
+          send(text);
+        }
+        return;
+      }
+    }
+    send(text);
     setDraft("");
-  }, [draft, busy, send]);
+  }, [draft, busy, send, skills, runCommand]);
 
   const model = settings?.model ?? "claude-opus-4.8";
   const empty = items.length === 0;
@@ -57,6 +109,9 @@ export function App() {
       model={model}
       onModelChange={setModel}
       autoFocus
+      commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
+      skills={skills}
+      onRunCommand={runCommand}
     />
   );
 
@@ -151,6 +206,13 @@ export function App() {
         onChanged={refresh}
       />
       <PrototypePanel open={panel === "prototypes"} onOpenChange={(o) => !o && setPanel(null)} />
+      <SkillsPanel
+        open={panel === "skills"}
+        onOpenChange={(o) => !o && setPanel(null)}
+        skills={skills}
+        commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
+        onChanged={refreshSkills}
+      />
       <SettingsPanel
         open={panel === "settings"}
         onOpenChange={(o) => !o && setPanel(null)}

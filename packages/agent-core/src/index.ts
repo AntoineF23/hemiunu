@@ -22,6 +22,7 @@ export {
   loadSkills,
   loadSkill,
   saveSkill,
+  deleteSkill,
   expandSkill,
   skillsDir,
   createSkillsServer,
@@ -55,8 +56,12 @@ export {
   renameRepo,
   repoExists,
   pruneTeams,
+  repoAccess,
+  addCollaborator,
+  removeCollaborator,
+  listOrgMembers,
 } from "./github";
-export type { TeamsConfig, DeviceCode, DevicePoll } from "./github";
+export type { TeamsConfig, DeviceCode, DevicePoll, RepoAccess } from "./github";
 export {
   addPrototypeNote,
   getPrototypeKnowledge,
@@ -103,7 +108,7 @@ export type { SourceMap, SourceMapMeta, SaveSourceMapOptions, ScanOptions } from
 export { createToolCapHook, resultBudgetTokens, DEFAULT_RESULT_BUDGET_TOKENS } from "./toolcap";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
-export { setControlHandler, requestControl } from "./control";
+export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";
 export type { ControlEvent } from "./control";
 export { runSubagent, subagentPrompt, SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
 export type { SubagentName, SubagentSpec, SubagentRunContext, SubagentEvent } from "./subagents";

@@ -42,6 +42,9 @@ import {
   vercelLoggedIn,
   vercelLogin,
   setControlHandler,
+  addTeammate,
+  removeTeammate,
+  listOrgMembers,
   asStream,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
@@ -98,7 +101,7 @@ function Banner() {
 }
 
 const HELP =
-  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /restore  /exit";
+  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /team-add  /team-remove  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -119,6 +122,8 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "team", desc: "switch team (feature/repo)" },
   { name: "team-new", desc: "new feature (name → create) or add a repo by URL" },
   { name: "team-rename", desc: "rename the current team's repo" },
+  { name: "team-add", desc: "add a teammate to the current team (github username)" },
+  { name: "team-remove", desc: "remove a teammate (needs owner rights)" },
   { name: "restore", desc: "recover files from the recycle bin" },
   { name: "help", desc: "show all commands" },
   { name: "exit", desc: "quit Hemiunu" },
@@ -427,6 +432,9 @@ function App({
   } | null>(null);
   const [skills, setSkills] = useState(() => loadSkills());
   const [cmdSel, setCmdSel] = useState(0); // highlighted row in the slash menu
+  const [memberSel, setMemberSel] = useState(0); // highlighted teammate suggestion
+  const [orgMembers, setOrgMembers] = useState<string[]>([]); // members of the current team's org
+  const memberCache = useRef<Map<string, string[]>>(new Map()); // org → members, fetched once
   const [teams, setTeams] = useState<string[]>(() => listTeams());
   const [team, setTeam] = useState<string | undefined>(initialTeam ?? undefined);
   const [device, setDevice] = useState<{ userCode: string; url: string } | null>(null);
@@ -1415,6 +1423,20 @@ function App({
       void renameCurrentTeam(arg); // rename repo + state + local checkout (no reset)
       return;
     }
+    if (cmd === "team-add") {
+      const u = rest.join(" ").trim();
+      if (!u)
+        return push({ kind: "note", text: "· usage: /team-add <github-username>" });
+      void (async () => push({ kind: "note", text: `· ${await addTeammate(u)}` }))();
+      return;
+    }
+    if (cmd === "team-remove") {
+      const u = rest.join(" ").trim();
+      if (!u)
+        return push({ kind: "note", text: "· usage: /team-remove <github-username>" });
+      void (async () => push({ kind: "note", text: `· ${await removeTeammate(u)}` }))();
+      return;
+    }
     if (cmd === "team") {
       const arg = rest.join(" ").trim();
       // No arg → open the team switcher (arrow-select). Shift+Tab cycles too.
@@ -1508,6 +1530,47 @@ function App({
     if (inSlash) setSkills(loadSkills());
   }, [inSlash]);
 
+  // Teammate autocomplete: while typing `/team-add <partial>` or
+  // `/team-remove <partial>`, suggest members of the current team's org so the
+  // user doesn't have to remember exact usernames. Only shows for org-owned repos.
+  const teammateMatch = inputActive ? /^\/(team-add|team-remove)\s+(.*)$/.exec(value) : null;
+  const teammatePartial = teammateMatch ? teammateMatch[2] : null;
+  const teamOwner = currentProjectRef.current ? currentProjectRef.current.split("/")[0] : null;
+  useEffect(() => {
+    if (teammatePartial === null || !teamOwner) return;
+    const cached = memberCache.current.get(teamOwner);
+    if (cached) {
+      setOrgMembers(cached);
+      return;
+    }
+    const token = resolveGithubToken();
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      const members = await listOrgMembers(token, teamOwner); // [] if not an org / no access
+      if (cancelled) return;
+      memberCache.current.set(teamOwner, members);
+      setOrgMembers(members);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run when the user enters teammate mode or the team changes.
+  }, [teammatePartial === null, teamOwner]);
+  const memberItems =
+    teammatePartial !== null
+      ? orgMembers
+          .filter(
+            (l) =>
+              l.toLowerCase().startsWith(teammatePartial.toLowerCase()) &&
+              l.toLowerCase() !== teammatePartial.toLowerCase(),
+          )
+          .slice(0, SLASH_MENU_ROWS)
+      : [];
+  const showMembers = inputActive && !showMenu && memberItems.length > 0;
+  const memberSelClamped = Math.min(memberSel, Math.max(0, memberItems.length - 1));
+  useEffect(() => setMemberSel(0), [teammatePartial]);
+
   const onSubmit = (v: string) => {
     const text = v.trim();
     if (!text) {
@@ -1520,6 +1583,12 @@ function App({
     if (showMenu) {
       setValue(`/${slashItems[menuSel].name} `);
       setCmdSel(0);
+      return;
+    }
+    // A teammate suggestion is highlighted → complete the username into the input
+    // (run it with a second Enter), mirroring the slash-menu behaviour.
+    if (showMembers && teammateMatch) {
+      setValue(`/${teammateMatch[1]} ${memberItems[memberSelClamped]}`);
       return;
     }
     setValue("");
@@ -1569,6 +1638,19 @@ function App({
       }
     },
     { isActive: showMenu },
+  );
+
+  // While teammate suggestions are open: ↑/↓ move the highlight, Tab completes
+  // the username into the input.
+  useInput(
+    (_input, key) => {
+      const n = memberItems.length;
+      if (!n || !teammateMatch) return;
+      if (key.upArrow) setMemberSel((s) => (Math.min(s, n - 1) - 1 + n) % n);
+      else if (key.downArrow) setMemberSel((s) => (Math.min(s, n - 1) + 1) % n);
+      else if (key.tab && !key.shift) setValue(`/${teammateMatch[1]} ${memberItems[memberSelClamped]}`);
+    },
+    { isActive: showMembers },
   );
 
   // Shift+Tab cycles between teams (a team ≈ one prototype repo). TextInput
@@ -1709,6 +1791,19 @@ function App({
           {slashItems.length - (menuStart + SLASH_MENU_ROWS) > 0 ? (
             <Text dimColor>{`  ↓ ${slashItems.length - (menuStart + SLASH_MENU_ROWS)} more`}</Text>
           ) : null}
+          <Text dimColor>{"  ↑/↓ select · Tab/Enter insert · Enter again to run"}</Text>
+        </Box>
+      ) : null}
+
+      {showMembers ? (
+        <Box flexDirection="column" marginLeft={2}>
+          <Text dimColor>{`teammates in ${teamOwner}`}</Text>
+          {memberItems.map((m, i) => (
+            <Text key={m} color={i === memberSelClamped ? SAGE : SAND} dimColor={i !== memberSelClamped}>
+              {i === memberSelClamped ? "❯ " : "  "}
+              {m}
+            </Text>
+          ))}
           <Text dimColor>{"  ↑/↓ select · Tab/Enter insert · Enter again to run"}</Text>
         </Box>
       ) : null}

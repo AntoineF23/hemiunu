@@ -1,5 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { configDir } from "./config";
@@ -72,6 +80,8 @@ const RESERVED = new Set([
   "team",
   "team-new",
   "team-rename",
+  "team-add",
+  "team-remove",
   "restore",
   "settings",
 ]);
@@ -159,6 +169,27 @@ export function saveSkill({
   const path = join(dir, `${slug}.md`);
   writeFileSync(path, render({ name: slug, description, argumentHint }, body), "utf8");
   return { name: slug, path };
+}
+
+/**
+ * Delete a skill by name (either the flat `<name>.md` or the `<name>/SKILL.md`
+ * directory form). Returns false if it didn't exist. Reserved names can't be
+ * created, so they never reach here.
+ */
+export function deleteSkill(name: string, root: string = configDir()): boolean {
+  const slug = slugify(name);
+  const dir = skillsDir(root);
+  const flat = join(dir, `${slug}.md`);
+  const nested = join(dir, slug, "SKILL.md");
+  if (existsSync(flat)) {
+    rmSync(flat);
+    return true;
+  }
+  if (existsSync(nested)) {
+    rmSync(dirname(nested), { recursive: true, force: true }); // drop the whole skill dir
+    return true;
+  }
+  return false;
 }
 
 /**

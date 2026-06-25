@@ -26,7 +26,9 @@ export interface TurnState {
   busy: boolean;
   permission: PermissionPrompt | null;
   lastCost: { costUsd: number | null; outTokens: number; ctxTokens: number } | null;
-  send: (prompt: string) => void;
+  /** Send a turn. `display` overrides the user-bubble text (e.g. show `/skill`
+   *  while sending its expanded body). */
+  send: (prompt: string, display?: string) => void;
   respond: (decision: PermissionDecision) => void;
   stop: () => void;
   /** Clear the conversation and start fresh (new chat). */
@@ -85,10 +87,10 @@ export function useTurnStream(): TurnState {
   }, []);
 
   const send = useCallback(
-    (prompt: string) => {
+    (prompt: string, display?: string) => {
       const text = prompt.trim();
       if (!text || busy) return;
-      push({ kind: "user", text });
+      push({ kind: "user", text: (display ?? prompt).trim() });
       setBusy(true);
 
       (async () => {

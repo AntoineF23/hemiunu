@@ -5,12 +5,13 @@ import {
   PanelLeft,
   Plus,
   Settings,
+  SquareSlash,
   Users,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-export type Panel = "conversations" | "teams" | "prototypes" | "settings";
+export type Panel = "conversations" | "teams" | "prototypes" | "skills" | "settings";
 
 interface RailProps {
   collapsed: boolean;
@@ -34,6 +35,7 @@ const TOP: NavItem[] = [{ key: "conversations", label: "Conversations", icon: Me
 const WORKSPACE: NavItem[] = [
   { key: "teams", label: "Teams", icon: Users },
   { key: "prototypes", label: "Prototypes", icon: Boxes },
+  { key: "skills", label: "Commands & skills", icon: SquareSlash },
   { key: "settings", label: "Settings", icon: Settings },
 ];
 

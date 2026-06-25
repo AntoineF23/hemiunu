@@ -1,6 +1,52 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { listTeams } from "./github";
+import { explainError } from "./explain";
+import {
+  addCollaborator,
+  listTeams,
+  removeCollaborator,
+  repoAccess,
+  resolveGithubToken,
+  resolveRepo,
+} from "./github";
+
+/**
+ * Add a teammate as a collaborator on the current team's repo. Shared by the
+ * /team-add CLI command and the add_teammate tool, so both behave identically.
+ */
+export async function addTeammate(username: string): Promise<string> {
+  const name = username.trim().replace(/^@/, "");
+  if (!name) return "Give a GitHub username to add.";
+  const repo = resolveRepo();
+  if (!repo) return "No team selected — pick one with /team first.";
+  const token = resolveGithubToken();
+  if (!token) return "Not signed in to GitHub — run /github.";
+  const r = await addCollaborator(token, repo, name);
+  if ("error" in r) return `Couldn't add ${name}: ${explainError(r.error)}`;
+  return r.status === "invited"
+    ? `Invited ${name} to ${repo} — they'll get a GitHub invitation to accept.`
+    : `Added ${name} to ${repo} with write access.`;
+}
+
+/**
+ * Remove a teammate from the current team's repo. Only the repo OWNER (admin
+ * rights) may do this — otherwise it refuses with a clear message.
+ */
+export async function removeTeammate(username: string): Promise<string> {
+  const name = username.trim().replace(/^@/, "");
+  if (!name) return "Give a GitHub username to remove.";
+  const repo = resolveRepo();
+  if (!repo) return "No team selected — pick one with /team first.";
+  const token = resolveGithubToken();
+  if (!token) return "Not signed in to GitHub — run /github.";
+  const access = await repoAccess(token, repo);
+  if ("error" in access) return `Couldn't check your rights on ${repo}: ${explainError(access.error)}`;
+  if (!access.admin)
+    return `You need owner (admin) rights on ${repo} to remove someone — ask the repo owner to do it.`;
+  const r = await removeCollaborator(token, repo, name);
+  if ("error" in r) return `Couldn't remove ${name}: ${explainError(r.error)}`;
+  return `Removed ${name} from ${repo}.`;
+}
 
 /**
  * Agent → CLI control channel. Some actions (creating/switching a team) change
@@ -89,10 +135,30 @@ export function createTeamControlServer() {
     { annotations: { title: "Rename team", readOnlyHint: false } },
   );
 
+  const addTeammateTool = tool(
+    "add_teammate",
+    "Add a teammate to the CURRENT team by their GitHub username — gives them write access to the repo (for org/private repos GitHub sends an invitation to accept). Use when the user asks to add or invite someone.",
+    { username: z.string().describe("The teammate's GitHub username.") },
+    async ({ username }) => ({
+      content: [{ type: "text", text: await addTeammate(username) }],
+    }),
+    { annotations: { title: "Add teammate", readOnlyHint: false } },
+  );
+
+  const removeTeammateTool = tool(
+    "remove_teammate",
+    "Remove a teammate from the CURRENT team by their GitHub username. Only works if the user has owner (admin) rights on the repo; otherwise it explains they can't. Confirm with the user before removing someone.",
+    { username: z.string().describe("The teammate's GitHub username.") },
+    async ({ username }) => ({
+      content: [{ type: "text", text: await removeTeammate(username) }],
+    }),
+    { annotations: { title: "Remove teammate", readOnlyHint: false } },
+  );
+
   return createSdkMcpServer({
     name: "hemiunu-team-control",
     version: "0.0.0",
-    tools: [createTool, switchTool, listTool, renameTool],
+    tools: [createTool, switchTool, listTool, renameTool, addTeammateTool, removeTeammateTool],
   });
 }
 
