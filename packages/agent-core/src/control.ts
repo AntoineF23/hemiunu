@@ -40,7 +40,8 @@ export async function removeTeammate(username: string): Promise<string> {
   const token = resolveGithubToken();
   if (!token) return "Not signed in to GitHub — run /github.";
   const access = await repoAccess(token, repo);
-  if ("error" in access) return `Couldn't check your rights on ${repo}: ${explainError(access.error)}`;
+  if ("error" in access)
+    return `Couldn't check your rights on ${repo}: ${explainError(access.error)}`;
   if (!access.admin)
     return `You need owner (admin) rights on ${repo} to remove someone — ask the repo owner to do it.`;
   const r = await removeCollaborator(token, repo, name);

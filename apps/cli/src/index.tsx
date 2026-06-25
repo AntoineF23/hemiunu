@@ -1425,15 +1425,13 @@ function App({
     }
     if (cmd === "team-add") {
       const u = rest.join(" ").trim();
-      if (!u)
-        return push({ kind: "note", text: "· usage: /team-add <github-username>" });
+      if (!u) return push({ kind: "note", text: "· usage: /team-add <github-username>" });
       void (async () => push({ kind: "note", text: `· ${await addTeammate(u)}` }))();
       return;
     }
     if (cmd === "team-remove") {
       const u = rest.join(" ").trim();
-      if (!u)
-        return push({ kind: "note", text: "· usage: /team-remove <github-username>" });
+      if (!u) return push({ kind: "note", text: "· usage: /team-remove <github-username>" });
       void (async () => push({ kind: "note", text: `· ${await removeTeammate(u)}` }))();
       return;
     }
@@ -1535,9 +1533,11 @@ function App({
   // user doesn't have to remember exact usernames. Only shows for org-owned repos.
   const teammateMatch = inputActive ? /^\/(team-add|team-remove)\s+(.*)$/.exec(value) : null;
   const teammatePartial = teammateMatch ? teammateMatch[2] : null;
+  const inTeammateMode = teammatePartial !== null;
   const teamOwner = currentProjectRef.current ? currentProjectRef.current.split("/")[0] : null;
+  // Fetch org members once per org when the user enters teammate mode (cached).
   useEffect(() => {
-    if (teammatePartial === null || !teamOwner) return;
+    if (!inTeammateMode || !teamOwner) return;
     const cached = memberCache.current.get(teamOwner);
     if (cached) {
       setOrgMembers(cached);
@@ -1555,8 +1555,7 @@ function App({
     return () => {
       cancelled = true;
     };
-    // Re-run when the user enters teammate mode or the team changes.
-  }, [teammatePartial === null, teamOwner]);
+  }, [inTeammateMode, teamOwner]);
   const memberItems =
     teammatePartial !== null
       ? orgMembers
@@ -1648,7 +1647,8 @@ function App({
       if (!n || !teammateMatch) return;
       if (key.upArrow) setMemberSel((s) => (Math.min(s, n - 1) - 1 + n) % n);
       else if (key.downArrow) setMemberSel((s) => (Math.min(s, n - 1) + 1) % n);
-      else if (key.tab && !key.shift) setValue(`/${teammateMatch[1]} ${memberItems[memberSelClamped]}`);
+      else if (key.tab && !key.shift)
+        setValue(`/${teammateMatch[1]} ${memberItems[memberSelClamped]}`);
     },
     { isActive: showMembers },
   );
@@ -1799,7 +1799,11 @@ function App({
         <Box flexDirection="column" marginLeft={2}>
           <Text dimColor>{`teammates in ${teamOwner}`}</Text>
           {memberItems.map((m, i) => (
-            <Text key={m} color={i === memberSelClamped ? SAGE : SAND} dimColor={i !== memberSelClamped}>
+            <Text
+              key={m}
+              color={i === memberSelClamped ? SAGE : SAND}
+              dimColor={i !== memberSelClamped}
+            >
               {i === memberSelClamped ? "❯ " : "  "}
               {m}
             </Text>

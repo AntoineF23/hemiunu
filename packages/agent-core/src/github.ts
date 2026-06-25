@@ -442,7 +442,10 @@ export interface RepoAccess {
 }
 
 /** The token holder's access to a repo (owner type + admin/push rights). */
-export async function repoAccess(token: string, repo: string): Promise<RepoAccess | { error: string }> {
+export async function repoAccess(
+  token: string,
+  repo: string,
+): Promise<RepoAccess | { error: string }> {
   try {
     const res = await fetch(`${API}/repos/${normalizeRepo(repo)}`, {
       headers: apiHeaders(token),
