@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { activeProtoDir } from "./workspace";
+import { resolveGithubToken, resolveRepo } from "./github";
+import { activeProtoDir, ensureCloned } from "./workspace";
 
 export interface PrototypeFile {
   /** Path relative to the prototype dir, e.g. "index.html". */
@@ -105,6 +106,24 @@ export function createPrototypeServer() {
     },
     async ({ files }) => {
       try {
+        // With a team selected, make sure its workspace is a real git checkout
+        // BEFORE writing — otherwise the files land in a bare dir that can't be
+        // pushed ("fatal: not a git repository") and gets clobbered by a later
+        // sync. No team → the local session folder needs no git.
+        const repo = resolveRepo();
+        if (repo) {
+          const ready = await ensureCloned(repo, { token: resolveGithubToken() });
+          if (ready.action === "failed") {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Couldn't prepare the ${repo} workspace to save into: ${ready.note ?? "clone failed"}. Check the GitHub connection (/github), then try again.`,
+                },
+              ],
+            };
+          }
+        }
         const saved = savePrototype({ files });
         if (saved.indexPath) openInBrowser(saved.indexPath);
         return {

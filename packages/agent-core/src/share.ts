@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { githubViewer, resolveGithubToken, resolveRepo } from "./github";
@@ -29,8 +30,12 @@ export function createShareServer() {
       if (!repo) return text("No team selected — pick one (/team) first.");
       const token = resolveGithubToken();
       if (!token) return text("Not signed in to GitHub — run /github.");
-      if (!existsSync(workspacePath(repo)))
-        return text("No local workspace — run iterate_prototype first.");
+      // Must be a real checkout, not just an existing dir — otherwise git can't
+      // commit it. save_prototype/iterate_prototype both prepare one.
+      if (!existsSync(join(workspacePath(repo), ".git")))
+        return text(
+          `The workspace for ${repo} isn't set up yet — save the prototype again (it now prepares the repo) or run iterate_prototype, then commit.`,
+        );
       const login = (await githubViewer(token)) ?? undefined;
       const r = await commitAndPush(repo, { message, token, login, toMain: to === "main" });
       if (!r.ok) return text(r.note);

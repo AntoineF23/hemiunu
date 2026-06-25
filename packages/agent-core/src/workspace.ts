@@ -279,6 +279,31 @@ async function isValidWorkspace(path: string, cloneUrl: string): Promise<boolean
 }
 
 /**
+ * Guarantee the team's workspace is a git CHECKOUT we can write to and commit
+ * from, cloning only if it's missing or not a valid clone. Unlike
+ * ensureWorkspace it does NOT fetch/reset, so it never discards in-progress
+ * edits — its only job is to make sure prototype files don't land in a bare,
+ * un-committable directory (the cause of "fatal: not a git repository" on push).
+ */
+export async function ensureCloned(repo: string, opts: EnsureOptions = {}): Promise<EnsureResult> {
+  const norm = normalizeRepo(repo);
+  const path = workspacePath(norm);
+  const cloneUrl = opts.cloneUrl ?? `https://github.com/${norm}.git`;
+  if (await isValidWorkspace(path, cloneUrl)) return { path, action: "kept" };
+  // Missing or invalid (e.g. files were written without a clone) → snapshot any
+  // leftovers, then clone fresh so the dir is a real, committable checkout.
+  let binned: string | undefined;
+  if (existsSync(path)) {
+    binned = binWorkspace(path, norm, "replaced an un-initialised workspace before save");
+    rmSync(path, { recursive: true, force: true });
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  const r = await git(["clone", cloneUrl, path], { token: opts.token });
+  if (!r.ok) return { path, action: "failed", note: r.stderr.trim().slice(0, 300), binned };
+  return { path, action: "cloned", binned };
+}
+
+/**
  * Ensure the team's local checkout exists and equals the latest remote, ready to
  * iterate on. The invariant: after this returns "cloned" | "synced" | "reset",
  * the working tree is the latest remote; "kept" means your in-progress edits

@@ -70,6 +70,7 @@ export {
 export type { NoteKind } from "./prototypes";
 export {
   ensureWorkspace,
+  ensureCloned,
   discardWorkspace,
   binWorkspace,
   listTrash,
