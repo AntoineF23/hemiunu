@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { registerControlHandler } from "./control";
 import { bootRuntime } from "./runtime";
 import { conversationsRoute } from "./routes/conversations";
 import { mcpRoute } from "./routes/mcp";
@@ -64,6 +65,10 @@ if (existsSync(clientDir)) {
 
 // Fail fast with a clear message if the engine can't boot (e.g. bad config dir).
 bootRuntime();
+// Let the agent drive team create/switch/rename (the no-team onboarding flow)
+// via the control bridge — without this, those tools return "No interactive
+// session is available to do that." in the web app.
+registerControlHandler();
 
 const server = serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
   console.log(`Hemiunu web worker → http://${HOST}:${info.port}`);

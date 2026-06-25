@@ -48,6 +48,15 @@ export function App() {
     localStorage.setItem(RAIL_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
+  // The agent can create/switch/rename the team mid-turn (via the control
+  // bridge). That only updates server-side state, so refresh settings when a
+  // turn finishes to keep the visible team indicator in sync.
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (wasBusy.current && !busy) refresh();
+    wasBusy.current = busy;
+  }, [busy, refresh]);
+
   // Keep the latest content in view as the turn streams.
   useLayoutEffect(() => {
     const el = scrollRef.current;
