@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 export interface Settings {
   model: string;
   user: string | null;
+  githubLogin: string | null;
   hasApiKey: boolean;
   github: boolean;
   vercel: boolean;

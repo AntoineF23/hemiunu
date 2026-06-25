@@ -9,9 +9,11 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { bootRuntime } from "./runtime";
 import { conversationsRoute } from "./routes/conversations";
+import { mcpRoute } from "./routes/mcp";
 import { prototypeRoute } from "./routes/prototype";
 import { settingsRoute } from "./routes/settings";
 import { skillsRoute } from "./routes/skills";
+import { teammatesRoute } from "./routes/teammates";
 import { teamsRoute } from "./routes/teams";
 import { turnRoute } from "./routes/turn";
 
@@ -43,9 +45,11 @@ app.use("/api/*", async (c, next) => {
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/", settingsRoute);
 app.route("/", teamsRoute);
+app.route("/", teammatesRoute);
 app.route("/", prototypeRoute);
 app.route("/", conversationsRoute);
 app.route("/", skillsRoute);
+app.route("/", mcpRoute);
 app.route("/", turnRoute);
 
 // In production the worker also serves the built SPA. In dev the client is

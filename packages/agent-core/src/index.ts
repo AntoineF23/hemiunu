@@ -59,9 +59,10 @@ export {
   repoAccess,
   addCollaborator,
   removeCollaborator,
+  listCollaborators,
   listOrgMembers,
 } from "./github";
-export type { TeamsConfig, DeviceCode, DevicePoll, RepoAccess } from "./github";
+export type { TeamsConfig, DeviceCode, DevicePoll, RepoAccess, Collaborator } from "./github";
 export {
   addPrototypeNote,
   getPrototypeKnowledge,
@@ -106,6 +107,15 @@ export {
 } from "./sources";
 export type { SourceMap, SourceMapMeta, SaveSourceMapOptions, ScanOptions } from "./sources";
 export { createToolCapHook, resultBudgetTokens, DEFAULT_RESULT_BUDGET_TOKENS } from "./toolcap";
+export {
+  loadToolPolicy,
+  setServerPolicy,
+  setToolPolicy,
+  resolveToolPolicy,
+  recordSeenTool,
+  serverOf,
+} from "./toolpolicy";
+export type { ToolPolicy, ToolPolicyFile } from "./toolpolicy";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
 export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";

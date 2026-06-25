@@ -9,7 +9,9 @@ import {
   asStream,
   GET_SOURCE_MAP_TOOL_ID,
   PARALLEL_TOOL_ID,
+  recordSeenTool,
   REMEMBER_TOOL_ID,
+  resolveToolPolicy,
   runTurn,
   SAVE_SOURCE_MAP_TOOL_ID,
 } from "@hemiunu/agent-core";
@@ -82,7 +84,16 @@ turnRoute.post("/api/turn", async (c) => {
               resolve({ behavior: "allow", updatedInput: input });
               return;
             }
-            if (alwaysAllow.has(toolName)) {
+            // Persistent per-tool / per-server policy (set in the MCP panel).
+            // Record the tool so the panel can list it, then honor the policy.
+            recordSeenTool(toolName);
+            const policy = resolveToolPolicy(toolName);
+            if (policy === "block") {
+              emit({ type: "note", text: `⛔ blocked by your MCP settings: ${prettyTool(toolName)}` });
+              resolve({ behavior: "deny", message: "Blocked by your MCP settings." });
+              return;
+            }
+            if (policy === "allow" || alwaysAllow.has(toolName)) {
               resolve({ behavior: "allow", updatedInput: input });
               return;
             }

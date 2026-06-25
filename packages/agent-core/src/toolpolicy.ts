@@ -1,0 +1,92 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { configDir } from "./config";
+
+/**
+ * Persistent per-tool / per-server permission policy for MCP tools, so a user
+ * can decide once whether a tool is auto-allowed, always asked, or blocked —
+ * and have it stick across turns and restarts (unlike the session-only
+ * "always allow" set). Stored in ~/.hemiunu/tool-policy.json.
+ *
+ * Resolution order for a tool id: a per-tool override wins, else the per-server
+ * default, else "ask" (the safe default — prompt the user).
+ */
+
+export type ToolPolicy = "allow" | "ask" | "block";
+
+export interface ToolPolicyFile {
+  /** Per-server default, keyed by server name (e.g. "notion"). */
+  servers: Record<string, ToolPolicy>;
+  /** Per-tool override, keyed by full tool id (e.g. "mcp__notion__notion-search"). */
+  tools: Record<string, ToolPolicy>;
+  /** Tool ids observed in use, per server — so the UI can list real tools. */
+  seen: Record<string, string[]>;
+}
+
+const EMPTY: ToolPolicyFile = { servers: {}, tools: {}, seen: {} };
+
+function policyPath(root: string): string {
+  return join(root, "tool-policy.json");
+}
+
+export function loadToolPolicy(root: string = configDir()): ToolPolicyFile {
+  const p = policyPath(root);
+  if (!existsSync(p)) return { servers: {}, tools: {}, seen: {} };
+  try {
+    const j = JSON.parse(readFileSync(p, "utf8")) as Partial<ToolPolicyFile>;
+    return { servers: j.servers ?? {}, tools: j.tools ?? {}, seen: j.seen ?? {} };
+  } catch {
+    return { servers: {}, tools: {}, seen: {} };
+  }
+}
+
+function save(cfg: ToolPolicyFile, root: string): void {
+  mkdirSync(root, { recursive: true });
+  writeFileSync(policyPath(root), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+}
+
+/** Server name from a tool id: `mcp__notion__notion-search` → `notion` (else ""). */
+export function serverOf(toolId: string): string {
+  if (!toolId.startsWith("mcp__")) return "";
+  const rest = toolId.slice(5);
+  const i = rest.indexOf("__");
+  return i >= 0 ? rest.slice(0, i) : rest;
+}
+
+/** Set (or clear, when "ask") a server's default policy. */
+export function setServerPolicy(server: string, policy: ToolPolicy, root: string = configDir()): void {
+  const cfg = loadToolPolicy(root);
+  if (policy === "ask") delete cfg.servers[server];
+  else cfg.servers[server] = policy;
+  save(cfg, root);
+}
+
+/** Set (or clear, when "ask") a single tool's override. */
+export function setToolPolicy(tool: string, policy: ToolPolicy, root: string = configDir()): void {
+  const cfg = loadToolPolicy(root);
+  if (policy === "ask") delete cfg.tools[tool];
+  else cfg.tools[tool] = policy;
+  save(cfg, root);
+}
+
+/** Effective policy for a tool id: per-tool override > per-server default > "ask". */
+export function resolveToolPolicy(toolId: string, cfg: ToolPolicyFile = loadToolPolicy()): ToolPolicy {
+  if (cfg.tools[toolId]) return cfg.tools[toolId];
+  const s = serverOf(toolId);
+  if (s && cfg.servers[s]) return cfg.servers[s];
+  return "ask";
+}
+
+/** Remember a tool id as "seen in use" so the UI can list real tools per server.
+ *  Skips Hemiunu's own internal servers (memory, sources, …) — only user MCPs. */
+export function recordSeenTool(toolId: string, root: string = configDir()): void {
+  const s = serverOf(toolId);
+  if (!s || s.startsWith("hemiunu")) return;
+  const cfg = loadToolPolicy(root);
+  const arr = cfg.seen[s] ?? [];
+  if (arr.includes(toolId)) return;
+  arr.push(toolId);
+  arr.sort();
+  cfg.seen[s] = arr;
+  save(cfg, root);
+}

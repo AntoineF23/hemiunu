@@ -119,7 +119,9 @@ export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }:
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full !max-w-xl gap-4 overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{editing ? (editing.existing ? `/${editing.name}` : "New skill") : "Commands & skills"}</SheetTitle>
+          <SheetTitle>
+            {editing ? (editing.existing ? `/${editing.name}` : "New skill") : "Commands & skills"}
+          </SheetTitle>
           <SheetDescription>
             {editing
               ? "A skill is a saved instruction you run as /command. Use $ARGUMENTS where the input goes."
@@ -134,7 +136,13 @@ export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }:
         )}
 
         {editing ? (
-          <EditForm draft={editing} setDraft={setEditing} onSave={save} onCancel={() => setEditing(null)} busy={busy} />
+          <EditForm
+            draft={editing}
+            setDraft={setEditing}
+            onSave={save}
+            onCancel={() => setEditing(null)}
+            busy={busy}
+          />
         ) : (
           <>
             {/* Skills */}
@@ -146,14 +154,19 @@ export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }:
             </div>
             <div className="flex flex-col gap-1">
               {skills.length === 0 && (
-                <p className="px-1 text-sm text-ink-3">No skills yet — create one to run it as /name.</p>
+                <p className="px-1 text-sm text-ink-3">
+                  No skills yet — create one to run it as /name.
+                </p>
               )}
               {skills.map((s) => (
                 <div
                   key={s.name}
                   className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 hover:border-border hover:bg-accent"
                 >
-                  <button onClick={() => openEdit(s.name)} className="flex min-w-0 flex-1 flex-col text-left">
+                  <button
+                    onClick={() => openEdit(s.name)}
+                    className="flex min-w-0 flex-1 flex-col text-left"
+                  >
                     <span className="font-mono text-sm text-ink">/{s.name}</span>
                     <span className="truncate text-xs text-ink-3">{s.description || "—"}</span>
                   </button>
@@ -205,7 +218,10 @@ interface EditFormProps {
 function EditForm({ draft, setDraft, onSave, onCancel, busy }: EditFormProps) {
   return (
     <div className="flex flex-col gap-3">
-      <button onClick={onCancel} className="flex w-fit items-center gap-1 text-sm text-ink-3 hover:text-ink">
+      <button
+        onClick={onCancel}
+        className="flex w-fit items-center gap-1 text-sm text-ink-3 hover:text-ink"
+      >
         <ArrowLeft className="size-4" /> Back
       </button>
 

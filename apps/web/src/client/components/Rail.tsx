@@ -3,6 +3,7 @@ import {
   type LucideIcon,
   MessagesSquare,
   PanelLeft,
+  Plug,
   Plus,
   Settings,
   SquareSlash,
@@ -10,8 +11,9 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Avatar } from "./Avatar";
 
-export type Panel = "conversations" | "teams" | "prototypes" | "skills" | "settings";
+export type Panel = "conversations" | "teams" | "prototypes" | "skills" | "mcp" | "settings";
 
 interface RailProps {
   collapsed: boolean;
@@ -21,6 +23,7 @@ interface RailProps {
   onSelectPanel: (p: Panel) => void;
   team: string | null;
   user: string | null;
+  githubLogin: string | null;
 }
 
 interface NavItem {
@@ -36,6 +39,7 @@ const WORKSPACE: NavItem[] = [
   { key: "teams", label: "Teams", icon: Users },
   { key: "prototypes", label: "Prototypes", icon: Boxes },
   { key: "skills", label: "Commands & skills", icon: SquareSlash },
+  { key: "mcp", label: "MCP servers", icon: Plug },
   { key: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -49,6 +53,7 @@ export function Rail({
   onSelectPanel,
   team,
   user,
+  githubLogin,
 }: RailProps) {
   const avatarInitial = (user ?? team?.split("/")[1] ?? "H").charAt(0).toUpperCase();
 
@@ -115,9 +120,11 @@ export function Rail({
           collapsed ? "justify-center px-0" : "px-1.5",
         )}
       >
-        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-clay text-sm font-semibold text-primary-foreground">
-          {avatarInitial}
-        </span>
+        <Avatar
+          login={githubLogin}
+          fallback={avatarInitial}
+          className="size-8 rounded-md bg-clay text-sm font-semibold text-primary-foreground"
+        />
         {!collapsed && (
           <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
             <span className="truncate text-sm text-ink">{user ?? "You"}</span>

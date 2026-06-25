@@ -72,8 +72,7 @@ export function Composer({
   }, [autoFocus]);
 
   // Slash menu is active while the draft is a single "/token" (no space yet).
-  const token =
-    draft.startsWith("/") && !draft.includes(" ") ? draft.slice(1).toLowerCase() : null;
+  const token = draft.startsWith("/") && !draft.includes(" ") ? draft.slice(1).toLowerCase() : null;
 
   const items = useMemo<MergedItem[]>(() => {
     if (token === null) return [];
@@ -101,9 +100,7 @@ export function Composer({
   // Keep the highlighted row in view as the selection moves with the arrows.
   useEffect(() => {
     if (!menuOpen) return;
-    listRef.current
-      ?.querySelector(`[data-idx="${menuSel}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    listRef.current?.querySelector(`[data-idx="${menuSel}"]`)?.scrollIntoView({ block: "nearest" });
   }, [menuSel, menuOpen]);
 
   const accept = (item: MergedItem) => {

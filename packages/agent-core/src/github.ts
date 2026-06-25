@@ -506,6 +506,36 @@ export async function removeCollaborator(
   return { error: `${res.status} ${await res.text()}` };
 }
 
+export interface Collaborator {
+  login: string;
+  /** Has admin (owner) rights on the repo. */
+  admin: boolean;
+  /** Has push (write) rights on the repo. */
+  push: boolean;
+}
+
+/** Current collaborators on a repo (login + rights). Empty if not accessible. */
+export async function listCollaborators(token: string, repo: string): Promise<Collaborator[]> {
+  try {
+    const res = await fetch(`${API}/repos/${normalizeRepo(repo)}/collaborators?per_page=100`, {
+      headers: apiHeaders(token),
+      signal: timeoutSignal(githubTimeout()),
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as {
+      login?: string;
+      permissions?: { admin?: boolean; push?: boolean };
+    }[];
+    return j
+      .filter((m): m is { login: string; permissions?: { admin?: boolean; push?: boolean } } =>
+        Boolean(m.login),
+      )
+      .map((m) => ({ login: m.login, admin: !!m.permissions?.admin, push: !!m.permissions?.push }));
+  } catch {
+    return [];
+  }
+}
+
 /** Members of an organization (logins), for teammate autocomplete. Empty when
  *  the owner isn't an org or the token can't list its members. */
 export async function listOrgMembers(token: string, org: string): Promise<string[]> {

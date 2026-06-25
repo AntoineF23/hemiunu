@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Composer } from "@/components/Composer";
 import { Home } from "@/components/Home";
 import { ConversationsPanel } from "@/components/panels/ConversationsPanel";
+import { McpPanel } from "@/components/panels/McpPanel";
 import { PrototypePanel } from "@/components/panels/PrototypePanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { SkillsPanel } from "@/components/panels/SkillsPanel";
@@ -27,6 +28,7 @@ const COMMANDS: { name: string; desc: string; panel: Panel | null }[] = [
   { name: "teams", desc: "switch / manage teams", panel: "teams" },
   { name: "prototypes", desc: "view the prototype brief", panel: "prototypes" },
   { name: "skills", desc: "manage commands & skills", panel: "skills" },
+  { name: "mcp", desc: "MCP servers & tool permissions", panel: "mcp" },
   { name: "settings", desc: "model, key, connections", panel: "settings" },
 ];
 
@@ -125,6 +127,7 @@ export function App() {
         onSelectPanel={(p) => setPanel(p)}
         team={settings?.team ?? null}
         user={settings?.user ?? null}
+        githubLogin={settings?.githubLogin ?? null}
       />
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -213,6 +216,7 @@ export function App() {
         commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
         onChanged={refreshSkills}
       />
+      <McpPanel open={panel === "mcp"} onOpenChange={(o) => !o && setPanel(null)} />
       <SettingsPanel
         open={panel === "settings"}
         onOpenChange={(o) => !o && setPanel(null)}

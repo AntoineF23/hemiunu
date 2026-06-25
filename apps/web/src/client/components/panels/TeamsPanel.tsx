@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ExternalLink, Github, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Github, Loader2, Plus, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sheet";
 import { getJSON, sendJSON } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Avatar } from "../Avatar";
 
 interface TeamsData {
   teams: string[];
@@ -24,6 +25,19 @@ interface DeviceInfo {
   userCode: string;
   verificationUri: string;
   interval: number;
+}
+
+interface Teammate {
+  login: string;
+  admin: boolean;
+  push: boolean;
+}
+interface TeammatesData {
+  repo: string | null;
+  github: boolean;
+  /** Whether the signed-in user can remove collaborators (repo owner/admin). */
+  admin: boolean;
+  teammates: Teammate[];
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -43,6 +57,10 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
   const [device, setDevice] = useState<DeviceInfo | null>(null);
   const [connecting, setConnecting] = useState(false);
   const pollAlive = useRef(false);
+  const [tm, setTm] = useState<TeammatesData | null>(null);
+  const [tmInput, setTmInput] = useState("");
+  const [tmFlash, setTmFlash] = useState<string | null>(null);
+  const [tmBusy, setTmBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -52,9 +70,23 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
     }
   }, []);
 
+  const loadTeammates = useCallback(async () => {
+    try {
+      setTm(await getJSON<TeammatesData>("/api/teammates"));
+    } catch {
+      /* leave previous list */
+    }
+  }, []);
+
+  // (Re)load teammates whenever the panel opens or the active team changes.
+  useEffect(() => {
+    if (open) void loadTeammates();
+  }, [open, data?.current, loadTeammates]);
+
   useEffect(() => {
     if (open) {
       setError(null);
+      setTmFlash(null);
       void load();
     } else {
       pollAlive.current = false; // stop any in-flight GitHub poll when closed
@@ -93,6 +125,38 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
       setNewName("");
       return d;
     });
+
+  const inviteTeammate = async () => {
+    const name = tmInput.trim();
+    if (!name) return;
+    setTmBusy(true);
+    setTmFlash(null);
+    try {
+      const { message } = await sendJSON<{ message: string }>("/api/teammates", { username: name });
+      setTmFlash(message);
+      setTmInput("");
+      await loadTeammates();
+    } catch (e) {
+      setTmFlash(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTmBusy(false);
+    }
+  };
+
+  const removeTeammate = async (login: string) => {
+    setTmBusy(true);
+    setTmFlash(null);
+    try {
+      const res = await fetch(`/api/teammates/${encodeURIComponent(login)}`, { method: "DELETE" });
+      const { message } = (await res.json()) as { message?: string };
+      if (message) setTmFlash(message);
+      await loadTeammates();
+    } catch (e) {
+      setTmFlash(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTmBusy(false);
+    }
+  };
 
   const connectGithub = async () => {
     setError(null);
@@ -235,6 +299,63 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
             </Button>
           )}
         </div>
+
+        {/* Teammates on the current team's repo */}
+        {current && (
+          <div className="flex flex-col gap-2">
+            <Label>Teammates</Label>
+            {!data?.github ? (
+              <p className="text-xs text-ink-4">Connect GitHub to manage teammates.</p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1">
+                  {tm?.teammates.length === 0 && (
+                    <p className="px-1 text-sm text-ink-3">No collaborators yet.</p>
+                  )}
+                  {tm?.teammates.map((m) => (
+                    <div
+                      key={m.login}
+                      className="group flex items-center gap-2.5 rounded-lg border border-border px-3 py-2"
+                    >
+                      <Avatar
+                        login={m.login}
+                        fallback={m.login.charAt(0).toUpperCase()}
+                        className="size-7 rounded-full bg-raised text-xs font-semibold text-ink-2"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{m.login}</span>
+                      <span className="shrink-0 text-xs text-ink-4">
+                        {m.admin ? "admin" : m.push ? "write" : "read"}
+                      </span>
+                      {tm?.admin && (
+                        <button
+                          onClick={() => removeTeammate(m.login)}
+                          disabled={tmBusy}
+                          aria-label={`Remove ${m.login}`}
+                          className="shrink-0 rounded p-1 text-ink-4 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="github-username"
+                    value={tmInput}
+                    onChange={(e) => setTmInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && inviteTeammate()}
+                  />
+                  <Button variant="secondary" onClick={inviteTeammate} disabled={tmBusy || !tmInput.trim()}>
+                    {tmBusy ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+                    Invite
+                  </Button>
+                </div>
+                {tmFlash && <p className="text-xs text-ink-3">{tmFlash}</p>}
+              </>
+            )}
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
