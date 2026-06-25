@@ -9,6 +9,8 @@ import {
   loadSourceMap,
   loadSourceMaps,
   loadToolPolicy,
+  mcpOAuthStatus,
+  probeMcpServer,
   runScan,
   saveSourceMap,
   setServerPolicy,
@@ -72,12 +74,13 @@ function iconDomain(name: string, config: unknown): string | null {
     }
   }
   const args = Array.isArray(cfg.args) ? cfg.args.join(" ") : "";
-  const haystack = `${name} ${typeof cfg.command === "string" ? cfg.command : ""} ${args}`.toLowerCase();
+  const haystack =
+    `${name} ${typeof cfg.command === "string" ? cfg.command : ""} ${args}`.toLowerCase();
   const key = Object.keys(KNOWN_DOMAINS).find((k) => haystack.includes(k));
   return key ? KNOWN_DOMAINS[key] : null;
 }
 
-mcpRoute.get("/api/mcp", (c) => {
+mcpRoute.get("/api/mcp", async (c) => {
   const rt = bootRuntime();
   const policy = loadToolPolicy();
   const maps = new Map(loadSourceMaps().map((m) => [m.mcp, m]));
@@ -87,11 +90,26 @@ mcpRoute.get("/api/mcp", (c) => {
   // `skipped` is `{ name, reason }[]` (servers omitted for missing env / disabled).
   const skipped = (rt.registry.skipped ?? []) as { name: string; reason?: string }[];
 
-  const describe = (name: string, isConnected: boolean, reason?: string) => {
+  const describe = async (name: string, isConnected: boolean, reason?: string) => {
     // Source maps are saved under the slugified name (e.g. "Playwright" →
     // playwright.md), so match on the slug, not the raw server name.
     const sm = maps.get(slugify(name));
     const config = rt.registry.mcpServers[name] ?? userServers[name];
+    const url =
+      typeof (config as { url?: unknown } | undefined)?.url === "string"
+        ? (config as { url: string }).url
+        : undefined;
+    // Remote (http/sse) servers get a reachability/auth probe so the panel can
+    // explain why a server has no tools (offline vs. needs authorizing).
+    let reachable: boolean | null = null;
+    let needsAuth = false;
+    let oauthAuthorized = false;
+    if (url) {
+      oauthAuthorized = mcpOAuthStatus(name).authorized;
+      const probe = await probeMcpServer(url);
+      reachable = probe !== "unreachable";
+      needsAuth = probe === "needs-auth" && !oauthAuthorized;
+    }
     return {
       name,
       connected: isConnected,
@@ -107,15 +125,19 @@ mcpRoute.get("/api/mcp", (c) => {
         policy: policy.tools[id] ?? "ask",
       })),
       sourceMap: sm ? { description: sm.description, scanned: sm.scanned ?? null } : null,
+      // Remote-auth diagnostic (null reachable = not a remote server).
+      remote: !!url,
+      reachable,
+      needsAuth,
+      oauthAuthorized,
     };
   };
 
-  return c.json({
-    servers: [
-      ...connected.map((n) => describe(n, true)),
-      ...skipped.map((s) => describe(s.name, false, s.reason)),
-    ],
-  });
+  const servers = await Promise.all([
+    ...connected.map((n) => describe(n, true)),
+    ...skipped.map((s) => describe(s.name, false, s.reason)),
+  ]);
+  return c.json({ servers });
 });
 
 // Add (or replace) a user MCP server in ~/.hemiunu/mcp.json. Takes effect on the

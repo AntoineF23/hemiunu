@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Loader2, Pencil, Plug, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
+import {
+  FileText,
+  KeyRound,
+  Loader2,
+  Pencil,
+  Plug,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +58,14 @@ interface ServerInfo {
   serverPolicy: Policy;
   tools: ToolInfo[];
   sourceMap: { description: string; scanned: string | null } | null;
+  /** Remote (http/sse) server with a URL. */
+  remote?: boolean;
+  /** Reachability probe: false = offline, null = not a remote server. */
+  reachable?: boolean | null;
+  /** Server returned 401 and we have no token → needs the OAuth flow. */
+  needsAuth?: boolean;
+  /** We hold an OAuth token for this server. */
+  oauthAuthorized?: boolean;
 }
 
 interface McpConfig {
@@ -99,6 +117,7 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
   const [editing, setEditing] = useState<ServerInfo | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [authorizing, setAuthorizing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -168,6 +187,31 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setScanning(null);
+    }
+  };
+
+  // Authorize a remote server via OAuth: open the consent page, then poll until
+  // the browser callback completes (or the user gives up after ~5 min).
+  const authorize = async (name: string) => {
+    setAuthorizing(name);
+    setError(null);
+    try {
+      const { authUrl } = await sendJSON<{ authUrl: string }>("/api/mcp/oauth/start", {
+        server: name,
+      });
+      window.open(authUrl, "_blank", "noopener");
+      for (let i = 0; i < 150; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const st = await getJSON<{ authorized: boolean }>(
+          `/api/mcp/oauth/status?server=${encodeURIComponent(name)}`,
+        );
+        if (st.authorized) break;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAuthorizing(null);
     }
   };
 
@@ -289,6 +333,35 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
                       {s.reason ? `off · ${s.reason}` : "off"}
                     </span>
                   )}
+                  {/* Remote-server auth diagnostic */}
+                  {s.needsAuth ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      disabled={authorizing === s.name}
+                      onClick={() => authorize(s.name)}
+                      title="Sign in to this server (OAuth)"
+                    >
+                      {authorizing === s.name ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <KeyRound className="size-3.5" />
+                      )}
+                      Authorize
+                    </Button>
+                  ) : s.oauthAuthorized ? (
+                    <span
+                      className="rounded bg-sage/15 px-1.5 py-0.5 text-[10px] text-sage"
+                      title="Signed in via OAuth"
+                    >
+                      ✓ authorized
+                    </span>
+                  ) : s.remote && s.reachable === false ? (
+                    <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-3">
+                      not reachable
+                    </span>
+                  ) : null}
                   <div className="ml-auto flex items-center gap-1.5">
                     <button
                       onClick={() => setEditing(s)}

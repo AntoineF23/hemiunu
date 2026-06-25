@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { bootRuntime } from "./runtime";
 import { conversationsRoute } from "./routes/conversations";
 import { mcpRoute } from "./routes/mcp";
+import { mcpOAuthRoute } from "./routes/mcp-oauth";
 import { prototypeRoute } from "./routes/prototype";
 import { settingsRoute } from "./routes/settings";
 import { skillsRoute } from "./routes/skills";
@@ -50,6 +51,7 @@ app.route("/", prototypeRoute);
 app.route("/", conversationsRoute);
 app.route("/", skillsRoute);
 app.route("/", mcpRoute);
+app.route("/", mcpOAuthRoute);
 app.route("/", turnRoute);
 
 // In production the worker also serves the built SPA. In dev the client is
