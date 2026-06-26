@@ -238,7 +238,7 @@ export function Composer({
               className={cn(
                 "grid size-9 place-items-center rounded-full transition-all active:scale-95",
                 canSend
-                  ? "bg-primary text-primary-foreground hover:bg-clay-strong"
+                  ? "bg-primary text-primary-foreground hover:bg-sun-strong"
                   : "cursor-default bg-raised text-ink-4",
               )}
             >

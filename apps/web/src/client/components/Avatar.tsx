@@ -6,7 +6,7 @@ interface AvatarProps {
   login?: string | null;
   /** Fallback shown until/unless the photo loads (usually an initial). */
   fallback: string;
-  /** Shape + size + fallback colors, e.g. "size-8 rounded-md bg-clay …". */
+  /** Shape + size + fallback colors, e.g. "size-8 rounded-md bg-sun …". */
   className?: string;
 }
 

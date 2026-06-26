@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, MessageSquare, Trash2 } from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getJSON, sendJSON } from "@/lib/api";
 
 interface Conversation {
@@ -80,12 +74,11 @@ export function ConversationsPanel({
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full max-w-md gap-4 overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Conversations</SheetTitle>
-          <SheetDescription>Pick up where you left off.</SheetDescription>
-        </SheetHeader>
+    <>
+      <SheetHeader>
+        <SheetTitle>Conversations</SheetTitle>
+        <SheetDescription>Pick up where you left off.</SheetDescription>
+      </SheetHeader>
 
         {error && (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -146,7 +139,6 @@ export function ConversationsPanel({
             ))}
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+    </>
   );
 }

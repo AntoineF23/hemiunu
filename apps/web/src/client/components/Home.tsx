@@ -33,7 +33,7 @@ export function Home({ name, team, onPick, children }: HomeProps) {
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-6 pb-[12vh]">
       <div className="mb-7 flex justify-center">
         <span className="inline-flex items-center gap-2 rounded-lg bg-card px-3 py-1.5 text-sm text-ink-2 shadow-sm">
-          <span className="size-1.5 rounded-full bg-sage" />
+          <span className="size-1.5 rounded-full bg-oasis" />
           {team ?? "Local workspace"}
         </span>
       </div>

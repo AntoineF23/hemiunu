@@ -1,59 +1,82 @@
 /* ────────────────────────────────────────────────────────────────────────
-   Hemiunu — dark "Egyptian night" design system.
-   The warm papyrus brand recolored for a dark Claude.ai-style shell: warm
-   near-black ground, clay (terracotta) as the single accent, sage as a quiet
-   secondary, lapis for motion. Serif (Newsreader) for the greeting + agent
-   prose, Inter for UI, JetBrains Mono for code.
+   Hemiunu — earthy handmade-paper design system (light).
+   Built on a five-stop earthy palette: #606c38 (olive) · #283618 (deep forest) ·
+   #fefae0 (cream paper) · #dda15e (tan) · #bc6c25 (burnt orange). Cream paper is
+   the canvas; deep forest is the ink; burnt orange is the warm accent; olive is
+   the green note; tan is the warm secondary. A faint grain + organic, hand-drawn
+   edges make it feel written-on-paper. Ramona for display + UI, mono for code.
 
    This file owns the design tokens (mapped to both shadcn's variable names and
    our own brand names) + base body styling. styles.css keeps the chat
-   thread / markdown prose, the papyrus grain, and the streaming caret.
+   thread / markdown prose, the paper grain, the organic edges, and the caret.
    ──────────────────────────────────────────────────────────────────────── */
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Ramona (Rostype) — the brand display typeface. Two weights ship: Light and
+   Bold. Light covers normal/regular text, Bold covers every emphasis weight. */
+@font-face {
+  font-family: "Ramona";
+  src: url("./fonts/Ramona-Light.ttf") format("truetype");
+  font-weight: 100 450;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Ramona";
+  src: url("./fonts/Ramona-Bold.ttf") format("truetype");
+  font-weight: 451 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
 
-    /* Brand surfaces — warm dark neutrals */
-    --ground: #1b1916; /* main canvas */
-    --rail: #141210; /* the icon rail (a touch darker) */
-    --paper: #26231e; /* composer, cards, panels */
-    --raised: #302c26; /* hovers, user bubble, menu hover */
-    --raised-2: #383229;
+    /* Brand surfaces — cream handmade paper */
+    --ground: #fefae0; /* main canvas — cream paper */
+    --rail: #f1e8c6; /* the icon rail (a touch deeper parchment) */
+    --paper: #fffdf2; /* composer, cards, panels — brightest paper */
+    --raised: #f4eccb; /* hovers, user bubble, menu hover */
+    --raised-2: #ebe1bb;
 
-    /* Ink — warm cream text hierarchy */
-    --ink: #ece7da;
-    --ink-2: #b8b1a3;
-    --ink-3: #8a8478;
-    --ink-4: #615c52;
+    /* Ink — deep forest-olive on cream */
+    --ink: #283618;
+    --ink-2: #515a35;
+    --ink-3: #8a8a5f;
+    --ink-4: #b3ad84;
 
-    /* Hairlines */
-    --line: rgba(236, 231, 218, 0.1);
-    --line-2: rgba(236, 231, 218, 0.16);
+    /* Hairlines — forest ink, faint */
+    --line: rgba(40, 54, 24, 0.14);
+    --line-2: rgba(40, 54, 24, 0.22);
 
-    /* Accent — clay / terracotta (brightened for dark) + quiet secondaries */
-    --clay: #d4774f;
-    --clay-strong: #e08a63;
-    --clay-soft: rgba(212, 119, 79, 0.14);
-    --sage: #7a9b7a;
-    --lapis: #5bb8c4;
-    --gold: #c79a5c;
-    --danger: #d9684f;
+    /* Accent — burnt orange (the warm note) */
+    --sun: #bc6c25;
+    --sun-strong: #9c5519; /* darker, for hover/links on paper */
+    --sun-soft: rgba(188, 108, 37, 0.12);
+    /* Earthy palette stops, for secondary touches */
+    --olive: #606c38;
+    --tan: #dda15e;
+    --forest: #283618;
+    /* Oasis — the green note (functional success / connected) */
+    --oasis: #606c38;
+    --water: #606c38;
+    --danger: #a83a26;
 
-    --code-bg: #282c34;
+    --code-bg: #23271a;
 
-    /* Carved-tablet surface for the user bubble + permission card */
-    --stone: #2f2a22;
-    --stone-line: #46402f;
+    /* Parchment surface for the user bubble + permission card (flat) */
+    --stone: #f3ebca;
+    --stone-line: rgba(40, 54, 24, 0.16);
 
-    /* Shape + depth (consumed by the chat thread in styles.css) */
-    --r-sm: 9px;
-    --r-md: 13px;
-    --r-lg: 18px;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.24);
-    --shadow-pop: 0 10px 34px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+    /* Shape + depth — organic, hand-drawn edges (asymmetric radii so corners
+       look sketched rather than machined). Consumed by the chat thread. */
+    --r-sm: 8px 11px 9px 12px / 11px 8px 12px 9px;
+    --r-md: 13px 17px 14px 19px / 17px 13px 19px 14px;
+    --r-lg: 18px 24px 20px 27px / 24px 18px 27px 20px;
+    --shadow-sm: 0 1px 2px rgba(40, 54, 24, 0.1), 0 1px 3px rgba(40, 54, 24, 0.08);
+    --shadow-pop: 0 12px 34px rgba(40, 54, 24, 0.18), 0 2px 6px rgba(40, 54, 24, 0.12);
     --measure: 760px; /* chat column max-width */
 
     /* shadcn/ui token contract (mapped to the brand surfaces above) */
@@ -62,26 +85,26 @@
     --foreground: var(--ink);
     --card: var(--paper);
     --card-foreground: var(--ink);
-    --popover: #211e19;
+    --popover: #fffdf2;
     --popover-foreground: var(--ink);
-    --primary: var(--clay);
-    --primary-foreground: #1b1916;
+    --primary: var(--sun);
+    --primary-foreground: #fefae0;
     --secondary: var(--raised);
     --secondary-foreground: var(--ink);
-    --muted: #2a2620;
+    --muted: #f0e7c5;
     --muted-foreground: var(--ink-3);
     --accent: var(--raised);
     --accent-foreground: var(--ink);
     --destructive: var(--danger);
-    --destructive-foreground: #1b1916;
-    /* Hairline borders — almost invisible, like the reference UI */
-    --border: rgba(236, 231, 218, 0.06);
-    --input: rgba(236, 231, 218, 0.11);
-    --ring: var(--clay);
+    --destructive-foreground: #fefae0;
+    /* Hairline borders — forest ink, faint on paper */
+    --border: rgba(40, 54, 24, 0.12);
+    --input: rgba(40, 54, 24, 0.2);
+    --ring: var(--sun);
 
-    /* Type */
-    --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --font-serif: "Newsreader Variable", Georgia, "Times New Roman", serif;
+    /* Type — Helvetica everywhere (UI + display); mono stays for code legibility. */
+    --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-serif: "Helvetica Neue", Helvetica, Arial, sans-serif;
     --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
     --font-hiero: "Noto Sans Egyptian Hieroglyphs", serif;
 
@@ -89,7 +112,7 @@
   }
 }
 
-/* Expose the tokens as Tailwind utilities (bg-background, text-clay, etc.). */
+/* Expose the tokens as Tailwind utilities (bg-background, text-sun, etc.). */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -120,11 +143,14 @@
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-ink-4: var(--ink-4);
-  --color-clay: var(--clay);
-  --color-clay-strong: var(--clay-strong);
-  --color-sage: var(--sage);
-  --color-lapis: var(--lapis);
-  --color-gold: var(--gold);
+  --color-sun: var(--sun);
+  --color-sun-strong: var(--sun-strong);
+  --color-sun-soft: var(--sun-soft);
+  --color-oasis: var(--oasis);
+  --color-water: var(--water);
+  --color-olive: var(--olive);
+  --color-tan: var(--tan);
+  --color-forest: var(--forest);
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 4px);
@@ -145,8 +171,15 @@
     height: 100%;
     margin: 0;
   }
+    /* Handmade paper: soft uneven warm mottling (tan + olive) over cream, so the
+       fill reads like a sheet that's been written on rather than a flat color. */
   body {
-    background: var(--ground);
+    background:
+      radial-gradient(70% 55% at 18% 12%, rgba(221, 161, 94, 0.1), transparent 60%),
+      radial-gradient(65% 60% at 85% 28%, rgba(96, 108, 56, 0.07), transparent 62%),
+      radial-gradient(80% 70% at 60% 95%, rgba(188, 108, 37, 0.06), transparent 66%),
+      var(--ground);
+    background-attachment: fixed;
     color: var(--ink);
     font-family: var(--font-sans);
     font-size: 15px;

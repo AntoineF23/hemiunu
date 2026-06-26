@@ -4,13 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getJSON, sendJSON } from "@/lib/api";
 import type { SkillMeta } from "../../useSkills";
@@ -116,9 +110,8 @@ export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }:
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full !max-w-xl gap-4 overflow-y-auto">
-        <SheetHeader>
+    <>
+      <SheetHeader>
           <SheetTitle>
             {editing ? (editing.existing ? `/${editing.name}` : "New skill") : "Commands & skills"}
           </SheetTitle>
@@ -202,8 +195,7 @@ export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }:
             </div>
           </>
         )}
-      </SheetContent>
-    </Sheet>
+    </>
   );
 }
 

@@ -18,7 +18,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./Avatar";
 
@@ -28,7 +27,8 @@ interface RailProps {
   collapsed: boolean;
   onToggle: () => void;
   onNewChat: () => void;
-  activePanel: Panel | null;
+  /** Panel(s) currently open (highlighted in the rail). One at a time today. */
+  openPanels: Panel[];
   onSelectPanel: (p: Panel) => void;
   team: string | null;
   user: string | null;
@@ -61,7 +61,7 @@ export function Rail({
   collapsed,
   onToggle,
   onNewChat,
-  activePanel,
+  openPanels,
   onSelectPanel,
   team,
   user,
@@ -74,7 +74,7 @@ export function Rail({
   return (
     <aside
       className={cn(
-        "flex h-full flex-col bg-rail transition-[width] duration-200",
+        "flex h-full flex-col bg-rail transition-[width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
         collapsed ? "w-[60px] items-center px-2 py-3" : "w-[264px] px-3 py-3",
       )}
     >
@@ -104,7 +104,7 @@ export function Rail({
           icon={item.icon}
           label={item.label}
           collapsed={collapsed}
-          active={activePanel === item.key}
+          active={openPanels.includes(item.key)}
           onClick={() => onSelectPanel(item.key)}
         />
       ))}
@@ -118,7 +118,7 @@ export function Rail({
           icon={item.icon}
           label={item.label}
           collapsed={collapsed}
-          active={activePanel === item.key}
+          active={openPanels.includes(item.key)}
           onClick={() => onSelectPanel(item.key)}
         />
       ))}
@@ -137,7 +137,7 @@ export function Rail({
           <Avatar
             login={githubLogin}
             fallback={avatarInitial}
-            className="size-8 rounded-md bg-clay text-sm font-semibold text-primary-foreground"
+            className="size-8 rounded-md bg-sun text-sm font-semibold text-primary-foreground"
           />
           {!collapsed && (
             <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
@@ -159,7 +159,7 @@ export function Rail({
                 className="size-5 rounded bg-raised text-[10px] font-semibold text-ink-2"
               />
               <span className="flex-1 truncate">{login}</span>
-              {login === githubLogin && <Check className="size-4 text-clay" />}
+              {login === githubLogin && <Check className="size-4 text-sun" />}
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
@@ -200,7 +200,7 @@ function RailButton({
     <Icon className="size-[19px] shrink-0" strokeWidth={STROKE} />
   );
 
-  const btn = (
+  return (
     <button
       onClick={onClick}
       aria-label={label}
@@ -213,13 +213,5 @@ function RailButton({
       {glyph}
       {!collapsed && !iconOnly && <span className="truncate">{label}</span>}
     </button>
-  );
-
-  if (!collapsed) return btn;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{btn}</TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
   );
 }

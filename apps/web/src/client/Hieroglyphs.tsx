@@ -7,16 +7,16 @@ import { useEffect, useState } from "react";
 const WORDS = [
   "Excavating",
   "Deciphering",
-  "Unearthing",
-  "Decoding",
-  "Surveying",
   "Translating",
-  "Restoring",
+  "Surveying",
   "Inscribing",
-  "Divining",
+  "Chronicling",
+  "Unearthing",
   "Charting",
-  "Unrolling",
-  "Aligning",
+  "Restoring",
+  "Consulting the archives",
+  "Mapping the strata",
+  "Reading the glyphs",
 ];
 
 function useTick(ms: number): number {

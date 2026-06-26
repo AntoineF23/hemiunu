@@ -35,7 +35,7 @@ export function ArtifactCard({ url, title }: ArtifactCardProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <SquarePen className="size-4 text-clay" strokeWidth={1.8} />
+        <SquarePen className="size-4 text-sun" strokeWidth={1.8} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{title}</span>
         <span className="hidden truncate font-mono text-xs text-ink-4 sm:inline">{url}</span>
         <button

@@ -9,13 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getJSON, sendJSON } from "@/lib/api";
 import { Markdown } from "../../Markdown";
@@ -112,9 +106,8 @@ export function PrototypePanel({ open, onOpenChange }: PrototypePanelProps) {
   const meta = data?.meta ?? {};
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full !max-w-xl gap-5 overflow-y-auto">
-        <SheetHeader>
+    <>
+      <SheetHeader>
           <SheetTitle>{meta.title || "Prototype"}</SheetTitle>
           <SheetDescription>
             {data?.team ? `PROTOTYPE.md · ${data.team}` : "PROTOTYPE.md · local workspace"}
@@ -129,7 +122,7 @@ export function PrototypePanel({ open, onOpenChange }: PrototypePanelProps) {
           </p>
         )}
         {flash && (
-          <p className="rounded-md border border-sage/40 bg-sage/10 px-3 py-2 text-sm text-ink-2">
+          <p className="rounded-md border border-oasis/40 bg-oasis/10 px-3 py-2 text-sm text-ink-2">
             {flash}
           </p>
         )}
@@ -137,7 +130,7 @@ export function PrototypePanel({ open, onOpenChange }: PrototypePanelProps) {
         {/* Add a note */}
         <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
           <Label className="text-ink-2">
-            <NotebookPen className="size-4 text-clay" /> Add knowledge
+            <NotebookPen className="size-4 text-sun" /> Add knowledge
           </Label>
           <div className="flex gap-2">
             <Select value={kind} onValueChange={setKind}>
@@ -215,7 +208,6 @@ export function PrototypePanel({ open, onOpenChange }: PrototypePanelProps) {
             )}
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+    </>
   );
 }

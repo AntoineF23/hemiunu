@@ -28,13 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getJSON, sendJSON } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -104,7 +98,7 @@ function ServerLogo({ domain, connected }: { domain: string | null; connected: b
       />
     );
   }
-  return <Plug className={cn("size-4", connected ? "text-sage" : "text-ink-4")} />;
+  return <Plug className={cn("size-4", connected ? "text-oasis" : "text-ink-4")} />;
 }
 
 export function McpPanel({ open, onOpenChange }: McpPanelProps) {
@@ -216,9 +210,8 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full !max-w-xl gap-4 overflow-y-auto">
-        <SheetHeader>
+    <>
+      <SheetHeader>
           <SheetTitle>
             {mapView
               ? `${mapView.name} · source map`
@@ -245,7 +238,7 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
           </p>
         )}
         {flash && !adding && !mapView && (
-          <p className="rounded-md border border-sage/40 bg-sage/10 px-3 py-2 text-sm text-ink-2">
+          <p className="rounded-md border border-oasis/40 bg-oasis/10 px-3 py-2 text-sm text-ink-2">
             {flash}
           </p>
         )}
@@ -352,7 +345,7 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
                     </Button>
                   ) : s.oauthAuthorized ? (
                     <span
-                      className="rounded bg-sage/15 px-1.5 py-0.5 text-[10px] text-sage"
+                      className="rounded bg-oasis/15 px-1.5 py-0.5 text-[10px] text-oasis"
                       title="Signed in via OAuth"
                     >
                       ✓ authorized
@@ -470,8 +463,7 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </SheetContent>
-    </Sheet>
+    </>
   );
 }
 
@@ -742,14 +734,14 @@ function SourceMapEditor({
             <Trash2 className="size-4" /> Delete map
           </Button>
         )}
-        {saved && <span className="text-xs text-sage">Saved</span>}
+        {saved && <span className="text-xs text-oasis">Saved</span>}
       </div>
     </div>
   );
 }
 
 const OPTIONS: { value: Policy; label: string; active: string }[] = [
-  { value: "allow", label: "Allow", active: "bg-sage/20 text-sage" },
+  { value: "allow", label: "Allow", active: "bg-oasis/20 text-oasis" },
   { value: "ask", label: "Ask", active: "bg-white/10 text-ink" },
   { value: "block", label: "Block", active: "bg-destructive/20 text-destructive" },
 ];

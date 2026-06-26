@@ -2,13 +2,7 @@ import { useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -56,12 +50,11 @@ export function SettingsPanel({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Model, credentials, and connection status.</DialogDescription>
-        </DialogHeader>
+    <>
+      <SheetHeader>
+        <SheetTitle>Settings</SheetTitle>
+        <SheetDescription>Model, credentials, and connection status.</SheetDescription>
+      </SheetHeader>
 
         <div className="flex flex-col gap-5 py-1">
           {/* Model */}
@@ -127,15 +120,14 @@ export function SettingsPanel({
             ) : null}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 
 function StatusChip({ label, on }: { label: string; on: boolean }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-ink-2">
-      {on ? <Check className="size-3.5 text-sage" /> : <X className="size-3.5 text-ink-4" />}
+      {on ? <Check className="size-3.5 text-oasis" /> : <X className="size-3.5 text-ink-4" />}
       {label}
     </span>
   );

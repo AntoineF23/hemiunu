@@ -3,13 +3,7 @@ import { Check, ExternalLink, Github, Loader2, Plus, Trash2, UserPlus } from "lu
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getJSON, sendJSON } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Avatar } from "../Avatar";
@@ -213,9 +207,8 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
   const current = data?.current ?? null;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-full max-w-md gap-5 overflow-y-auto">
-        <SheetHeader>
+    <>
+      <SheetHeader>
           <SheetTitle>Teams</SheetTitle>
           <SheetDescription>
             Teams belong to a GitHub account. Switch profile to see that account's teams.
@@ -244,7 +237,7 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
                   disabled={busy}
                   className={cn(
                     "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors",
-                    active ? "border-clay/40 bg-clay-soft" : "border-border hover:bg-accent",
+                    active ? "border-sun/40 bg-sun-soft" : "border-border hover:bg-accent",
                   )}
                 >
                   <Avatar
@@ -257,7 +250,7 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
                     {active && <span className="block text-xs text-ink-4">active</span>}
                   </span>
                   {active ? (
-                    <Check className="size-4 shrink-0 text-clay" />
+                    <Check className="size-4 shrink-0 text-sun" />
                   ) : (
                     <span className="shrink-0 text-xs text-ink-4">switch</span>
                   )}
@@ -276,7 +269,7 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
                 href={device.verificationUri}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-flex items-center gap-1 text-clay-strong hover:underline"
+                className="inline-flex items-center gap-1 text-sun-strong hover:underline"
               >
                 Open github.com/login/device <ExternalLink className="size-3.5" />
               </a>
@@ -424,8 +417,7 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
             )}
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+    </>
   );
 }
 
@@ -443,7 +435,7 @@ function TeamRow({ label, hint, active, onSelect, onRemove, disabled }: TeamRowP
     <div
       className={cn(
         "group flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-colors",
-        active ? "border-clay/40 bg-clay-soft" : "border-border hover:bg-accent",
+        active ? "border-sun/40 bg-sun-soft" : "border-border hover:bg-accent",
       )}
     >
       <button
@@ -454,7 +446,7 @@ function TeamRow({ label, hint, active, onSelect, onRemove, disabled }: TeamRowP
         <span
           className={cn(
             "grid size-4 shrink-0 place-items-center rounded-full border",
-            active ? "border-clay bg-clay text-primary-foreground" : "border-ink-4",
+            active ? "border-sun bg-sun text-primary-foreground" : "border-ink-4",
           )}
         >
           {active && <Check className="size-3" strokeWidth={3} />}

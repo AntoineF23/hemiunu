@@ -12,6 +12,7 @@ import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { SkillsPanel } from "@/components/panels/SkillsPanel";
 import { TeamsPanel } from "@/components/panels/TeamsPanel";
 import { type Panel, Rail } from "@/components/Rail";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { friendlyTool } from "./friendly";
 import { StatusWord } from "./Hieroglyphs";
 import { sendJSON } from "./lib/api";
@@ -54,7 +55,14 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [showDetails, setShowDetails] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) === "1");
+  // One docked panel inside a single persistent shell. Switching just swaps the
+  // shell's content (the column never closes/reopens), so there's no flash.
+  // Opening collapses the rail and it stays collapsed afterwards.
   const [panel, setPanel] = useState<Panel | null>(null);
+  const selectPanel = useCallback((p: Panel) => {
+    setPanel((cur) => (cur === p ? null : p));
+    setCollapsed(true);
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,7 +89,10 @@ export function App() {
       const cmd = COMMANDS.find((c) => c.name === name);
       if (!cmd) return;
       if (cmd.panel === null) reset();
-      else setPanel(cmd.panel);
+      else {
+        setPanel(cmd.panel);
+        setCollapsed(true);
+      }
     },
     [reset],
   );
@@ -156,8 +167,8 @@ export function App() {
         collapsed={collapsed}
         onToggle={() => setCollapsed((v) => !v)}
         onNewChat={reset}
-        activePanel={panel}
-        onSelectPanel={(p) => setPanel(p)}
+        openPanels={panel ? [panel] : []}
+        onSelectPanel={selectPanel}
         team={settings?.team ?? null}
         user={settings?.user ?? null}
         githubLogin={settings?.githubLogin ?? null}
@@ -165,7 +176,57 @@ export function App() {
         onSwitchAccount={switchAccount}
       />
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      {/* One persistent docked shell right of the rail; main reduces beside it.
+          Switching panels swaps the content inside (keyed fade), so the column
+          itself never closes/reopens. */}
+      <Sheet open={panel !== null} onOpenChange={(o) => !o && setPanel(null)}>
+        <SheetContent>
+          <div key={panel ?? "none"} className="panel-content flex min-h-full flex-col gap-4">
+            {panel === "conversations" && (
+              <ConversationsPanel
+                open
+                onOpenChange={(o) => !o && setPanel(null)}
+                onResume={(id, msgs) => {
+                  loadConversation(id, msgs);
+                  setPanel(null);
+                }}
+                onDeleted={(id) => {
+                  // If we just deleted the conversation we're viewing, clear the
+                  // thread so the next turn doesn't resume a now-deleted session.
+                  if (id === currentSessionId) reset();
+                }}
+              />
+            )}
+            {panel === "teams" && (
+              <TeamsPanel open onOpenChange={(o) => !o && setPanel(null)} onChanged={refresh} />
+            )}
+            {panel === "prototypes" && (
+              <PrototypePanel open onOpenChange={(o) => !o && setPanel(null)} />
+            )}
+            {panel === "skills" && (
+              <SkillsPanel
+                open
+                onOpenChange={(o) => !o && setPanel(null)}
+                skills={skills}
+                commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
+                onChanged={refreshSkills}
+              />
+            )}
+            {panel === "mcp" && <McpPanel open onOpenChange={(o) => !o && setPanel(null)} />}
+            {panel === "settings" && (
+              <SettingsPanel
+                open
+                onOpenChange={(o) => !o && setPanel(null)}
+                settings={settings}
+                onChanged={refresh}
+                onModelChange={setModel}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <main className="paper-main relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {empty ? (
           <Home name={settings?.user ?? null} team={settings?.team ?? null} onPick={setDraft}>
             {composer}
@@ -210,7 +271,7 @@ export function App() {
               </div>
             </div>
 
-            <div className="border-t border-border bg-gradient-to-b from-transparent to-ground px-7 pb-4 pt-2.5">
+            <div className="bg-gradient-to-b from-transparent to-ground px-7 pb-4 pt-2.5">
               <div className="mx-auto max-w-[760px]">
                 {composer}
                 <div className="mt-2 flex items-center justify-between px-1 text-xs text-ink-4">
@@ -237,41 +298,6 @@ export function App() {
           </>
         )}
       </main>
-
-      <TeamsPanel
-        open={panel === "teams"}
-        onOpenChange={(o) => !o && setPanel(null)}
-        onChanged={refresh}
-      />
-      <PrototypePanel open={panel === "prototypes"} onOpenChange={(o) => !o && setPanel(null)} />
-      <SkillsPanel
-        open={panel === "skills"}
-        onOpenChange={(o) => !o && setPanel(null)}
-        skills={skills}
-        commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
-        onChanged={refreshSkills}
-      />
-      <McpPanel open={panel === "mcp"} onOpenChange={(o) => !o && setPanel(null)} />
-      <SettingsPanel
-        open={panel === "settings"}
-        onOpenChange={(o) => !o && setPanel(null)}
-        settings={settings}
-        onChanged={refresh}
-        onModelChange={setModel}
-      />
-      <ConversationsPanel
-        open={panel === "conversations"}
-        onOpenChange={(o) => !o && setPanel(null)}
-        onResume={(id, msgs) => {
-          loadConversation(id, msgs);
-          setPanel(null);
-        }}
-        onDeleted={(id) => {
-          // If we just deleted the conversation we're viewing, clear the thread
-          // so the next turn doesn't try to resume a now-deleted session id.
-          if (id === currentSessionId) reset();
-        }}
-      />
     </div>
   );
 }

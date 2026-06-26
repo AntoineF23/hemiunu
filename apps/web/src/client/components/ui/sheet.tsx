@@ -1,91 +1,115 @@
 import * as React from "react";
-import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const Sheet = SheetPrimitive.Root;
-const SheetTrigger = SheetPrimitive.Trigger;
-const SheetClose = SheetPrimitive.Close;
-const SheetPortal = SheetPrimitive.Portal;
+/* A docked, non-modal side panel. Unlike a modal sheet it renders inline in the
+   layout flow, as a single column right of the rail that reduces the main area.
+   Same color as the rail, so the whole left zone stays coherent. The API mirrors
+   the old shadcn sheet (open / onOpenChange / Header / Title / Description).
 
-function SheetOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
-  return (
-    <SheetPrimitive.Overlay
-      data-slot="sheet-overlay"
-      className={cn(
-        "fixed inset-0 z-50 bg-black/55 backdrop-blur-sm",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-        className,
-      )}
-      {...props}
-    />
+   It keeps itself mounted through a closing animation: when `open` flips false it
+   plays the exit animation, then unmounts on animationend — so open AND close are
+   both smooth. */
+
+const SheetCtx = React.createContext<{
+  state: "open" | "closed";
+  onOpenChange: (open: boolean) => void;
+  onExited: () => void;
+}>({ state: "closed", onOpenChange: () => {}, onExited: () => {} });
+
+function Sheet({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = React.useState(!!open);
+  const [state, setState] = React.useState<"open" | "closed">(open ? "open" : "closed");
+
+  React.useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setState("open");
+    } else {
+      setState("closed");
+    }
+  }, [open]);
+
+  const ctx = React.useMemo(
+    () => ({
+      state,
+      onOpenChange: onOpenChange ?? (() => {}),
+      onExited: () => setMounted(false),
+    }),
+    [state, onOpenChange],
   );
-}
 
-type Side = "top" | "bottom" | "left" | "right";
+  if (!mounted) return null;
+  return <SheetCtx.Provider value={ctx}>{children}</SheetCtx.Provider>;
+}
 
 function SheetContent({
   className,
   children,
-  side = "left",
+  // `side` is accepted for API compatibility but docked panels are always left.
+  side: _side,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & { side?: Side }) {
-  const sideClasses: Record<Side, string> = {
-    left: "inset-y-0 left-0 h-full w-full max-w-md border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
-    right:
-      "inset-y-0 right-0 h-full w-full max-w-md border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
-    top: "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
-    bottom:
-      "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-  };
+}: React.ComponentProps<"aside"> & { side?: "top" | "bottom" | "left" | "right" }) {
+  const { state, onOpenChange, onExited } = React.useContext(SheetCtx);
+  // Outer slot animates its WIDTH (so the layout space itself opens/closes and
+  // main slides smoothly); the inner panel keeps a fixed width and is clipped by
+  // the slot, so its content never reflows mid-animation. Unmount when the slot's
+  // close animation ends.
   return (
-    <SheetPortal>
-      <SheetOverlay />
-      <SheetPrimitive.Content
+    <div
+      className="panel-slot"
+      data-state={state}
+      onAnimationEnd={(e) => {
+        if (state === "closed" && e.target === e.currentTarget) onExited();
+      }}
+    >
+      <aside
         data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-card p-6 shadow-2xl transition ease-in-out",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-400",
-          sideClasses[side],
+          "relative flex h-full w-[440px] flex-col overflow-y-auto bg-rail p-6",
           className,
         )}
         {...props}
       >
-        {children}
-        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 outline-none focus:ring-2 focus:ring-ring">
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={() => onOpenChange(false)}
+          className="absolute right-4 top-4 text-ink-3 opacity-70 outline-none transition-opacity hover:opacity-100 focus:outline-none focus-visible:outline-none"
+        >
           <X className="size-4" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
-      </SheetPrimitive.Content>
-    </SheetPortal>
+        </button>
+        {children}
+      </aside>
+    </div>
   );
 }
 
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="sheet-header" className={cn("flex flex-col gap-1", className)} {...props} />
-  );
+  return <div data-slot="sheet-header" className={cn("flex flex-col gap-1", className)} {...props} />;
 }
 
-function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {
+function SheetTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
-    <SheetPrimitive.Title
+    <h2
       data-slot="sheet-title"
-      className={cn("font-serif text-2xl leading-tight", className)}
+      className={cn("font-serif text-2xl leading-tight text-ink", className)}
       {...props}
     />
   );
 }
 
-function SheetDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Description>) {
+function SheetDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
-    <SheetPrimitive.Description
+    <p
       data-slot="sheet-description"
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
@@ -93,4 +117,4 @@ function SheetDescription({
   );
 }
 
-export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetDescription };
+export { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription };
