@@ -28,13 +28,17 @@ function useTick(ms: number): number {
   return t;
 }
 
-/** The rotating excavation verb, re-keyed so it fades in on each change. */
+/** The rotating excavation verb, re-keyed so it fades in on each change. An
+ *  elapsed-seconds counter is appended once a wait runs long, so a quiet,
+ *  slow step (e.g. generating a prototype) visibly keeps progressing rather
+ *  than looking frozen. */
 export function StatusWord() {
   const t = useTick(3600);
+  const secs = useTick(1000); // ticks ≈ seconds since this wait started
   const word = WORDS[t % WORDS.length];
   return (
     <span key={word} className="word-fade">
-      {word}…
+      {word}…{secs >= 3 ? ` ${secs}s` : ""}
     </span>
   );
 }
