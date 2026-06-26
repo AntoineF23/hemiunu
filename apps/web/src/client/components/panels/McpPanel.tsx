@@ -306,7 +306,7 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            <Button variant="secondary" size="sm" className="w-fit" onClick={() => setAdding(true)}>
+            <Button size="sm" className="w-fit" onClick={() => setAdding(true)}>
               <Plus className="size-4" /> Add MCP server
             </Button>
             {servers.map((s) => (

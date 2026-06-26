@@ -5,7 +5,7 @@ import {
   MessagesSquare,
   PanelLeft,
   Plug,
-  Plus,
+  PlusCircle,
   Settings,
   SquareSlash,
   Users,
@@ -101,7 +101,7 @@ export function Rail({
       </div>
 
       {/* New chat */}
-      <RailButton icon={Plus} label="New chat" collapsed={collapsed} circled onClick={onNewChat} />
+      <RailButton icon={PlusCircle} label="New chat" collapsed={collapsed} onClick={onNewChat} />
 
       {TOP.map((item) => (
         <RailButton
@@ -183,34 +183,19 @@ interface RailButtonProps {
   collapsed: boolean;
   active?: boolean;
   iconOnly?: boolean;
-  /** Render the icon inside a thin outlined circle (the "New chat" affordance). */
-  circled?: boolean;
   onClick: () => void;
 }
 
-function RailButton({
-  icon: Icon,
-  label,
-  collapsed,
-  active,
-  iconOnly,
-  circled,
-  onClick,
-}: RailButtonProps) {
-  const glyph = circled ? (
-    <span className="grid size-[26px] place-items-center rounded-full border border-border">
-      <Icon className="size-[15px] shrink-0" strokeWidth={STROKE} />
-    </span>
-  ) : (
-    <Icon className="size-[19px] shrink-0" strokeWidth={STROKE} />
-  );
+function RailButton({ icon: Icon, label, collapsed, active, iconOnly, onClick }: RailButtonProps) {
+  const glyph = <Icon className="rail-icon size-[19px] shrink-0" strokeWidth={STROKE} />;
 
   return (
     <button
       onClick={onClick}
       aria-label={label}
+      data-active={active ? "true" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-lg text-[15px] transition-colors",
+        "rail-btn flex items-center gap-3 rounded-lg text-[15px] transition-colors",
         collapsed || iconOnly ? "size-9 justify-center" : "h-9 w-full px-2.5",
         active ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink",
       )}

@@ -64,6 +64,23 @@ body::before {
 /* ── Docked side panel ─────────────────────────────────────
    A single inline column (same color as the rail) right of the rail; opening it
    collapses the rail to icons. Slides in gently when it mounts. */
+/* Rail icons: outline by default, then softly fill on hover / when active —
+   an elegant "it's clickable" cue without swapping to a second icon. */
+.rail-icon {
+  fill: var(--sun);
+  fill-opacity: 0;
+  transition:
+    fill-opacity 0.18s var(--ease),
+    transform 0.18s var(--ease);
+}
+.rail-btn:hover .rail-icon,
+.rail-btn[data-active="true"] .rail-icon {
+  fill-opacity: 0.2;
+}
+.rail-btn:hover .rail-icon {
+  transform: scale(1.12);
+}
+
 /* The slot transitions its WIDTH (inline) to slide open/closed; main moves
    smoothly and no empty column flashes. The inner panel keeps a fixed width so
    its content never reflows during the slide. */
