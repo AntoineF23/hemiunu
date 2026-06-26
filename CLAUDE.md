@@ -12,14 +12,14 @@ Hemiunu is an organization-wide AI **Product Agent** for a product team, built o
 - `corepack pnpm smoke --offline` — deterministic checks only, no API calls, no cost. Run this for fast iteration.
 - `corepack pnpm cap` — live capability eval (scenarios S1–S11 in `apps/eval/src/capability.ts`). `corepack pnpm cap S6 S8` filters by id; `CAP_DEBUG=1` traces tools/delegations/text.
 - `corepack pnpm typecheck` — `turbo run typecheck` across the workspace (each package runs `tsc --noEmit`).
-- Requires **Node 24+** (uses the built-in `node:sqlite`). Buildless dev via `tsx` — no compile step; run `.ts`/`.tsx` directly.
+- Requires **Node 20+**. The conversation store uses `better-sqlite3` (a native module with prebuilt binaries) so it runs on Node 20 LTS, not just Node 24 — this is what lets `npx hemiunu` reach a normal install base. Buildless dev via `tsx` — no compile step; run `.ts`/`.tsx` directly.
 
 ## Architecture
 
 Lean pnpm + Turborepo monorepo. Everything funnels through one function: **`runTurn()`** in `packages/agent-core/src/agent.ts`, a wrapper around the SDK's `query()` that assembles the model config, system prompt, MCP servers, tool allowlist, and subagent definitions for a single turn.
 
 - **`packages/agent-core`** — the brain. `agent.ts` (`runTurn`) is the entry point; `index.ts` is the public surface. Built from many small in-process SDK MCP servers, each a `create*Server()` + a `*_TOOL_ID`/`*_TOOLS` pattern, all registered in `runTurn`: memory (`remember`), models (`ask_model`), prototype (`save_prototype`), orchestrator (`parallel`), skills, prototype-knowledge (`add_prototype_note`), workspace/iterate, share, control, github/teams, vercel. `subagents.ts` is the single source of truth for subagent specs (`SUBAGENTS` map: `researcher` on the retrieval tier, `prototyper` on the synthesis tier).
-- **`packages/memory`** — `context.ts` builds the system prompt from `context/` files (Hermes-style); `store.ts` is the SQLite `ConversationStore` on `node:sqlite`; the `remember()` core lives here.
+- **`packages/memory`** — `context.ts` builds the system prompt from `context/` files (Hermes-style); `store.ts` is the SQLite `ConversationStore` on `better-sqlite3`; the `remember()` core lives here.
 - **`packages/mcp`** — reads `mcp.json` (standard `mcpServers` shape, `stdio`/`http`/`sse`), `${ENV}` interpolation, `${CWD}` → launch dir, auto-skips servers whose env vars are unset or `disabled`.
 - **`apps/cli`** — `index.tsx`, a single-file **Ink (React) TUI**: `<Static>` scrollback, live streaming, arrow-key permission menu, status footer, slash commands, auto-compaction. `tsconfig` sets `jsx: react-jsx`.
 - **`apps/eval`** — `smoke.ts` (offline + live), `capability.ts` (S1–S11), shared helpers in `harness.ts`.

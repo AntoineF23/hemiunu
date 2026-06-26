@@ -71,7 +71,7 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
 
 ## Install
 
-One line (requires **Node 24+**):
+One line (requires **Node 20+**):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh | bash
@@ -104,7 +104,7 @@ project lets the agent read *that* project, with its brain from the install.
 
 ## Setup from source
 
-Requires Node 24+ (uses the built-in `node:sqlite`). Uses pnpm — via Corepack
+Requires Node 20+ (the conversation store uses `better-sqlite3`). Uses pnpm — via Corepack
 (`corepack pnpm …`), an installed `pnpm`, or `npx pnpm …` if you have neither.
 The `curl | bash` installer above resolves this for you automatically.
 

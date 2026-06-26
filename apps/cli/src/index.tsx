@@ -2229,7 +2229,37 @@ async function resolveStartTeam(): Promise<string | null> {
   return runLaunchPicker(teams, currentTeam() ?? null);
 }
 
+function printHelp(): void {
+  // process.env.HEMIUNU_VERSION is injected at bundle time (see build-release.mjs);
+  // undefined when running buildless via tsx in dev.
+  const version = process.env.HEMIUNU_VERSION ?? "dev";
+  console.log(`hemiunu ${version} — product agent for your terminal
+
+Usage:
+  hemiunu                 start, picking a team interactively
+  hemiunu owner/repo      start on a specific team (added if new)
+  hemiunu local           start with no team (a local workspace)
+
+Options:
+  -v, --version           print version and exit
+  -h, --help              show this help and exit
+
+First run asks for your Anthropic API key and saves it to ~/.hemiunu/.env.
+Models are bring-your-own. Docs: https://github.com/AntoineF23/hemiunu`);
+}
+
 async function main() {
+  // Non-interactive flags short-circuit before any TTY/render or setup so
+  // `hemiunu --version` works in scripts and on a fresh machine.
+  const flags = process.argv.slice(2);
+  if (flags.includes("--version") || flags.includes("-v")) {
+    console.log(process.env.HEMIUNU_VERSION ?? "dev");
+    return;
+  }
+  if (flags.includes("--help") || flags.includes("-h")) {
+    printHelp();
+    return;
+  }
   // Hemiunu's HOME (its config: soul.md, mcp.json, context/) is the install
   // dir when launched via the `hemiunu` command, else the current dir (running
   // from the repo). This is separate from the launch dir, which the agent reads
