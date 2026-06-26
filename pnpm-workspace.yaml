@@ -2,9 +2,6 @@ packages:
   - apps/*
   - packages/*
 
-allowBuilds:
-  esbuild: set this to true or false
-
 # Native/postinstall build scripts we trust. esbuild (via tsx) and
 # better-sqlite3 (the conversation store) each ship one; approve them so pnpm
 # builds them instead of warning.
