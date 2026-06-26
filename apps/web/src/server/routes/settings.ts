@@ -12,6 +12,8 @@ import {
   githubStatus,
   hasApiKey,
   listTeams,
+  removeTeam,
+  repoExists,
   resolveGithubToken,
   upsertUserEnv,
   vercelLoggedIn,
@@ -52,15 +54,25 @@ settingsRoute.get("/api/settings", async (c) => {
   // The active GitHub login powers the avatar (github.com/<login>.png) and the
   // profile switcher; currentGithubLogin() also covers an env/`gh` token.
   const githubLogin = (await currentGithubLogin()) ?? null;
+  const token = resolveGithubToken();
+  // Self-heal: if the active team's repo was deleted on GitHub, drop it so the
+  // footer doesn't keep showing a team that no longer exists. repoExists only
+  // reports false on a confirmed 404/403/401 (never on a network error/5xx), so
+  // we won't drop a live team just because GitHub is briefly unreachable.
+  let team = currentTeam();
+  if (team && token && !(await repoExists(token, team))) {
+    removeTeam(team);
+    team = currentTeam();
+  }
   return c.json({
     model: rt.model,
     user: userName(),
     githubLogin,
     githubAccounts: status.accounts,
     hasApiKey: hasApiKey(),
-    github: !!resolveGithubToken(),
+    github: !!token,
     vercel: vercelLoggedIn(),
-    team: currentTeam() ?? null,
+    team: team ?? null,
     teams: listTeams(),
     mcpServers: Object.keys(rt.registry.mcpServers),
     mcpSkipped: rt.registry.skipped,

@@ -69,10 +69,14 @@ export function TeamsPanel({ open, onOpenChange, onChanged }: TeamsPanelProps) {
   const load = useCallback(async () => {
     try {
       setData(await getJSON<TeamsData>("/api/teams"));
+      // Fetching /api/teams prunes teams whose repos are gone (and can clear the
+      // active selection), so resync the rest of the app — keeps the workspace
+      // footer from showing a team that was just removed/deleted on GitHub.
+      onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [onChanged]);
 
   const loadTeammates = useCallback(async () => {
     try {
