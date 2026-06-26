@@ -78,11 +78,16 @@ async function* sseFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<Serv
   }
 }
 
-export function useTurnStream(): TurnState {
+export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [permission, setPermission] = useState<PermissionPrompt | null>(null);
   const [lastCost, setLastCost] = useState<TurnState["lastCost"]>(null);
+
+  // Kept in a ref so the long-lived turn stream closure always calls the latest
+  // callback without re-subscribing.
+  const onTeamRef = useRef(onTeam);
+  onTeamRef.current = onTeam;
 
   const idRef = useRef(0);
   const turnIdRef = useRef<string | null>(null);
@@ -194,6 +199,11 @@ export function useTurnStream(): TurnState {
                 break;
               case "artifact":
                 push({ kind: "artifact", text: e.title, url: e.url });
+                break;
+              case "team":
+                // The agent created/switched the team mid-turn — let the app
+                // refresh so the workspace indicator reflects it immediately.
+                onTeamRef.current?.(e.repo);
                 break;
               case "permission":
                 setPermission({ requestId: e.requestId, name: e.name, preview: e.preview });

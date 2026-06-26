@@ -135,6 +135,14 @@ turnRoute.post("/api/turn", async (c) => {
     // surface it as an inline artifact card. previewStatus() is in-process, so
     // we just watch it change as iterate_prototype / edits run.
     let lastPreviewUrl = previewStatus()?.url ?? null;
+    // Whether we've shown the prototype as an artifact this turn — so a rebuild on
+    // top of an already-running preview (same URL) still surfaces the card once.
+    let artifactEmitted = false;
+    // The active team at turn start. The agent can create/switch a team mid-turn
+    // (control bridge → setCurrentTeam), so we watch turnRepo() change and emit a
+    // `team` event the moment it does — the UI updates its workspace indicator
+    // immediately instead of waiting for the (possibly long) turn to finish.
+    let lastRepo = turnRepo();
     // Whether the agent built/edited a prototype this turn — if it used
     // save_prototype (which just writes files, no server), we start a static
     // preview ourselves afterwards so it still shows as an inline artifact.
@@ -230,22 +238,40 @@ turnRoute.post("/api/turn", async (c) => {
           lastPreviewUrl = preview.url;
           const t = preview.repo || "Prototype";
           await emit({ type: "artifact", url: preview.url, title: t });
+          artifactEmitted = true;
           if (sessionId)
             recordArtifact(sessionId, { dir: activeProtoDir(), repo: turnRepo(), title: t });
         }
+
+        // The active team changed mid-turn (agent created/switched one) → tell
+        // the UI so the workspace indicator updates right away.
+        const repoNow = turnRepo();
+        if (repoNow !== lastRepo) {
+          lastRepo = repoNow;
+          await emit({ type: "team", repo: repoNow });
+        }
       }
 
-      // If the agent built a prototype via save_prototype (no preview server),
-      // start a static preview of the prototype dir so it shows as an artifact.
-      if (touchedPrototype && !previewStatus()) {
-        const dir = activeProtoDir();
-        if (existsSync(join(dir, "index.html"))) {
-          const res = await startPreview(turnRepo() ?? "prototype", dir);
-          if ("url" in res) {
-            const t = turnRepo() || "Prototype";
-            await emit({ type: "artifact", url: res.url, title: t });
-            if (sessionId) recordArtifact(sessionId, { dir, repo: turnRepo(), title: t });
+      // The prototype changed this turn but no artifact has been shown yet —
+      // either it was built via save_prototype (no preview server runs), or it was
+      // rebuilt on top of a preview that was already up from a previous turn (same
+      // URL, so the watch above never fired). Start a preview if needed and surface
+      // the inline artifact exactly once, so it's always shown.
+      if (touchedPrototype && !artifactEmitted) {
+        let preview = previewStatus();
+        if (!preview) {
+          const dir = activeProtoDir();
+          if (existsSync(join(dir, "index.html"))) {
+            const res = await startPreview(turnRepo() ?? "prototype", dir);
+            if ("url" in res) preview = previewStatus();
           }
+        }
+        if (preview) {
+          const t = preview.repo || turnRepo() || "Prototype";
+          await emit({ type: "artifact", url: preview.url, title: t });
+          artifactEmitted = true;
+          if (sessionId)
+            recordArtifact(sessionId, { dir: activeProtoDir(), repo: turnRepo(), title: t });
         }
       }
 
@@ -261,7 +287,7 @@ turnRoute.post("/api/turn", async (c) => {
           const cp = await checkpointWorkspace(repo, {
             token,
             login,
-            message: `checkpoint: ${title(prompt)}`,
+            message: title(prompt),
           });
           if (cp.pushed) await emit({ type: "note", text: `⤴ saved to ${repo} (${cp.branch})` });
         }

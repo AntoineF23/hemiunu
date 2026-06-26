@@ -35,6 +35,7 @@ const COMMANDS: { name: string; desc: string; panel: Panel | null }[] = [
 ];
 
 export function App() {
+  const { settings, refresh, setModel } = useSettings();
   const {
     items,
     busy,
@@ -46,8 +47,9 @@ export function App() {
     reset,
     loadConversation,
     currentSessionId,
-  } = useTurnStream();
-  const { settings, refresh, setModel } = useSettings();
+    // Refresh settings the instant the agent creates/switches a team mid-turn,
+    // so the workspace indicator updates without waiting for the turn to end.
+  } = useTurnStream(refresh);
   const { skills, refresh: refreshSkills } = useSkills();
   const [draft, setDraft] = useState("");
   const [showDetails, setShowDetails] = useState(false);

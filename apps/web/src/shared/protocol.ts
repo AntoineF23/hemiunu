@@ -16,6 +16,9 @@ export type ServerEvent =
   | { type: "subagent"; label: string; detail: string; sub: true }
   // A live preview (wireframe / prototype) to embed inline in the thread.
   | { type: "artifact"; url: string; title: string }
+  // The active team/workspace changed mid-turn (the agent created/switched one),
+  // so the UI can update the workspace indicator without waiting for turn end.
+  | { type: "team"; repo: string | null }
   | { type: "cost"; costUsd: number | null; outTokens: number; ctxTokens: number }
   | { type: "interrupted" }
   | { type: "error"; message: string }
