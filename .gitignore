@@ -24,3 +24,6 @@ prototypes/
 # stray MCP tool output (e.g. Playwright snapshots) — never belongs in the repo;
 # the Playwright MCP is configured to write to ~/.hemiunu/tmp/playwright instead.
 .playwright-mcp/
+
+# macOS Finder metadata
+.DS_Store
