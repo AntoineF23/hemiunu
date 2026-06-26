@@ -35,6 +35,7 @@ import {
   repoExists,
   pruneTeams,
   migrateLocalIntoTeam,
+  checkpointWorkspace,
   askAnthropic,
   normalizeRepo,
   githubViewer,
@@ -59,7 +60,18 @@ import {
   asStream,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
-import { clip, title, prettyTool, resultText, toolPreview, summarizeResult } from "@hemiunu/format";
+import {
+  clip,
+  title,
+  prettyTool,
+  resultText,
+  toolPreview,
+  cleanResultPreview,
+  reduceActivity,
+  summarizeGroup,
+  type ActivityGroup,
+  type ActivityEvent,
+} from "@hemiunu/format";
 import { loadMcpRegistry, sandboxStdioCwd } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
@@ -79,7 +91,6 @@ const PAPYRUS = "#c9b386"; // aged papyrus — secondary text
 
 // Retrieval tier the `researcher` subagent runs on (mirrors agent-core config).
 const RESEARCH_MODEL = process.env.HEMIUNU_MODEL_RESEARCH ?? "claude-sonnet-4.6";
-const shortModel = (m: string) => m.replace(/^claude-/, "");
 
 const LOGO = String.raw`
                                           _L/L
@@ -293,6 +304,9 @@ type Item =
   | { kind: "user"; text: string }
   | { kind: "text"; text: string; sub?: boolean }
   | { kind: "tool"; name: string; input: string; sub?: boolean; delegate?: boolean }
+  // A coalesced run of tool calls / one collapsed delegation, committed once the
+  // group closes. `delegate` styles it like a delegation (the ⌂ glyph).
+  | { kind: "group"; text: string; delegate?: boolean }
   | { kind: "result"; text: string; sub?: boolean }
   | { kind: "perm"; text: string; ok: boolean }
   | { kind: "cost"; text: string }
@@ -378,6 +392,18 @@ function ItemView({ item }: { item: Item }) {
           </Text>
         </Box>
       );
+    case "group":
+      // A coalesced activity run, committed as one summary line.
+      return (
+        <Box marginTop={1}>
+          <Text>
+            <Text color={item.delegate ? SAND : SAGE} bold>
+              {item.delegate ? "⌂ " : "⏺ "}
+            </Text>
+            <Text dimColor>{item.text}</Text>
+          </Text>
+        </Box>
+      );
     case "result":
       return <Text dimColor>{`${item.sub ? "      " : "  "}⎿ ${item.text}`}</Text>;
     case "perm":
@@ -425,6 +451,9 @@ function App({
   const { exit } = useApp();
   const [items, setItems] = useState<Item[]>([{ kind: "banner" }]);
   const [live, setLive] = useState("");
+  // The active (still-open) activity group, mirrored in state so the live region
+  // repaints as its count grows. Committed to <Static> as one line when it closes.
+  const [group, setGroup] = useState<ActivityGroup | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusLabel, setStatusLabel] = useState("thinking");
   const [permission, setPermission] = useState<{
@@ -488,6 +517,7 @@ function App({
   const sessionId = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const liveRef = useRef("");
+  const groupRef = useRef<ActivityGroup | null>(null);
   const alwaysAllow = useRef(new Set<string>());
   const permChain = useRef<Promise<unknown>>(Promise.resolve());
   const compactedRef = useRef(""); // summary injected after /compact
@@ -514,6 +544,26 @@ function App({
   }, [busy]);
 
   const push = (it: Item) => setItems((prev) => [...prev, it]);
+
+  // Commit the open activity group (if any) to scrollback as one summary line.
+  // <Static> never re-renders a committed item, so the group lives in the live
+  // region while open and only lands here when it closes.
+  const flushGroup = () => {
+    const g = groupRef.current;
+    if (g) push({ kind: "group", text: summarizeGroup(g), delegate: g.kind === "delegation" });
+    groupRef.current = null;
+    setGroup(null);
+  };
+
+  // Fold one normalized activity event into the open group, committing the prior
+  // group first when this event starts a different one.
+  const feedActivity = (e: ActivityEvent) => {
+    const { group: next, flushed } = reduceActivity(groupRef.current, e);
+    if (flushed)
+      push({ kind: "group", text: summarizeGroup(flushed), delegate: flushed.kind === "delegation" });
+    groupRef.current = next;
+    setGroup(next);
+  };
 
   // Open the folder-trust prompt (also used by /trust) and remember the choice.
   function promptTrust() {
@@ -645,6 +695,8 @@ function App({
             resolve({ behavior: "allow", updatedInput: input });
             return;
           }
+          // Commit any open activity group so its line orders above the prompt.
+          flushGroup();
           setSel(0);
           setPermission({
             name: toolName,
@@ -713,17 +765,14 @@ function App({
         workspace: { repo: currentProjectRef.current || null },
         // Live visibility into parallel subtasks (otherwise opaque).
         onSubagentEvent: (e) => {
+          // Fold parallel-fan-out progress into the single delegation group rather
+          // than pushing a line per task-start/tool/done.
           if (e.type === "task-start") {
-            push({ kind: "tool", name: e.label, input: `→ ${e.agent} · running`, sub: true });
+            feedActivity({ type: "delegate", agent: e.agent, label: "Working in parallel" });
           } else if (e.type === "task-tool") {
-            push({
-              kind: "tool",
-              name: `${e.label} · ${prettyTool(e.tool)}`,
-              input: "",
-              sub: true,
-            });
+            feedActivity({ type: "subtool", taskLabel: e.label, toolLabel: prettyTool(e.tool) });
           } else {
-            push({ kind: "result", text: `${e.label} ${e.ok ? "done" : "failed"}`, sub: true });
+            feedActivity({ type: "subdone", taskLabel: e.label, ok: e.ok });
           }
           setStatusLabel("parallel");
         },
@@ -736,14 +785,12 @@ function App({
           for (const b of msg.message?.content ?? []) {
             if (b.type === "text") {
               const txt = b.text ?? "";
-              // A subagent's narration (what it's looking for / found) — show it
-              // dim & indented so the work is transparent, but keep it out of the
-              // saved transcript and the main answer (that's the coordinator's).
-              if (sub) {
-                const tx = txt.trim();
-                if (tx) push({ kind: "text", text: clip(tx, 240), sub: true });
-                continue;
-              }
+              // A subagent's narration folds into the delegation group (its count
+              // already conveys progress); never saved to the transcript.
+              if (sub) continue;
+              // Top-level prose resumes — close any open activity group first so
+              // it lands in scrollback above the answer.
+              if (txt.trim()) flushGroup();
               fullText += txt;
               liveRef.current += txt;
               turnTokensRef.current += Math.ceil(txt.length / 4);
@@ -754,34 +801,26 @@ function App({
               setLive("");
               if (b.name === PARALLEL_TOOL_ID) {
                 if (b.id) delegateIds.add(b.id);
-                const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
-                const summary = tasks
-                  .map((t: Record<string, unknown>) => String(t.label ?? t.agent ?? "task"))
-                  .join(", ");
-                push({
-                  kind: "tool",
-                  name: "parallel",
-                  input: `${tasks.length} task${tasks.length === 1 ? "" : "s"}${summary ? ` · ${clip(summary, 60)}` : ""}`,
-                  delegate: true,
-                });
+                feedActivity({ type: "delegate", agent: "parallel", label: "Working in parallel" });
                 setStatusLabel("parallel");
               } else if (b.name === "Agent" || b.name === "Task") {
                 if (b.id) delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
-                const desc = clip(String(b.input?.description ?? ""), 56);
-                // researcher runs on the cheap retrieval tier; others (e.g.
-                // prototyper) on the main model.
-                const subModel = who === "researcher" ? RESEARCH_MODEL : model;
-                push({
-                  kind: "tool",
-                  name: who,
-                  input: `${shortModel(subModel)}${desc ? ` · ${desc}` : ""}`,
-                  delegate: true,
-                });
+                const label = who === "researcher" ? "Researcher" : who === "prototyper" ? "Prototyper" : who;
+                feedActivity({ type: "delegate", agent: who, label });
                 setStatusLabel(who === "prototyper" ? "prototyping" : "researching");
+              } else if (sub) {
+                // A nested tool from an SDK-delegated subagent — fold into the group.
+                feedActivity({
+                  type: "subtool",
+                  taskLabel: groupRef.current?.kind === "delegation" ? groupRef.current.agent : "subagent",
+                  toolLabel: prettyTool(b.name ?? "tool"),
+                  preview: toolPreview(b.input),
+                });
+                setStatusLabel("researching");
               } else {
-                push({ kind: "tool", name: b.name ?? "tool", input: toolPreview(b.input), sub });
-                setStatusLabel(sub ? "researching" : "running");
+                feedActivity({ type: "tool", label: prettyTool(b.name ?? "tool"), preview: toolPreview(b.input) });
+                setStatusLabel("running");
               }
             }
           }
@@ -792,7 +831,22 @@ function App({
               // A delegation's result is an internal handoff — skip the raw brief.
               if (b.tool_use_id && delegateIds.has(b.tool_use_id)) continue;
               const t = resultText(b.content);
-              if (t) push({ kind: "result", text: summarizeResult(t), sub });
+              if (!t) continue;
+              // Only a CLEAN structured summary (count / title / file tally) is
+              // worth showing; raw dumps, oversized output and errors are dropped
+              // so they never flood the activity stream.
+              const summary = cleanResultPreview(t);
+              if (!summary || sub) continue;
+              const g = groupRef.current;
+              // Fold the result into the live group as its latest detail (a
+              // top-level tool-run shows the result inline), not a separate line.
+              if (g && g.kind === "tool-run") {
+                const next = { ...g, preview: summary };
+                groupRef.current = next;
+                setGroup(next);
+              } else if (!g) {
+                push({ kind: "result", text: summary });
+              }
             }
           }
           setStatusLabel(sub ? "researching" : "thinking");
@@ -801,14 +855,19 @@ function App({
           usage = msg.usage;
         }
       }
+      flushGroup();
       if (liveRef.current.trim()) push({ kind: "text", text: liveRef.current });
     } catch (e) {
+      // Commit the partial group so the work-so-far survives an interrupt/error.
+      flushGroup();
       if (ac.signal.aborted) push({ kind: "note", text: "⎯ interrupted" });
       else push({ kind: "error", text: e instanceof Error ? e.message : String(e) });
     } finally {
       abortRef.current = null;
       liveRef.current = "";
       setLive("");
+      groupRef.current = null;
+      setGroup(null);
       setBusy(false);
     }
 
@@ -827,6 +886,21 @@ function App({
       store.ensureConversation(sid, title(text), model);
       store.addMessage(sid, "user", text);
       store.addMessage(sid, "assistant", fullText, cost);
+    }
+
+    // Auto-checkpoint prototype work to the team's checkpoint branch so it always
+    // reaches GitHub (no-op if there's no team, no checkout, or nothing changed —
+    // the default branch stays clean; publishing there is an explicit step).
+    const team = currentProjectRef.current;
+    if (team) {
+      const token = resolveGithubToken();
+      const login = token ? ((await githubViewer(token)) ?? undefined) : undefined;
+      const cp = await checkpointWorkspace(team, {
+        token,
+        login,
+        message: `checkpoint: ${title(text)}`,
+      });
+      if (cp.pushed) push({ kind: "note", text: `⤴ saved to ${team} (${cp.branch})` });
     }
 
     // Auto-compact when context crosses the threshold (Hermes-style). Done
@@ -1917,6 +1991,18 @@ function App({
               {"⏺ "}
             </Text>
             {live}
+          </Text>
+        </Box>
+      ) : null}
+
+      {/* The open activity group, updating live until it closes into scrollback. */}
+      {group && !live ? (
+        <Box marginTop={1}>
+          <Text>
+            <Text color={group.kind === "delegation" ? SAND : SAGE} bold>
+              {group.kind === "delegation" ? "⌂ " : "⏺ "}
+            </Text>
+            <Text dimColor>{summarizeGroup(group)}</Text>
           </Text>
         </Box>
       ) : null}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, CircleAlert, CornerDownRight, PencilLine, Wrench } from "lucide-react";
+import { ChevronDown, CircleAlert, CornerDownRight, PencilLine, Share2, Wrench } from "lucide-react";
+import { summarizeGroup } from "@hemiunu/format/activity";
 import { Button } from "@/components/ui/button";
 import { ArtifactCard } from "@/components/ArtifactCard";
 import { Composer } from "@/components/Composer";
@@ -273,6 +274,49 @@ export function App() {
   );
 }
 
+// A coalesced activity run: one summary row (icon + "Reading Notion pages · 9 —
+// 'title'"), expandable to reveal the individual steps when there's detail.
+function GroupItem({ item }: { item: ChatItem }) {
+  const [open, setOpen] = useState(false);
+  const g = item.group;
+  if (!g) return null;
+  const isDelegation = g.kind === "delegation";
+  const Icon = isDelegation ? Share2 : friendlyTool(item.toolName ?? "").icon;
+  // Only offer expansion when the steps hold more than the summary already shows.
+  const expandable = isDelegation ? g.children.length > 0 : g.count > 1;
+  return (
+    <div className={`activity-group${isDelegation ? " delegate" : ""}`}>
+      <button
+        type="button"
+        className={`activity activity-summary${expandable ? " expandable" : ""}`}
+        onClick={expandable ? () => setOpen((o) => !o) : undefined}
+        aria-expanded={expandable ? open : undefined}
+        disabled={!expandable}
+      >
+        {expandable ? (
+          <ChevronDown size={14} className={`activity-chevron${open ? " open" : ""}`} />
+        ) : (
+          <span className="activity-chevron-spacer" />
+        )}
+        <Icon size={15} className="activity-icon" />
+        <span className="activity-label">{summarizeGroup(g)}</span>
+        {expandable && <span className="activity-hint">{open ? "hide" : "details"}</span>}
+      </button>
+      {open && (
+        <div className="activity-children">
+          {g.children.map((c, i) => (
+            <div key={i} className="activity sub">
+              <CornerDownRight size={13} className="activity-icon" />
+              <span className="activity-label">{c.label}</span>
+              {c.preview && <span className="activity-preview">{c.preview}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Item({ item, streaming }: { item: ChatItem; streaming: boolean }) {
   switch (item.kind) {
     case "user":
@@ -305,6 +349,8 @@ function Item({ item, streaming }: { item: ChatItem; streaming: boolean }) {
           <span>{item.text}</span>
         </div>
       );
+    case "group":
+      return <GroupItem item={item} />;
     case "subagent":
       return <div className="subagent">{item.text}</div>;
     case "artifact":

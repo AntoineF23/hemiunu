@@ -3,11 +3,13 @@
 // and a turn needs a POST body). Upstream control — permission replies and
 // abort — are ordinary POSTs keyed by the turnId the worker hands back.
 import { useCallback, useRef, useState } from "react";
+import { type ActivityEvent, type ActivityGroup, reduceActivity } from "@hemiunu/format/activity";
+import { friendlyTool } from "./friendly";
 import type { PermissionDecision, ServerEvent } from "../shared/protocol";
 
 export interface ChatItem {
   id: number;
-  kind: "user" | "agent" | "tool" | "result" | "note" | "subagent" | "error" | "artifact";
+  kind: "user" | "agent" | "tool" | "result" | "note" | "subagent" | "error" | "artifact" | "group";
   text: string;
   /** for tool items */
   toolName?: string;
@@ -15,6 +17,17 @@ export interface ChatItem {
   sub?: boolean;
   /** for artifact items: the live preview URL to embed */
   url?: string;
+  /** for group items: the coalesced activity run (renders via summarizeGroup). */
+  group?: ActivityGroup;
+}
+
+/** Map a flattened `subagent` SSE event back to a normalized activity event. */
+function subagentEvent(label: string, detail: string): ActivityEvent {
+  if (detail === "done" || detail === "failed")
+    return { type: "subdone", taskLabel: label, ok: detail === "done" };
+  if (detail.endsWith("running"))
+    return { type: "delegate", agent: "parallel", label: "Working in parallel" };
+  return { type: "subtool", taskLabel: label, toolLabel: detail };
 }
 
 export interface PermissionPrompt {
@@ -90,6 +103,25 @@ export function useTurnStream(): TurnState {
     });
   }, []);
 
+  // Coalesce a tool/subagent event into the trailing activity group (incrementing
+  // its count in place), or open a new group when it doesn't extend the last one.
+  // `toolName` is kept on tool-run groups so the renderer can pick the icon.
+  const addActivity = useCallback((e: ActivityEvent, toolName?: string) => {
+    setItems((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.kind === "group" && last.group) {
+        const { group, flushed } = reduceActivity(last.group, e);
+        // `flushed` means this event starts a different group — `last` already
+        // holds the finished one, so leave it and push the new group.
+        if (flushed)
+          return [...prev, { id: idRef.current++, kind: "group", text: "", group, toolName }];
+        return [...prev.slice(0, -1), { ...last, group, toolName: last.toolName ?? toolName }];
+      }
+      const { group } = reduceActivity(null, e);
+      return [...prev, { id: idRef.current++, kind: "group", text: "", group, toolName }];
+    });
+  }, []);
+
   const send = useCallback(
     (prompt: string, display?: string) => {
       const text = prompt.trim();
@@ -121,23 +153,41 @@ export function useTurnStream(): TurnState {
                 appendAgentText(e.delta);
                 break;
               case "tool":
-                push({
-                  kind: "tool",
-                  text: e.preview,
-                  toolName: e.name,
-                  delegate: e.delegate,
-                  sub: e.sub,
-                });
+                if (e.delegate) {
+                  const label =
+                    e.name === "parallel"
+                      ? "Working in parallel"
+                      : e.name.charAt(0).toUpperCase() + e.name.slice(1);
+                  addActivity({ type: "delegate", agent: e.name, label });
+                } else if (e.sub) {
+                  addActivity({
+                    type: "subtool",
+                    taskLabel: "subagent",
+                    toolLabel: friendlyTool(e.name).label,
+                    preview: e.preview,
+                  });
+                } else {
+                  addActivity({ type: "tool", label: friendlyTool(e.name).label, preview: e.preview }, e.name);
+                }
                 break;
               case "result":
-                push({ kind: "result", text: e.text, sub: e.sub });
+                // Fold the result into the open group as its latest detail, not a
+                // new line; only stand alone when no group is active.
+                setItems((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last?.kind === "group" && last.group) {
+                    if (last.group.kind === "tool-run" && !e.sub)
+                      return [...prev.slice(0, -1), { ...last, group: { ...last.group, preview: e.text } }];
+                    return prev;
+                  }
+                  if (e.sub) return prev;
+                  return [...prev, { id: idRef.current++, kind: "result", text: e.text }];
+                });
                 break;
               case "subagent":
-                push({
-                  kind: "subagent",
-                  text: e.label ? `${e.label} · ${e.detail}` : e.detail,
-                  sub: true,
-                });
+                // Empty label = subagent narration — folded away to keep the block
+                // clean; labelled events feed the delegation group.
+                if (e.label) addActivity(subagentEvent(e.label, e.detail));
                 break;
               case "note":
                 push({ kind: "note", text: e.text });
@@ -170,7 +220,7 @@ export function useTurnStream(): TurnState {
         }
       })();
     },
-    [busy, push, appendAgentText],
+    [busy, push, appendAgentText, addActivity],
   );
 
   const respond = useCallback(

@@ -4,6 +4,8 @@
 // from a single source of truth (previously duplicated, kept in sync by hand).
 // Node-only (reads process.env.HOME); both consumers run in Node.
 
+export * from "./activity";
+
 const HOME_DIR = process.env.HOME ?? "";
 
 export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -56,6 +58,51 @@ export function toolPreview(input: unknown): string {
     | string
     | undefined;
   return firstStr ? clip(firstStr.trim(), 60) : "";
+}
+
+/**
+ * A clean, human preview of a tool result for an activity line — or "" when the
+ * result is raw text, oversized, or an error, so that garbage (YAML/JSON dumps,
+ * "exceeds maximum tokens" notices, stack traces) never leaks into the activity
+ * stream. Only structured summaries pass: a result count, a page title, or file
+ * tallies. Everything else is suppressed; the activity's own label + count
+ * already convey what happened.
+ */
+export function cleanResultPreview(text: string): string {
+  const t = text.trim();
+  if (!t) return "";
+  // Errors and the tool-cap's oversize notice are not user-facing detail.
+  if (/^[⚠\s]*(Error|EPERM|ENOENT|EACCES|EISDIR)/i.test(t)) return "";
+  if (/exceeds maximum allowed tokens|Output has been saved/i.test(t)) return "";
+  let j: unknown;
+  try {
+    j = JSON.parse(t);
+  } catch {
+    return ""; // raw text (YAML, prose, a dump) — not a clean summary
+  }
+  if (j && typeof j === "object") {
+    const o = j as Record<string, unknown>;
+    if (Array.isArray(o.results)) {
+      const n = o.results.length;
+      return n === 0 ? "no results" : `${n}${o.has_more ? "+" : ""} result${n === 1 ? "" : "s"}`;
+    }
+    if (typeof o.markdown === "string") {
+      const first =
+        o.markdown
+          .replace(/^[>#\s]+/, "")
+          .split("\n")
+          .find((l: string) => l.trim()) ?? "";
+      return first ? `“${clip(first.trim(), 90)}”` : "";
+    }
+    if (typeof o.content === "string") {
+      const c = o.content;
+      const files = (c.match(/\[FILE\]/g) ?? []).length;
+      const dirs = (c.match(/\[DIR\]/g) ?? []).length;
+      if (files || dirs)
+        return `${dirs} dir${dirs === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`;
+    }
+  }
+  return ""; // structured but nothing worth showing
 }
 
 /** Turn a tool result into a short human line instead of dumping its JSON. */

@@ -11,19 +11,22 @@ import {
   activeProtoDir,
   applyMcpOAuth,
   asStream,
+  checkpointWorkspace,
   generateTitle,
   GET_SOURCE_MAP_TOOL_ID,
+  githubViewer,
   PARALLEL_TOOL_ID,
   previewStatus,
   recordSeenTool,
   REMEMBER_TOOL_ID,
+  resolveGithubToken,
   resolveToolPolicy,
   runTurn,
   SAVE_SOURCE_MAP_TOOL_ID,
   startPreview,
 } from "@hemiunu/agent-core";
 import { recordArtifact } from "../artifacts";
-import { clip, prettyTool, resultText, summarizeResult, title, toolPreview } from "../format";
+import { clip, prettyTool, resultText, cleanResultPreview, title, toolPreview } from "../format";
 import { activeMcp, bootRuntime, effectiveSystem, turnRepo } from "../runtime";
 import {
   alwaysAllow,
@@ -210,7 +213,10 @@ turnRoute.post("/api/turn", async (c) => {
             if (b.type === "tool_result") {
               if (b.tool_use_id && delegateIds.has(b.tool_use_id)) continue;
               const t = resultText(b.content);
-              if (t) emit({ type: "result", text: summarizeResult(t), sub });
+              // Only emit a CLEAN structured summary; raw dumps, oversized output
+              // and errors are dropped so they never leak into the activity feed.
+              const preview = t && cleanResultPreview(t);
+              if (preview) emit({ type: "result", text: preview, sub });
             }
           }
         } else if (msg.type === "result") {
@@ -240,6 +246,24 @@ turnRoute.post("/api/turn", async (c) => {
             await emit({ type: "artifact", url: res.url, title: t });
             if (sessionId) recordArtifact(sessionId, { dir, repo: turnRepo(), title: t });
           }
+        }
+      }
+
+      // Auto-checkpoint: when a team is active and the prototype changed this
+      // turn, commit + push it to the team's checkpoint branch so the work
+      // always reaches GitHub and survives a workspace reset. The default branch
+      // stays clean — publishing there is still an explicit, confirmed step.
+      if (touchedPrototype) {
+        const repo = turnRepo();
+        if (repo) {
+          const token = resolveGithubToken();
+          const login = token ? ((await githubViewer(token)) ?? undefined) : undefined;
+          const cp = await checkpointWorkspace(repo, {
+            token,
+            login,
+            message: `checkpoint: ${title(prompt)}`,
+          });
+          if (cp.pushed) await emit({ type: "note", text: `⤴ saved to ${repo} (${cp.branch})` });
         }
       }
     } catch (e) {
