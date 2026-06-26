@@ -59,7 +59,11 @@ export function App() {
   // shell's content (the column never closes/reopens), so there's no flash.
   // Opening collapses the rail and it stays collapsed afterwards.
   const [panel, setPanel] = useState<Panel | null>(null);
+  // Animate the rail's width only on a manual toggle; opening a panel collapses
+  // it instantly so the panel content doesn't slide sideways as the rail shrinks.
+  const [railAnimate, setRailAnimate] = useState(true);
   const selectPanel = useCallback((p: Panel) => {
+    setRailAnimate(false);
     setPanel((cur) => (cur === p ? null : p));
     setCollapsed(true);
   }, []);
@@ -90,6 +94,7 @@ export function App() {
       if (!cmd) return;
       if (cmd.panel === null) reset();
       else {
+        setRailAnimate(false);
         setPanel(cmd.panel);
         setCollapsed(true);
       }
@@ -165,7 +170,11 @@ export function App() {
     <div className="relative z-[1] flex h-full">
       <Rail
         collapsed={collapsed}
-        onToggle={() => setCollapsed((v) => !v)}
+        animate={railAnimate}
+        onToggle={() => {
+          setRailAnimate(true);
+          setCollapsed((v) => !v);
+        }}
         onNewChat={reset}
         openPanels={panel ? [panel] : []}
         onSelectPanel={selectPanel}

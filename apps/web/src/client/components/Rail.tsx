@@ -25,6 +25,9 @@ export type Panel = "conversations" | "teams" | "prototypes" | "skills" | "mcp" 
 
 interface RailProps {
   collapsed: boolean;
+  /** Animate width changes (smooth manual toggle); off so opening a panel
+      collapses the rail instantly and the panel content doesn't slide. */
+  animate: boolean;
   onToggle: () => void;
   onNewChat: () => void;
   /** Panel(s) currently open (highlighted in the rail). One at a time today. */
@@ -59,6 +62,7 @@ const STROKE = 1.5; // thin, minimalist line icons
 
 export function Rail({
   collapsed,
+  animate,
   onToggle,
   onNewChat,
   openPanels,
@@ -74,7 +78,8 @@ export function Rail({
   return (
     <aside
       className={cn(
-        "flex h-full flex-col bg-rail transition-[width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "flex h-full flex-col bg-rail",
+        animate && "transition-[width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
         collapsed ? "w-[60px] items-center px-2 py-3" : "w-[264px] px-3 py-3",
       )}
     >

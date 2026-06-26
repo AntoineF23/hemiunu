@@ -2,20 +2,27 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/* A docked, non-modal side panel. Unlike a modal sheet it renders inline in the
-   layout flow, as a single column right of the rail that reduces the main area.
-   Same color as the rail, so the whole left zone stays coherent. The API mirrors
-   the old shadcn sheet (open / onOpenChange / Header / Title / Description).
+/* A docked, non-modal side panel: a single column right of the rail that reduces
+   main. It slides open/closed by transitioning the slot's WIDTH (so main moves
+   smoothly and no empty column flashes), keeps the inner panel a fixed width so
+   its content never reflows mid-animation, and is user-resizable from the right
+   edge (persisted). Every panel opens at the same width. */
 
-   It keeps itself mounted through a closing animation: when `open` flips false it
-   plays the exit animation, then unmounts on animationend — so open AND close are
-   both smooth. */
+const WIDTH_KEY = "hemiunu.panel.width";
+const MIN_W = 360;
+const MAX_W = 760;
+const DEFAULT_W = 440;
+
+function readWidth(): number {
+  const v = Number(localStorage.getItem(WIDTH_KEY));
+  return Number.isFinite(v) && v >= MIN_W && v <= MAX_W ? v : DEFAULT_W;
+}
 
 const SheetCtx = React.createContext<{
-  state: "open" | "closed";
+  shown: boolean;
   onOpenChange: (open: boolean) => void;
   onExited: () => void;
-}>({ state: "closed", onOpenChange: () => {}, onExited: () => {} });
+}>({ shown: false, onOpenChange: () => {}, onExited: () => {} });
 
 function Sheet({
   open,
@@ -27,24 +34,21 @@ function Sheet({
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = React.useState(!!open);
-  const [state, setState] = React.useState<"open" | "closed">(open ? "open" : "closed");
+  const [shown, setShown] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
       setMounted(true);
-      setState("open");
-    } else {
-      setState("closed");
+      // Mount at width 0, then expand on the next frame so the open transitions.
+      const id = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(id);
     }
+    setShown(false);
   }, [open]);
 
   const ctx = React.useMemo(
-    () => ({
-      state,
-      onOpenChange: onOpenChange ?? (() => {}),
-      onExited: () => setMounted(false),
-    }),
-    [state, onOpenChange],
+    () => ({ shown, onOpenChange: onOpenChange ?? (() => {}), onExited: () => setMounted(false) }),
+    [shown, onOpenChange],
   );
 
   if (!mounted) return null;
@@ -54,29 +58,49 @@ function Sheet({
 function SheetContent({
   className,
   children,
-  // `side` is accepted for API compatibility but docked panels are always left.
   side: _side,
   ...props
 }: React.ComponentProps<"aside"> & { side?: "top" | "bottom" | "left" | "right" }) {
-  const { state, onOpenChange, onExited } = React.useContext(SheetCtx);
-  // Outer slot animates its WIDTH (so the layout space itself opens/closes and
-  // main slides smoothly); the inner panel keeps a fixed width and is clipped by
-  // the slot, so its content never reflows mid-animation. Unmount when the slot's
-  // close animation ends.
+  const { shown, onOpenChange, onExited } = React.useContext(SheetCtx);
+  const [w, setW] = React.useState(readWidth);
+  const [dragging, setDragging] = React.useState(false);
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    setDragging(true);
+    const startX = e.clientX;
+    const startW = w;
+    const move = (ev: PointerEvent) => {
+      setW(Math.min(MAX_W, Math.max(MIN_W, startW + (ev.clientX - startX))));
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setW((cur) => {
+        localStorage.setItem(WIDTH_KEY, String(cur));
+        return cur;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   return (
     <div
       className="panel-slot"
-      data-state={state}
-      onAnimationEnd={(e) => {
-        if (state === "closed" && e.target === e.currentTarget) onExited();
+      style={{
+        width: shown ? w : 0,
+        transition: dragging ? "none" : "width 0.4s cubic-bezier(0.22, 1, 0.36, 1)",
+      }}
+      onTransitionEnd={(e) => {
+        if (!shown && e.propertyName === "width" && e.target === e.currentTarget) onExited();
       }}
     >
       <aside
         data-slot="sheet-content"
-        className={cn(
-          "relative flex h-full w-[440px] flex-col overflow-y-auto bg-rail p-6",
-          className,
-        )}
+        style={{ width: w }}
+        className={cn("relative flex h-full flex-col overflow-y-auto bg-rail p-6", className)}
         {...props}
       >
         <button
@@ -89,6 +113,14 @@ function SheetContent({
         </button>
         {children}
       </aside>
+      {/* Drag the right edge to widen / narrow the panel. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panel"
+        onPointerDown={startResize}
+        className="panel-resize"
+      />
     </div>
   );
 }

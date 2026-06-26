@@ -64,36 +64,28 @@ body::before {
 /* ── Docked side panel ─────────────────────────────────────
    A single inline column (same color as the rail) right of the rail; opening it
    collapses the rail to icons. Slides in gently when it mounts. */
+/* The slot transitions its WIDTH (inline) to slide open/closed; main moves
+   smoothly and no empty column flashes. The inner panel keeps a fixed width so
+   its content never reflows during the slide. */
 .panel-slot {
+  position: relative;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
   border-right: 1px solid var(--border);
   will-change: width;
 }
-/* Slide by animating the slot's WIDTH, so main expands/contracts smoothly and
-   no empty column ever flashes. The inner panel is a fixed 440px, clipped. */
-.panel-slot[data-state="open"] {
-  animation: slot-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.panel-slot[data-state="closed"] {
-  animation: slot-out 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes slot-in {
-  from {
-    width: 0;
-  }
-  to {
-    width: 440px;
-  }
-}
-@keyframes slot-out {
-  from {
-    width: 440px;
-  }
-  to {
-    width: 0;
-  }
+/* Drag handle on the right edge to resize the panel — invisible, just a
+   thin hit-area with a subtle ew-resize cursor. */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
 }
 /* Switching panels swaps this content (keyed by panel) — a quick crossfade so
    only the inside changes; the column never moves. */
