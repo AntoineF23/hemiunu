@@ -106,7 +106,14 @@ export {
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
 export { startPreview, stopPreview, previewStatus } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
-export { commitAndPush, migrateLocalIntoTeam, renameWorkspace } from "./workspace";
+export {
+  commitAndPush,
+  migrateLocalIntoTeam,
+  renameWorkspace,
+  checkpointWorkspace,
+  restoreCheckpoint,
+  CHECKPOINT_BRANCH,
+} from "./workspace";
 export type { PushResult } from "./workspace";
 export { createShareServer, SHARE_TOOLS } from "./share";
 export {

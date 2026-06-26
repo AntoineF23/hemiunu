@@ -3,12 +3,14 @@ import { z } from "zod";
 import { explainError } from "./explain";
 import {
   addCollaborator,
+  currentTeam,
   listTeams,
   removeCollaborator,
   repoAccess,
   resolveGithubToken,
   resolveRepo,
 } from "./github";
+import { currentWorkspace } from "./workspace-context";
 
 /**
  * Add a teammate as a collaborator on the current team's repo. Shared by the
@@ -75,7 +77,17 @@ export function setControlHandler(h: ControlHandler | null): void {
 export async function requestControl(e: ControlEvent): Promise<string> {
   if (!handler) return "No interactive session is available to do that.";
   try {
-    return await handler(e);
+    const result = await handler(e);
+    // create/switch/rename just changed the GLOBAL current team. Retarget the
+    // LIVE turn's workspace binding to match, so the REST of this turn (its
+    // activeProtoDir, commit_prototype, the recorded artifact) writes to the new
+    // repo instead of the one bound at turn start — otherwise files built after
+    // the team is created keep landing in the local folder. The binding is shared
+    // by reference, so mutating .repo is seen by resolveRepo() immediately.
+    const ws = currentWorkspace();
+    const team = currentTeam();
+    if (ws && team) ws.repo = team;
+    return result;
   } catch (err) {
     return `Couldn't complete that: ${err instanceof Error ? err.message : String(err)}`;
   }

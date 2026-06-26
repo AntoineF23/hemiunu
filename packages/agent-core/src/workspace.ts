@@ -363,6 +363,15 @@ export interface PushResult {
   note: string;
 }
 
+/** The stable branch auto-checkpoints push to (keeps the default branch clean). */
+export const CHECKPOINT_BRANCH = "hemiunu/checkpoint";
+
+/** The repo's default branch (what we publish to), from the remote; "main" if unknown. */
+async function defaultBranch(path: string): Promise<string> {
+  const ref = await gitOut(["rev-parse", "--abbrev-ref", "origin/HEAD"], path);
+  return ref.replace(/^origin\//, "").trim() || "main";
+}
+
 /**
  * Stage, commit, and push the current workspace. `toMain` pushes the default
  * branch (the "done" action — the caller then discards the workspace); otherwise
@@ -375,8 +384,9 @@ export async function commitAndPush(
 ): Promise<PushResult> {
   const path = workspacePath(repo);
   if (!existsSync(path)) return { ok: false, note: "No local workspace — run iterate first." };
-  const def = (await gitOut(["rev-parse", "--abbrev-ref", "HEAD"], path)) || "main";
-  const branch = opts.toMain ? def : (opts.branch ?? `hemiunu/${stamp()}`);
+  // Publishing targets the repo's DEFAULT branch, resolved from the remote — not
+  // the current local branch, which auto-checkpoints leave on hemiunu/checkpoint.
+  const branch = opts.toMain ? await defaultBranch(path) : (opts.branch ?? `hemiunu/${stamp()}`);
   if (!opts.toMain) await git(["checkout", "-B", branch], { cwd: path });
 
   await git(["add", "-A"], { cwd: path });
@@ -400,6 +410,66 @@ export async function commitAndPush(
     branch,
     note: dirty ? `committed and pushed to ${branch}` : `pushed ${branch} (nothing new)`,
   };
+}
+
+/**
+ * Auto-checkpoint the team's prototype workspace after a turn: stage any
+ * changes, commit them, and push to the stable `hemiunu/checkpoint` branch — so
+ * prototype work always reaches GitHub automatically and survives a later
+ * workspace reset, WITHOUT touching the default branch (publishing there stays
+ * an explicit, confirmed step via commit_prototype). Committing onto the
+ * checkpoint branch (rather than main) keeps local == origin/<branch> after the
+ * push, so the next iterate's ensureWorkspace sync won't discard the work.
+ *
+ * Best-effort: never throws; a no-op when there's no team, no checkout, or
+ * nothing changed since the last checkpoint.
+ */
+export async function checkpointWorkspace(
+  repo: string | null,
+  opts: { token?: string; login?: string; message?: string } = {},
+): Promise<{ pushed: boolean; branch?: string; note: string }> {
+  try {
+    if (!repo) return { pushed: false, note: "no team" };
+    const path = workspacePath(normalizeRepo(repo));
+    if (!existsSync(join(path, ".git"))) return { pushed: false, note: "no checkout" };
+    // Skip entirely when the tree is clean — avoids a needless branch switch/push.
+    await git(["add", "-A"], { cwd: path });
+    if ((await gitOut(["status", "--porcelain"], path)).length === 0) {
+      return { pushed: false, note: "nothing changed" };
+    }
+    const r = await commitAndPush(repo, {
+      message: opts.message || "checkpoint: auto-saved prototype work",
+      token: opts.token,
+      login: opts.login,
+      branch: CHECKPOINT_BRANCH,
+    });
+    return { pushed: r.ok, branch: r.branch, note: r.note };
+  } catch (e) {
+    return { pushed: false, note: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Best-effort restore of a prototype for VIEWING when the local workspace is
+ * gone or was reset: ensure a checkout exists, then check out the pushed
+ * `hemiunu/checkpoint` branch (where auto-checkpoints live). Returns the
+ * workspace path if an index.html is present afterward, else null.
+ */
+export async function restoreCheckpoint(
+  repo: string,
+  opts: EnsureOptions = {},
+): Promise<string | null> {
+  try {
+    const cloned = await ensureCloned(normalizeRepo(repo), opts);
+    if (cloned.action === "failed") return null;
+    const path = cloned.path;
+    const fetched = await git(["fetch", "origin", CHECKPOINT_BRANCH], { cwd: path, token: opts.token });
+    if (fetched.ok)
+      await git(["checkout", "-B", CHECKPOINT_BRANCH, `origin/${CHECKPOINT_BRANCH}`], { cwd: path });
+    return existsSync(join(path, "index.html")) ? path : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

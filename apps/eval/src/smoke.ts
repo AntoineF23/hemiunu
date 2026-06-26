@@ -63,6 +63,9 @@ import {
   previewStatus,
   commitAndPush,
   migrateLocalIntoTeam,
+  checkpointWorkspace,
+  CHECKPOINT_BRANCH,
+  workspacePath,
   resolveVercelToken,
   setControlHandler,
   requestControl,
@@ -819,6 +822,70 @@ async function main() {
       );
     } finally {
       for (const d of [cfg, bare, seed, local, verify]) rmSync(d, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+    }
+  });
+
+  await check("checkpoint: auto-pushes to the checkpoint branch; main stays clean; publish targets main", async () => {
+    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-cpcfg-"));
+    const bare = mkdtempSync(join(tmpdir(), "hemiunu-cpbare-"));
+    const seed = mkdtempSync(join(tmpdir(), "hemiunu-cpseed-"));
+    const verify = mkdtempSync(join(tmpdir(), "hemiunu-cpver-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    const out = (args: string[], cwd: string) =>
+      execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = cfg;
+      g(["init", "--bare", "-b", "main"], bare);
+      g(["clone", bare, seed], tmpdir());
+      writeFileSync(join(seed, "README.md"), "init");
+      g(["config", "user.email", "t@t.co"], seed);
+      g(["config", "user.name", "t"], seed);
+      g(["add", "."], seed);
+      g(["commit", "-qm", "init"], seed);
+      g(["push", "origin", "HEAD:main"], seed);
+
+      // Clone into the managed workspace, write a prototype file, checkpoint it.
+      await ensureWorkspace("acme/cp", { cloneUrl: bare });
+      writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
+      const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
+      assert(cp.pushed, `checkpoint should push: ${cp.note}`);
+      assert(cp.branch === CHECKPOINT_BRANCH, `should push the checkpoint branch, got ${cp.branch}`);
+
+      // The checkpoint branch has the work; main is untouched.
+      g(["clone", bare, verify], tmpdir());
+      assert(
+        out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
+        "remote should have the checkpoint branch",
+      );
+      g(["checkout", CHECKPOINT_BRANCH], verify);
+      assert(
+        readFileSync(join(verify, "index.html"), "utf8").includes("v1"),
+        "checkpoint branch should have the prototype",
+      );
+      g(["checkout", "main"], verify);
+      assert(!existsSync(join(verify, "index.html")), "main should stay clean (no prototype)");
+
+      // A clean tree is a no-op (no empty checkpoint commit/push).
+      const noop = await checkpointWorkspace("acme/cp", { login: "tester" });
+      assert(!noop.pushed && /nothing changed/.test(noop.note), `clean tree should no-op: ${noop.note}`);
+
+      // Publishing targets the DEFAULT branch (main) even though the workspace is
+      // now on the checkpoint branch — the toMain fix.
+      writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v2</h1>");
+      const pub = await commitAndPush("acme/cp", { message: "publish", login: "tester", toMain: true });
+      assert(pub.ok && pub.branch === "main", `publish should target main, got ${pub.branch}: ${pub.note}`);
+      const verify2 = mkdtempSync(join(tmpdir(), "hemiunu-cpver2-"));
+      g(["clone", bare, verify2], tmpdir());
+      assert(
+        readFileSync(join(verify2, "index.html"), "utf8").includes("v2"),
+        "main should now have the published prototype",
+      );
+      rmSync(verify2, { recursive: true, force: true });
+    } finally {
+      for (const d of [cfg, bare, seed, verify]) rmSync(d, { recursive: true, force: true });
       if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
       else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
     }

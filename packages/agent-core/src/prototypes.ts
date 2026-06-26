@@ -149,7 +149,11 @@ function localPath(): string {
 function readLocal(): string | null {
   return existsSync(localPath()) ? readFileSync(localPath(), "utf8") : null;
 }
-const LOCAL_HINT = "Create a team with /team-new to push it to a repo.";
+// Agent-facing nudge: with no team, feature work isn't in a repo. Steer the
+// agent to set one up ITSELF (create_team) rather than telling the user to run a
+// manual command — most users don't think in "teams"/"repos". See soul.md.
+const LOCAL_HINT =
+  "It isn't saved to a repo yet. If the user is building a real feature (not a quick throwaway), set up a space for it yourself with create_team so the work persists — don't ask them to create one manually.";
 
 /**
  * Append a note/decision/question/feedback to the current feature's PROTOTYPE.md.
@@ -167,7 +171,7 @@ export async function addPrototypeNote(
     const next = appendKnowledge(readLocal(), "prototype", kind, text, "you", date);
     mkdirSync(localWorkspaceDir(), { recursive: true });
     writeFileSync(localPath(), next, "utf8");
-    return `Saved ${kind} to ./PROTOTYPE.md (local — not pushed). ${LOCAL_HINT}`;
+    return `Saved ${kind} locally. ${LOCAL_HINT}`;
   }
   const token = opts?.token ?? resolveGithubToken();
   if (!token)
@@ -235,7 +239,7 @@ export async function updatePrototype(content: string, opts?: RemoteOpts): Promi
       withFrontmatter(meta, "prototype", date, provided.body || content.trim()),
       "utf8",
     );
-    return `Updated ./PROTOTYPE.md (local). ${LOCAL_HINT}`;
+    return `Updated the local PROTOTYPE.md. ${LOCAL_HINT}`;
   }
   const token = opts?.token ?? resolveGithubToken();
   if (!token) return "Not signed in to GitHub — run /github, or work locally with no team.";
