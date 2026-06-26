@@ -4,7 +4,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { configDir, currentTeam, setLocalSession } from "@hemiunu/agent-core";
-import { loadMcpRegistry } from "@hemiunu/mcp";
+import { loadMcpRegistry, sandboxStdioCwd } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
   ConversationStore,
@@ -42,6 +42,7 @@ export function bootRuntime(): Runtime {
 
   const store = new ConversationStore(join(dataDir, "hemiunu.db"));
   const registry = loadMcpRegistry(home, join(dataDir, "mcp.json"));
+  sandboxRegistry(registry, home, dataDir);
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
   const contextRoots = { appRoot: home, userRoot: dataDir };
   seedContextFiles(contextRoots);
@@ -73,7 +74,24 @@ export function reloadRegistry(): void {
   const r = bootRuntime();
   const home = process.env.HEMIUNU_HOME ?? join(import.meta.dirname, "..", "..", "..", "..");
   r.registry = loadMcpRegistry(home, join(configDir(), "mcp.json"));
+  sandboxRegistry(r.registry, home, configDir());
   r.fsName = findFsName(r.registry.mcpServers);
+}
+
+/**
+ * Confine spawned stdio MCP servers to ~/.hemiunu/tmp/mcp/<name> so a server
+ * that writes relative files (e.g. Playwright snapshots) can't litter the
+ * user's launch folder. Mutates the registry in place. Mirrors the CLI.
+ */
+function sandboxRegistry(
+  registry: ReturnType<typeof loadMcpRegistry>,
+  home: string,
+  dataDir: string,
+): void {
+  registry.mcpServers = sandboxStdioCwd(registry.mcpServers, {
+    shimPath: join(home, "bin", "mcp-in-dir.mjs"),
+    rootDir: join(dataDir, "tmp", "mcp"),
+  });
 }
 
 /**

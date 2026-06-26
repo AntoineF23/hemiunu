@@ -69,7 +69,7 @@ import {
 } from "@hemiunu/agent-core";
 import { execFileSync } from "node:child_process";
 import { loadContext, buildSystemPrompt, remember, seedContextFiles } from "@hemiunu/memory";
-import { loadMcpRegistry } from "@hemiunu/mcp";
+import { loadMcpRegistry, sandboxStdioCwd } from "@hemiunu/mcp";
 import { check, assert, collectTurn, report } from "./harness";
 
 const OFFLINE = process.argv.includes("--offline");
@@ -276,6 +276,40 @@ async function main() {
         else process.env[k] = v;
       }
     }
+  });
+
+  await check("mcp sandbox: stdio servers run via the cwd shim; filesystem + remote pass through", () => {
+    const servers: Record<string, unknown> = {
+      playwright: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"] },
+      filesystem: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/proj"],
+      },
+      notion: { type: "http", url: "https://mcp.notion.com" },
+    };
+    const out = sandboxStdioCwd(servers, {
+      shimPath: "/HOME/bin/mcp-in-dir.mjs",
+      rootDir: "/CFG/tmp/mcp",
+    });
+
+    // A normal stdio server is rewritten to launch via the node shim in its own
+    // throwaway cwd, with the real command/args trailing — so its output can't
+    // land in the user's launch folder.
+    const pw = out.playwright as { command: string; args: string[] };
+    assert(pw.command === process.execPath, "stdio server should launch via node (the shim)");
+    assert(pw.args[0] === "/HOME/bin/mcp-in-dir.mjs", "arg[0] should be the shim path");
+    assert(pw.args[1] === "/CFG/tmp/mcp/playwright", "arg[1] should be the per-server cwd");
+    assert(
+      pw.args[2] === "npx" && pw.args[3] === "@playwright/mcp@latest",
+      "the real command + args should follow the shim args",
+    );
+
+    // The filesystem server must keep reading the launch dir → not sandboxed.
+    assert((out.filesystem as { command: string }).command === "npx", "filesystem is exempt");
+    // Remote servers aren't spawned → untouched.
+    const notion = out.notion as { type: string; url: string };
+    assert(notion.type === "http" && !!notion.url, "remote servers pass through unchanged");
   });
 
   await check("ask_model reports a missing provider key without a network call", async () => {

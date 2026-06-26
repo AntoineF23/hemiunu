@@ -58,6 +58,9 @@ for (const rel of ["context", "mcp.json", "assets", "README.md", "LICENSE"]) {
   cpSync(join(root, rel), join(out, rel), { recursive: true });
 }
 cpSync(join(root, "bin/require-node.mjs"), join(out, "bin/require-node.mjs"));
+// The MCP cwd sandbox shim — injected as the spawn command for stdio servers
+// so their output stays out of the user's project (see bin/mcp-in-dir.mjs).
+cpSync(join(root, "bin/mcp-in-dir.mjs"), join(out, "bin/mcp-in-dir.mjs"));
 
 console.log("• writing release/bin/hemiunu.mjs launcher");
 writeFileSync(

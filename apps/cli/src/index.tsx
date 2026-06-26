@@ -59,7 +59,7 @@ import {
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import { clip, title, prettyTool, resultText, toolPreview, summarizeResult } from "@hemiunu/format";
-import { loadMcpRegistry } from "@hemiunu/mcp";
+import { loadMcpRegistry, sandboxStdioCwd } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
   ConversationStore,
@@ -2283,6 +2283,14 @@ async function main() {
   const store = new ConversationStore(join(dataDir, "hemiunu.db"));
   // App default mcp.json + the user's own overlay (~/.hemiunu/mcp.json).
   const registry = loadMcpRegistry(home, join(dataDir, "mcp.json"));
+  // Confine every spawned stdio server to a throwaway cwd under
+  // ~/.hemiunu/tmp/mcp/<name>, so a server that writes relative files (e.g.
+  // Playwright snapshots) can't litter the user's launch folder. The filesystem
+  // server is exempt — reading the launch project is its whole job.
+  registry.mcpServers = sandboxStdioCwd(registry.mcpServers, {
+    shimPath: join(home, "bin", "mcp-in-dir.mjs"),
+    rootDir: join(dataDir, "tmp", "mcp"),
+  });
   const model = process.env.HEMIUNU_MODEL ?? "claude-opus-4.8";
   // Context: soul.md ships with the app (home); the global user.md lives in the
   // user data dir (~/.hemiunu). First run seeds user.md from the committed

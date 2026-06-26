@@ -135,6 +135,61 @@ export function loadMcpRegistry(
   return result;
 }
 
+// --- Working-directory sandbox for spawned stdio servers ---
+
+export interface SandboxCwdOptions {
+  /** Absolute path to the node shim (bin/mcp-in-dir.mjs) that chdir's then execs. */
+  shimPath: string;
+  /** Root under which each server gets its own throwaway cwd (rootDir/<name>). */
+  rootDir: string;
+  /** Extra server names to leave rooted at the launch dir (the filesystem server is always exempt). */
+  exclude?: string[];
+}
+
+/**
+ * The filesystem server is the one server meant to touch the launch folder
+ * (reading the user's project is its job), so it's never sandboxed. Detect it
+ * by the standard name or by the `server-filesystem` package in its args — the
+ * same test the web runtime uses to gate it behind folder-trust.
+ */
+function isFilesystemServer(name: string, args: unknown[]): boolean {
+  return (
+    name === "filesystem" ||
+    args.some((a) => typeof a === "string" && a.includes("server-filesystem"))
+  );
+}
+
+/**
+ * Confine each spawned stdio MCP server to a throwaway working directory so any
+ * files it writes with relative paths (e.g. Playwright's `.playwright-mcp/`)
+ * land in `rootDir/<name>` — never the user's launch folder. The SDK exposes no
+ * per-server `cwd`, so we rewrite the command to launch via a node shim that
+ * chdir's first (see bin/mcp-in-dir.mjs). Remote (http/sse) servers aren't
+ * spawned and pass through unchanged; so do the filesystem server and anything
+ * named in `exclude`.
+ */
+export function sandboxStdioCwd(
+  servers: Record<string, unknown>,
+  { shimPath, rootDir, exclude = [] }: SandboxCwdOptions,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [name, cfg] of Object.entries(servers)) {
+    const c = cfg as Record<string, unknown>;
+    const realArgs = Array.isArray(c.args) ? (c.args as string[]) : [];
+    const isStdio = typeof c.command === "string";
+    if (!isStdio || exclude.includes(name) || isFilesystemServer(name, realArgs)) {
+      out[name] = cfg;
+      continue;
+    }
+    out[name] = {
+      ...c,
+      command: process.execPath,
+      args: [shimPath, join(rootDir, name), c.command as string, ...realArgs],
+    };
+  }
+  return out;
+}
+
 // --- User overlay editing (so a UI can add servers without hand-editing JSON) ---
 
 /** Validate one server config; throws a readable error if it's malformed. */
