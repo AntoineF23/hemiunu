@@ -37,3 +37,10 @@ export function recordArtifact(conversationId: string, rec: ArtifactRecord): voi
 export function getArtifact(conversationId: string): ArtifactRecord | null {
   return load()[conversationId] ?? null;
 }
+
+export function removeArtifact(conversationId: string): void {
+  const store = load();
+  if (!(conversationId in store)) return;
+  delete store[conversationId];
+  writeFileSync(storePath(), `${JSON.stringify(store, null, 2)}\n`, "utf8");
+}

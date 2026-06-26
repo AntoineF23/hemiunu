@@ -11,12 +11,12 @@ export async function getJSON<T>(url: string): Promise<T> {
 export async function sendJSON<T>(
   url: string,
   data: unknown,
-  method: "POST" | "PUT" = "POST",
+  method: "POST" | "PUT" | "DELETE" = "POST",
 ): Promise<T> {
   const res = await fetch(url, {
     method,
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(data),
+    body: data === undefined ? undefined : JSON.stringify(data),
   });
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);

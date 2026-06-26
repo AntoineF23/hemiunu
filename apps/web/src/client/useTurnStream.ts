@@ -37,6 +37,8 @@ export interface TurnState {
   reset: () => void;
   /** Load a past conversation's messages and bind its session for resuming. */
   loadConversation: (sessionId: string, messages: { role: string; content: string }[]) => void;
+  /** SDK session id currently loaded in the thread (undefined for a fresh chat). */
+  currentSessionId: string | undefined;
 }
 
 /** Parse a fetch stream as SSE, yielding each `data:` frame's parsed JSON. */
@@ -237,5 +239,16 @@ export function useTurnStream(): TurnState {
     [busy],
   );
 
-  return { items, busy, permission, lastCost, send, respond, stop, reset, loadConversation };
+  return {
+    items,
+    busy,
+    permission,
+    lastCost,
+    send,
+    respond,
+    stop,
+    reset,
+    loadConversation,
+    currentSessionId: sessionRef.current,
+  };
 }

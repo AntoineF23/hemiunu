@@ -34,8 +34,18 @@ const COMMANDS: { name: string; desc: string; panel: Panel | null }[] = [
 ];
 
 export function App() {
-  const { items, busy, permission, lastCost, send, respond, stop, reset, loadConversation } =
-    useTurnStream();
+  const {
+    items,
+    busy,
+    permission,
+    lastCost,
+    send,
+    respond,
+    stop,
+    reset,
+    loadConversation,
+    currentSessionId,
+  } = useTurnStream();
   const { settings, refresh, setModel } = useSettings();
   const { skills, refresh: refreshSkills } = useSkills();
   const [draft, setDraft] = useState("");
@@ -252,6 +262,11 @@ export function App() {
         onResume={(id, msgs) => {
           loadConversation(id, msgs);
           setPanel(null);
+        }}
+        onDeleted={(id) => {
+          // If we just deleted the conversation we're viewing, clear the thread
+          // so the next turn doesn't try to resume a now-deleted session id.
+          if (id === currentSessionId) reset();
         }}
       />
     </div>

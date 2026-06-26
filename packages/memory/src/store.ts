@@ -105,6 +105,15 @@ export class ConversationStore {
       .all(conversationId) as unknown as MessageRow[];
   }
 
+  /** Delete a conversation and all of its messages (no cascade exists). */
+  deleteConversation(id: string): void {
+    const tx = this.db.transaction((cid: string) => {
+      this.db.prepare("DELETE FROM messages WHERE conversation_id = ?").run(cid);
+      this.db.prepare("DELETE FROM conversations WHERE id = ?").run(cid);
+    });
+    tx(id);
+  }
+
   close(): void {
     this.db.close();
   }
