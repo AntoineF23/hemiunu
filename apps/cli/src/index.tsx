@@ -23,6 +23,7 @@ import {
   GET_SOURCE_MAP_TOOL_ID,
   resolveGithubToken,
   addTeam,
+  removeTeam,
   cycleTeam,
   listTeams,
   currentTeam,
@@ -550,19 +551,7 @@ function App({
   // On startup, drop saved teams whose GitHub repos no longer exist / aren't
   // accessible, so the switcher only shows teams that are really there.
   useEffect(() => {
-    const token = resolveGithubToken();
-    if (!token) return;
-    void (async () => {
-      const removed = await pruneTeams(token);
-      if (!removed.length) return;
-      setTeams(listTeams());
-      if (currentProjectRef.current && removed.includes(currentProjectRef.current))
-        switchProject(null);
-      push({
-        kind: "note",
-        text: `· removed ${removed.length} team${removed.length > 1 ? "s" : ""} no longer on GitHub: ${removed.join(", ")}`,
-      });
-    })();
+    void syncTeamsWithGithub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -698,6 +687,9 @@ function App({
     setLive("");
     const ac = new AbortController();
     abortRef.current = ac;
+    // If the team we'd run in was deleted on GitHub, drop to local and continue.
+    if (currentProjectRef.current && !(await ensureTeamAlive(currentProjectRef.current)))
+      switchProject(null);
     let cost: number | null = null;
     let usage: Record<string, number> | undefined;
     let fullText = "";
@@ -876,6 +868,35 @@ function App({
       ],
     );
     setEpoch((e) => e + 1);
+  }
+
+  // Re-scan all saved teams against GitHub; drop dead ones; refresh the switcher;
+  // fall the current selection back to local if it was removed. No-op offline.
+  async function syncTeamsWithGithub(): Promise<void> {
+    const token = resolveGithubToken();
+    if (!token) return;
+    const removed = await pruneTeams(token);
+    if (!removed.length) return;
+    setTeams(listTeams());
+    if (currentProjectRef.current && removed.includes(currentProjectRef.current))
+      switchProject(null);
+    push({
+      kind: "note",
+      text: `· removed ${removed.length} team${removed.length > 1 ? "s" : ""} no longer on GitHub: ${removed.join(", ")}`,
+    });
+  }
+
+  // Verify one team's repo still exists before switching into / running it.
+  // Gone → prune, refresh, note, return false so the caller can drop to local.
+  // Returns true when alive OR unverifiable (offline → don't block the user).
+  async function ensureTeamAlive(repo: string): Promise<boolean> {
+    const token = resolveGithubToken();
+    if (!token) return true;
+    if (await repoExists(token, repo)) return true;
+    removeTeam(repo);
+    setTeams(listTeams());
+    push({ kind: "note", text: `· ${repo} no longer on GitHub — working locally` });
+    return false;
   }
 
   // Set the current team WITHOUT resetting the conversation — used by the
@@ -1626,8 +1647,9 @@ function App({
               switchProject(null);
               return;
             }
-            // Carry local work into the team before switching to it.
+            // Verify the repo still exists, then carry local work in and switch.
             void (async () => {
+              if (!(await ensureTeamAlive(target))) return switchProject(null);
               await bringLocalWorkInto(target);
               switchProject(target);
             })();
@@ -1638,6 +1660,7 @@ function App({
       const repo = addTeam(arg);
       setTeams(listTeams());
       void (async () => {
+        if (!(await ensureTeamAlive(repo))) return switchProject(null);
         await bringLocalWorkInto(repo); // carry any local work into the repo first
         switchProject(repo);
         push({ kind: "note", text: `· switched to team ${repo}` });
@@ -1837,9 +1860,10 @@ function App({
         else {
           const target = next === "" ? null : next;
           if (target === null) switchProject(null);
-          // Carry local work into the team before switching to it.
+          // Verify the repo still exists, then carry local work in and switch.
           else
             void (async () => {
+              if (!(await ensureTeamAlive(target))) return switchProject(null);
               await bringLocalWorkInto(target);
               switchProject(target);
             })();

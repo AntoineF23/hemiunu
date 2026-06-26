@@ -13,6 +13,7 @@ import {
   githubViewer,
   listTeams,
   pollDeviceToken,
+  pruneTeams,
   removeGithubAccount,
   removeTeam,
   repoExists,
@@ -33,6 +34,8 @@ export const teamsRoute = new Hono();
 // connected". It's async, so snapshot() is too.
 const snapshot = async () => {
   const s = await syncGithubStatus();
+  const token = resolveGithubToken();
+  if (token) await pruneTeams(token); // drop teams whose repos are gone
   return {
     teams: listTeams(),
     current: currentTeam() ?? null,
