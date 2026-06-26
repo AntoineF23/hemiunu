@@ -89,7 +89,7 @@ function openInBrowser(target: string): void {
 export function createPrototypeServer() {
   const saveTool = tool(
     "save_prototype",
-    "Write a self-contained wireframe/prototype into the current prototype workspace (flat — index.html at the root, alongside PROTOTYPE.md) and open it in the browser. Pass one or more files by relative path including an index.html entry point. Use for low-fi HTML wireframes grounded in the brief — grayscale boxes, real labels/content, no brand styling.",
+    "Write a self-contained wireframe/prototype into the current prototype workspace (flat — index.html at the root, alongside PROTOTYPE.md) and show it to the user as a live, interactive preview. Pass one or more files by relative path including an index.html entry point. Use for low-fi HTML wireframes grounded in the brief — grayscale boxes, real labels/content, no brand styling.",
     {
       files: z
         .array(
@@ -125,15 +125,17 @@ export function createPrototypeServer() {
           }
         }
         const saved = savePrototype({ files });
-        if (saved.indexPath) openInBrowser(saved.indexPath);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Saved ${saved.files.length} file(s) to ${saved.dir}; opened ${saved.indexPath ?? "(no index.html)"} in the browser.`,
-            },
-          ],
-        };
+        if (saved.indexPath) openInBrowser(saved.indexPath); // no-op when HEMIUNU_NO_OPEN
+        // In the web app (HEMIUNU_NO_OPEN) the preview is embedded inline as a
+        // live artifact the user sees in the chat — so the agent must NOT claim
+        // a browser tab opened, nor paste a text/ASCII mock as a substitute.
+        const inline = !!process.env.HEMIUNU_NO_OPEN;
+        const text = !saved.indexPath
+          ? `Saved ${saved.files.length} file(s) to ${saved.dir}, but no index.html — add one so it can be previewed.`
+          : inline
+            ? `Saved ${saved.files.length} file(s) to ${saved.dir}. The live, interactive prototype is now shown to the user right here in the chat — refer to it as the preview above. Do NOT tell them to open a browser or a localhost link, and do NOT paste a text/ASCII version: the real thing is already on screen.`
+            : `Saved ${saved.files.length} file(s) to ${saved.dir}; opened ${saved.indexPath} in the browser for the user.`;
+        return { content: [{ type: "text", text }] };
       } catch (e) {
         return {
           content: [

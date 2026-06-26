@@ -363,8 +363,15 @@ export interface PushResult {
   note: string;
 }
 
-/** The stable branch auto-checkpoints push to (keeps the default branch clean). */
+/** The stable branch auto-checkpoints push to when NOT pushing straight to main. */
 export const CHECKPOINT_BRANCH = "hemiunu/checkpoint";
+
+/**
+ * FOR NOW: auto-saves go straight to the default branch (main) every turn — the
+ * user wants direct-to-main, not review branches/PRs. Flip to `false` to commit
+ * each turn to CHECKPOINT_BRANCH instead (review-based flow, main left clean).
+ */
+const AUTO_PUSH_TO_MAIN = true;
 
 /** The repo's default branch (what we publish to), from the remote; "main" if unknown. */
 async function defaultBranch(path: string): Promise<string> {
@@ -413,16 +420,15 @@ export async function commitAndPush(
 }
 
 /**
- * Auto-checkpoint the team's prototype workspace after a turn: stage any
- * changes, commit them, and push to the stable `hemiunu/checkpoint` branch — so
- * prototype work always reaches GitHub automatically and survives a later
- * workspace reset, WITHOUT touching the default branch (publishing there stays
- * an explicit, confirmed step via commit_prototype). Committing onto the
- * checkpoint branch (rather than main) keeps local == origin/<branch> after the
+ * Auto-save the team's prototype workspace after a turn: stage any changes,
+ * commit them, and push — so prototype work always reaches GitHub automatically
+ * and survives a later workspace reset. With AUTO_PUSH_TO_MAIN (the current
+ * default) it pushes straight to the default branch; otherwise to a stable
+ * `hemiunu/checkpoint` branch. Either way local == origin/<branch> after the
  * push, so the next iterate's ensureWorkspace sync won't discard the work.
  *
  * Best-effort: never throws; a no-op when there's no team, no checkout, or
- * nothing changed since the last checkpoint.
+ * nothing changed since the last save.
  */
 export async function checkpointWorkspace(
   repo: string | null,
@@ -438,10 +444,10 @@ export async function checkpointWorkspace(
       return { pushed: false, note: "nothing changed" };
     }
     const r = await commitAndPush(repo, {
-      message: opts.message || "checkpoint: auto-saved prototype work",
+      message: opts.message || "Auto-saved prototype work",
       token: opts.token,
       login: opts.login,
-      branch: CHECKPOINT_BRANCH,
+      ...(AUTO_PUSH_TO_MAIN ? { toMain: true } : { branch: CHECKPOINT_BRANCH }),
     });
     return { pushed: r.ok, branch: r.branch, note: r.note };
   } catch (e) {

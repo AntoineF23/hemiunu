@@ -44,10 +44,20 @@ function listFiles(dir: string, max = 500): { files: string[]; total: number } {
   return { files, total };
 }
 
+// How to describe the running preview to the agent. In the web app
+// (HEMIUNU_NO_OPEN) it is embedded inline as a live artifact the user already
+// sees, so the agent must not surface a browser tab or a localhost URL; on the
+// CLI the localhost link is what the user opens.
+function previewPhrase(url: string): string {
+  return process.env.HEMIUNU_NO_OPEN
+    ? "The live, interactive preview is shown to the user right here in the chat — refer to it as the preview above; do not surface a browser tab or a localhost link, and never paste a text/ASCII version as a substitute."
+    : `Live preview: ${url}.`;
+}
+
 export function createWorkspaceServer() {
   const iterateTool = tool(
     "iterate_prototype",
-    "Start (or resume) a fast LOCAL iteration session on the current prototype and serve it on localhost with live reload (opens the browser). With a team it first syncs the repo to the latest version into the local workspace; with no team it uses a temporary local session folder. Afterwards, edit files with write_workspace_file and they hot-reload.",
+    "Start (or resume) a fast LOCAL iteration session on the current prototype and show it to the user as a live, interactive preview with hot reload. With a team it first syncs the repo to the latest version into the local workspace; with no team it uses a temporary local session folder. Afterwards, edit files with write_workspace_file and they hot-reload.",
     {},
     async () => {
       const repo = resolveRepo();
@@ -64,7 +74,7 @@ export function createWorkspaceServer() {
           ? " Prior un-pushed edits were saved to the recycle bin (/restore)."
           : "";
         return text(
-          `Iterating on ${repo} — synced to latest (${synced.action}).${binNote} Live preview: ${prev.url}. Edit files with write_workspace_file; the preview hot-reloads.`,
+          `Iterating on ${repo} — synced to latest (${synced.action}).${binNote} ${previewPhrase(prev.url)} Edit files with write_workspace_file; the preview hot-reloads.`,
         );
       }
       const dir = localWorkspaceDir();
@@ -72,7 +82,7 @@ export function createWorkspaceServer() {
       const prev = await startPreview(`local:${dir}`, dir);
       if ("error" in prev) return text(`Preview failed: ${prev.error}`);
       return text(
-        `Iterating locally (no team) in a temporary workspace. Live preview: ${prev.url}. Edit files with write_workspace_file; the preview hot-reloads. Create a team later to push this work to a repo.`,
+        `Iterating locally (no team) in a temporary workspace. ${previewPhrase(prev.url)} Edit files with write_workspace_file; the preview hot-reloads. Create a team later to push this work to a repo.`,
       );
     },
     { annotations: { title: "Iterate prototype", readOnlyHint: false } },
@@ -129,7 +139,12 @@ export function createWorkspaceServer() {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, content, "utf8");
       const live = previewStatus();
-      return text(`Wrote ${path}.${live ? ` Live at ${live.url}.` : ""}`);
+      const liveNote = live
+        ? process.env.HEMIUNU_NO_OPEN
+          ? " The preview updated for the user in the chat."
+          : ` Live at ${live.url}.`
+        : "";
+      return text(`Wrote ${path}.${liveNote}`);
     },
     { annotations: { title: "Write workspace file", readOnlyHint: false } },
   );

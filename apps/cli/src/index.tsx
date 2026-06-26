@@ -898,7 +898,7 @@ function App({
       const cp = await checkpointWorkspace(team, {
         token,
         login,
-        message: `checkpoint: ${title(text)}`,
+        message: title(text),
       });
       if (cp.pushed) push({ kind: "note", text: `⤴ saved to ${team} (${cp.branch})` });
     }

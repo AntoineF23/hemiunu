@@ -827,7 +827,7 @@ async function main() {
     }
   });
 
-  await check("checkpoint: auto-pushes to the checkpoint branch; main stays clean; publish targets main", async () => {
+  await check("auto-save: pushes prototype work straight to main each turn; clean tree no-ops", async () => {
     const cfg = mkdtempSync(join(tmpdir(), "hemiunu-cpcfg-"));
     const bare = mkdtempSync(join(tmpdir(), "hemiunu-cpbare-"));
     const seed = mkdtempSync(join(tmpdir(), "hemiunu-cpseed-"));
@@ -847,41 +847,37 @@ async function main() {
       g(["commit", "-qm", "init"], seed);
       g(["push", "origin", "HEAD:main"], seed);
 
-      // Clone into the managed workspace, write a prototype file, checkpoint it.
+      // Clone into the managed workspace, write a prototype file, auto-save it.
       await ensureWorkspace("acme/cp", { cloneUrl: bare });
       writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
       const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
-      assert(cp.pushed, `checkpoint should push: ${cp.note}`);
-      assert(cp.branch === CHECKPOINT_BRANCH, `should push the checkpoint branch, got ${cp.branch}`);
+      assert(cp.pushed, `auto-save should push: ${cp.note}`);
+      assert(cp.branch === "main", `should push straight to main, got ${cp.branch}`);
 
-      // The checkpoint branch has the work; main is untouched.
+      // main has the work; no review/checkpoint branch was created (direct-to-main).
       g(["clone", bare, verify], tmpdir());
       assert(
-        out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
-        "remote should have the checkpoint branch",
-      );
-      g(["checkout", CHECKPOINT_BRANCH], verify);
-      assert(
         readFileSync(join(verify, "index.html"), "utf8").includes("v1"),
-        "checkpoint branch should have the prototype",
+        "main should have the prototype",
       );
-      g(["checkout", "main"], verify);
-      assert(!existsSync(join(verify, "index.html")), "main should stay clean (no prototype)");
+      assert(
+        !out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
+        "no checkpoint branch should be created when pushing direct-to-main",
+      );
 
-      // A clean tree is a no-op (no empty checkpoint commit/push).
+      // A clean tree is a no-op (no empty commit/push).
       const noop = await checkpointWorkspace("acme/cp", { login: "tester" });
       assert(!noop.pushed && /nothing changed/.test(noop.note), `clean tree should no-op: ${noop.note}`);
 
-      // Publishing targets the DEFAULT branch (main) even though the workspace is
-      // now on the checkpoint branch — the toMain fix.
+      // A second change auto-saves to main again (accumulates, ff push).
       writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v2</h1>");
-      const pub = await commitAndPush("acme/cp", { message: "publish", login: "tester", toMain: true });
-      assert(pub.ok && pub.branch === "main", `publish should target main, got ${pub.branch}: ${pub.note}`);
+      const cp2 = await checkpointWorkspace("acme/cp", { login: "tester" });
+      assert(cp2.pushed && cp2.branch === "main", `second save should hit main: ${cp2.note}`);
       const verify2 = mkdtempSync(join(tmpdir(), "hemiunu-cpver2-"));
       g(["clone", bare, verify2], tmpdir());
       assert(
         readFileSync(join(verify2, "index.html"), "utf8").includes("v2"),
-        "main should now have the published prototype",
+        "main should have the latest prototype",
       );
       rmSync(verify2, { recursive: true, force: true });
     } finally {
