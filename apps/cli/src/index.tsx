@@ -806,9 +806,18 @@ function App({
               } else if (b.name === "Agent" || b.name === "Task") {
                 if (b.id) delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
-                const label = who === "researcher" ? "Researcher" : who === "prototyper" ? "Prototyper" : who;
+                const LABELS: Record<string, string> = {
+                  researcher: "Researcher",
+                  prototyper: "Prototyper",
+                  designer: "Designer",
+                };
+                const STATUS: Record<string, string> = {
+                  prototyper: "prototyping",
+                  designer: "designing",
+                };
+                const label = LABELS[who] ?? who;
                 feedActivity({ type: "delegate", agent: who, label });
-                setStatusLabel(who === "prototyper" ? "prototyping" : "researching");
+                setStatusLabel(STATUS[who] ?? "researching");
               } else if (sub) {
                 // A nested tool from an SDK-delegated subagent — fold into the group.
                 feedActivity({

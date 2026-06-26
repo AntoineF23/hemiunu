@@ -104,7 +104,7 @@ export {
   activeProtoDir,
 } from "./workspace";
 export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
-export { startPreview, stopPreview, previewStatus } from "./preview";
+export { startPreview, stopPreview, previewStatus, hasDevScript } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 export {
   commitAndPush,

@@ -41,7 +41,9 @@ export function createOrchestratorServer(ctx: SubagentRunContext) {
       tasks: z
         .array(
           z.object({
-            agent: z.enum(["researcher", "prototyper"]).describe("Which subagent runs this task."),
+            agent: z
+              .enum(["researcher", "prototyper", "designer"])
+              .describe("Which subagent runs this task."),
             prompt: z
               .string()
               .describe(

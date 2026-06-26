@@ -15,6 +15,7 @@ import {
   generateTitle,
   GET_SOURCE_MAP_TOOL_ID,
   githubViewer,
+  hasDevScript,
   PARALLEL_TOOL_ID,
   previewStatus,
   recordSeenTool,
@@ -261,7 +262,10 @@ turnRoute.post("/api/turn", async (c) => {
         let preview = previewStatus();
         if (!preview) {
           const dir = activeProtoDir();
-          if (existsSync(join(dir, "index.html"))) {
+          // A self-contained wireframe has a root index.html; a hi-fi build (Vite /
+          // Next.js) is served via its own dev server, keyed off a package.json `dev`
+          // script even when its entry isn't a root index.html.
+          if (existsSync(join(dir, "index.html")) || hasDevScript(dir)) {
             const res = await startPreview(turnRepo() ?? "prototype", dir);
             if ("url" in res) preview = previewStatus();
           }

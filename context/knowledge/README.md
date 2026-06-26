@@ -25,6 +25,7 @@ adding a pack costs nothing until the subagent that owns it is delegated to.
 
 ## Current packs
 - `design.md` → the **prototyper** (wireframe/design principles)
+- `hifi-design.md` → the **designer** (hi-fi craft: DS-first, Vite+React+TS+Tailwind fallback, tokens, states, a11y)
 - `strategy.md` → the **strategist** (product judgment, prioritisation)
 - `metrics.md` → the **analyst** (data interpretation)
 

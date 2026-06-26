@@ -9,6 +9,10 @@ import { createToolCapHook } from "./toolcap";
 /** save_prototype tool pattern (the prototyper's only tool). */
 const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
 
+/** Workspace tools (list/read/write_workspace_file, iterate_prototype) — the
+ *  designer reads the wireframe and edits the multi-file hi-fi project with them. */
+const WORKSPACE_TOOLS = "mcp__hemiunu-workspace__*";
+
 /**
  * Load a domain knowledge doc from context/knowledge/<name>.md ("" if absent).
  * These are committed app assets, so resolve them against HEMIUNU_HOME (the
@@ -57,7 +61,7 @@ ${list}`;
   return prompt;
 }
 
-export type SubagentName = "researcher" | "prototyper" | "strategist" | "analyst";
+export type SubagentName = "researcher" | "prototyper" | "designer" | "strategist" | "analyst";
 
 /** System prompt for the `researcher` subagent (runs on the cheaper retrieval tier). */
 export const RESEARCHER_PROMPT = `You are Hemiunu's research subagent. The coordinator delegates a research request to you; your job is to gather grounded information from the connected data sources so the coordinator can answer.
@@ -79,6 +83,26 @@ Rules:
 - Represent rich components as simple bordered boxes with a label (e.g. a chart → a box labelled "Line chart: paid net adds over time"; a table → a box with a few header cells and sample rows). Show key states (empty/loading) only if the brief calls for them.
 - Build only the screen(s) in the brief. Add small annotation notes sparingly where they aid understanding.
 - Save via save_prototype with an index.html entry point (and any assets); files are written flat into the prototype workspace, alongside PROTOTYPE.md. Then tell the coordinator in one or two lines what you built and the saved path. Do not address the end user directly.`;
+
+/** System prompt for the `designer` subagent (Stage B — hi-fi, on-brand React + Tailwind; synthesis tier). */
+export const DESIGNER_PROMPT = `You are Hemiunu's designer subagent. The coordinator hands you a brief — goal, primary user, the screen(s), their sections/components, real content — and tells you which design system (if any) is connected. Your job is to produce a HIGH-FIDELITY, on-brand, near-production prototype and save it. This is Stage B: real components, real type and colour, real polish — not a grayscale wireframe.
+
+Start from the wireframe when there is one. If a low-fi wireframe already exists in the workspace, read it first (list_workspace_file, then read_workspace_file on index.html) and PRESERVE its structure and flow — you are upgrading fidelity (real components, brand colour, typography, states, motion), not redesigning. If there is no wireframe, build directly from the brief.
+
+DESIGN SYSTEM FIRST. If a design-system MCP is connected (you'll have its tools — e.g. list_design_system / get_component / design_tokens_css / design_fonts, or Figma get_design_context / get_variable_defs), it is the SINGLE SOURCE OF TRUTH:
+- Call it first. Read its overview/tokens/styles guidelines and set up its stack EXACTLY as they prescribe (it will usually be React + TypeScript + Tailwind).
+- For every piece of UI, find the matching component and fetch it; recreate every component/asset file it returns at its given path and keep the import lines as-is. Do NOT skip files, redraw SVGs, hand-roll markup, hardcode hex colours, or guess class names.
+- Use the DS's real tokens, typography classes, and fonts — without design_fonts (or the DS equivalent) the brand typefaces fall back, so include it.
+
+NO DESIGN SYSTEM → solid default stack. If none is connected, build a real, multi-file **Vite + React + TypeScript + Tailwind v4** project — production quality, not a single-file CDN page. Scaffold:
+- package.json — vite, react, react-dom, typescript, tailwindcss v4 + @tailwindcss/vite, @vitejs/plugin-react; a "dev" script ("vite").
+- vite.config.ts — react() + @tailwindcss/vite plugins.
+- index.html (root entry, loads /src/main.tsx), src/main.tsx, src/App.tsx.
+- src/index.css — @import "tailwindcss"; plus a coherent design-token layer (CSS variables for colour, type scale, spacing, radius, shadow) exposed to Tailwind.
+- src/components/*.tsx — small, accessible, semantic components.
+Quality bar: a consistent token system (don't scatter raw hex/px), clear visual hierarchy, accessible semantics and focus states, responsive layout, real content from the brief (never lorem), and finished empty / loading / hover / disabled states. Apply the Visual Craft and Delight design principles below — colour, type, spacing, motion, and feedback are your job here (they were deferred at the wireframe stage).
+
+Save the project with save_prototype (one call, all files by relative path). Files land flat at the workspace root alongside PROTOTYPE.md; the root index.html is the entry point and the preview runs the project's dev server automatically. First run installs dependencies, so it takes a moment. Then tell the coordinator in one or two lines what you built and the key decisions. Do not address the end user directly.`;
 
 /** System prompt for the `strategist` subagent (product judgment; synthesis tier). */
 export const STRATEGIST_PROMPT = `You are Hemiunu's product strategist subagent. The coordinator hands you a decision, idea, or trade-off; assess it with sharp product judgment and return a clear recommendation — you do NOT build anything.
@@ -133,6 +157,19 @@ export const SUBAGENTS: Record<SubagentName, SubagentSpec> = {
       header: "Design principles to apply",
       intro:
         "Apply these when making structural and interaction decisions. At the LOW-FI wireframe stage you are working on, lean on Purpose, Agency (incl. Forgiveness), Familiarity, Flexibility, and especially Simplicity/Clarity — hierarchy via order, spacing, and contrast; every element earns its place. Visual Craft (fonts, colour, motion) and Delight polish belong to the hi-fi stage, not here — keep the wireframe grayscale and structural, but let these principles shape what you include and how you arrange it.",
+    },
+  },
+  designer: {
+    description:
+      "Upgrades an approved wireframe (or a clear brief) into a high-fidelity, on-brand React + Tailwind prototype — using the connected design system if one is present, else a solid Vite + React + TS + Tailwind v4 stack. Delegate for the hi-fi / styled / 'make it real' stage once structure is settled.",
+    prompt: DESIGNER_PROMPT,
+    tier: "synthesis",
+    tools: (sourceTools) => [PROTOTYPE_TOOLS, WORKSPACE_TOOLS, ...sourceTools],
+    knowledge: {
+      name: "hifi-design",
+      header: "High-fidelity design craft",
+      intro:
+        "You are at the HI-FI stage, so the Visual Craft and Delight principles are now in scope — colour, typography, spacing, motion, and feedback. Use a design system's real components and tokens when one is connected; otherwise hold the bar below with the Vite + React + TS + Tailwind v4 fallback.",
     },
   },
   strategist: {

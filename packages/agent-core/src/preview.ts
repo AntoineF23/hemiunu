@@ -49,7 +49,9 @@ function detectPM(dir: string): "pnpm" | "yarn" | "npm" {
   return "npm";
 }
 
-function hasDevScript(dir: string): boolean {
+/** True when `dir` is a framework project we should serve via its own dev server
+ *  (a package.json with a `dev` script — e.g. a Vite or Next.js hi-fi prototype). */
+export function hasDevScript(dir: string): boolean {
   const pkg = join(dir, "package.json");
   if (!existsSync(pkg)) return false;
   try {
@@ -151,8 +153,30 @@ async function startDevServer(dir: string): Promise<Running> {
 }
 
 /**
+ * Poll the URL over HTTP until it actually serves a page (status < 400), so we
+ * never surface a preview the browser would load as "Not found". A reported
+ * localhost URL (e.g. Vite's stdout line, or a freshly-listening static server)
+ * is up before it's ready to answer requests; this is the readiness gate.
+ */
+async function waitForReady(url: string, timeoutMs = 15_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(2_000) });
+      if (res.status < 400) return true; // 2xx page, or a 3xx the app handles
+    } catch {
+      // connection refused / not listening yet — keep polling
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+}
+
+/**
  * Start (or reuse) the localhost preview for `repo` served from `dir`, and open
- * the browser. Reuses the running preview if it's already for this repo.
+ * the browser. Reuses the running preview if it's already for this repo. Waits
+ * until the server actually responds before returning, so callers never surface
+ * a preview that would show "Not found".
  */
 export async function startPreview(
   repo: string,
@@ -163,6 +187,14 @@ export async function startPreview(
   try {
     const running = hasDevScript(dir) ? await startDevServer(dir) : await startStatic(dir);
     running.repo = repo;
+    if (!(await waitForReady(running.url))) {
+      try {
+        running.stop();
+      } catch {
+        // best effort
+      }
+      return { error: "the preview server started but isn't serving a page yet" };
+    }
     current = running;
     openUrl(running.url);
     return { url: running.url };
