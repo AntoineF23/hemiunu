@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Hemiunu is an organization-wide AI **Product Agent** for a product team, built on the **Claude Agent SDK for TypeScript** (`@anthropic-ai/claude-agent-sdk`). The current build is a CLI MVP. The README is the canonical user-facing doc; `FINAL_PLAN.md` (vision) and `MVP_PLAN.md` (milestones) are kept in sync and steered from — update them when decisions change.
+Hemiunu is an organization-wide AI **Product Agent** for a product team, built on the **Claude Agent SDK for TypeScript** (`@anthropic-ai/claude-agent-sdk`). It ships as a terminal **CLI** and a local **web app** over the same `runTurn()` engine. The README is the canonical user-facing doc — keep it in sync when decisions change.
 
 ## Commands
 

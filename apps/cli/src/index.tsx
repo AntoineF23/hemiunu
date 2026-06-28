@@ -58,6 +58,7 @@ import {
   removeTeammate,
   listOrgMembers,
   asStream,
+  addPrototypeNote,
   type PermissionUpdate,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
@@ -89,6 +90,7 @@ const SAND = "#d7af87"; // gold ochre — accents, the name, prompts
 const SAGE = "#87af87"; // faded faience green — assistant voice
 const STONE = "#9c8f78"; // weathered sandstone — carved boxes & borders
 const PAPYRUS = "#c9b386"; // aged papyrus — secondary text
+const LAPIS = "#7fa8c9"; // lapis lazuli — the `#` PROTOTYPE.md note command
 
 // Retrieval tier the `researcher` subagent runs on (mirrors agent-core config).
 const RESEARCH_MODEL = process.env.HEMIUNU_MODEL_RESEARCH ?? "claude-sonnet-4.6";
@@ -123,8 +125,17 @@ function Banner() {
   );
 }
 
-const HELP =
-  "/new  /clear  /compact  /plan  /auto  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /mcp-auth  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /team-add  /team-remove  /restore  /exit";
+const HELP = [
+  "Chat        /new  /clear  /compact  /list  /resume <id>",
+  "Modes       /plan  /auto",
+  "Setup       /models  /settings  /setup  /trust",
+  "Sources     /mcp  /mcp-auth  /scan  /skills",
+  "Connect     /github  /vercel",
+  "Teams       /team  /team-new  /team-rename  /team-add  /team-remove",
+  "Misc        /restore  /exit",
+  "",
+  "# <note>    save a line to the current team's PROTOTYPE.md",
+].join("\n");
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
@@ -1528,6 +1539,41 @@ function App({
     });
   }
 
+  // `# <note>` — quick-save a line to the CURRENT team's PROTOTYPE.md (or the
+  // local one when no team), without going through the agent. Mirrors Claude
+  // Code's `#` memory shortcut. Uses the same backend as add_prototype_note, so
+  // it lands under the right heading with frontmatter — never a raw edit.
+  function handleHashNote(text: string) {
+    const note = text.replace(/^#+\s*/, "").trim();
+    if (!note) {
+      return push({
+        kind: "note",
+        text: "· type # then your note — e.g. “# prospects are 40+” — it's saved to this team's PROTOTYPE.md",
+      });
+    }
+    push({ kind: "user", text });
+    const team = currentProjectRef.current || undefined;
+    void (async () => {
+      try {
+        // addPrototypeNote already returns user-facing text for the team case
+        // (incl. the commit URL) and for errors; only the local case needs a
+        // friendlier line than its agent-facing nudge.
+        const result = await addPrototypeNote("note", note, { repo: team });
+        push({
+          kind: "note",
+          text: team
+            ? `✎ ${result}`
+            : "✎ saved to local PROTOTYPE.md — /team-new to create a team and push it",
+        });
+      } catch (e) {
+        push({
+          kind: "error",
+          text: `Couldn't save to PROTOTYPE.md: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+    })();
+  }
+
   function handleCommand(text: string) {
     const [cmd, ...rest] = text.slice(1).split(" ");
     if (cmd === "exit" || cmd === "quit") return exit();
@@ -1915,6 +1961,8 @@ function App({
 
   // --- slash-command menu: a live list of commands + skills while typing "/" ---
   const inputActive = !busy && !permission && !picker && !device && !paused;
+  // The line is a `#` PROTOTYPE.md note (drives the lapis prompt + the hint).
+  const isNote = value.startsWith("#");
   const slashToken =
     inputActive && value.startsWith("/") && !value.includes(" ")
       ? value.slice(1).toLowerCase()
@@ -2009,7 +2057,8 @@ function App({
     }
     setValue("");
     setCmdSel(0);
-    if (text.startsWith("/")) handleCommand(text);
+    if (text.startsWith("#")) handleHashNote(text);
+    else if (text.startsWith("/")) handleCommand(text);
     else void runUserTurn(text);
   };
 
@@ -2277,16 +2326,27 @@ function App({
       ) : null}
 
       {inputActive ? (
-        <Box marginTop={1} borderStyle="single" borderColor={STONE} paddingX={1}>
-          <Text color={SAND} bold>
-            {"☥ "}
+        <Box marginTop={1} borderStyle="single" borderColor={isNote ? LAPIS : STONE} paddingX={1}>
+          {/* The prompt glyph turns lapis with a # when the line is a PROTOTYPE.md
+              note, so it's visibly a command rather than a message to the agent. */}
+          <Text color={isNote ? LAPIS : SAND} bold>
+            {isNote ? "# " : "☥ "}
           </Text>
           <TextInput
             value={value}
             onChange={setValue}
             onSubmit={onSubmit}
-            placeholder="Ask Hemiunu…  (/help for commands)"
+            placeholder="Ask Hemiunu…  (/help for commands · # to note in PROTOTYPE.md)"
           />
+        </Box>
+      ) : null}
+
+      {inputActive && isNote ? (
+        <Box paddingX={1}>
+          <Text color={LAPIS}>{"# "}</Text>
+          <Text dimColor>
+            {`saves this line to ${teamShort ? `${teamShort}'s` : "the local"} PROTOTYPE.md — Enter to save`}
+          </Text>
         </Box>
       ) : null}
 
