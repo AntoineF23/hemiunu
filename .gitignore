@@ -4,6 +4,9 @@ release/
 .turbo/
 *.log
 
+# Local Claude Code project instructions — kept out of the repo.
+CLAUDE.md
+
 # secrets & local data
 .env
 *.db

@@ -237,6 +237,27 @@ Device sign-in needs a one-time **GitHub OAuth App** (its client id is public):
 The device flow grants the classic `repo` scope (covers Contents read/write on
 the user's private repos).
 
+## Coming soon
+
+Active directions on the roadmap:
+
+- **Automatic deployment.** Today `deploy_prototype` publishes a prototype to a
+  shareable **Vercel** URL on demand (`/vercel` to connect once, no token). Next:
+  **auto-deploy on every change** — a live preview link that updates itself as
+  the agent builds — plus a choice of targets beyond Vercel (Netlify, Cloudflare
+  Pages, or your own host) picked per team.
+- **Synthesized feature memory.** Automatically assemble each feature's
+  `PROTOTYPE.md` by pulling and de-duplicating substance across all connected
+  sources (Slack, Linear, docs, …), with provenance and timestamps — so a
+  feature's shared context accrues instead of being re-discovered each turn.
+- **One-click MCP auth.** OAuth for remote MCP servers, so SaaS sources connect
+  without a hand-made token.
+- **Hosted web app** with per-user accounts, so a team can share one Hemiunu
+  instead of each person running it locally.
+
+Want a different next step? The roadmap follows what teams ask for — open an
+issue.
+
 ## Develop & verify
 
 ```bash
