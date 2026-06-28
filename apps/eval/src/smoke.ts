@@ -119,16 +119,31 @@ async function main() {
   });
 
   await check("MCP registry skips servers with unset env vars", () => {
-    // notion needs NOTION_TOKEN; if unset it must be skipped, not connected.
-    const had = process.env.NOTION_TOKEN;
-    delete process.env.NOTION_TOKEN;
+    // A server that references an unset ${ENV} var must be skipped, not connected.
+    const had = process.env.HEMIUNU_PROBE_TOKEN;
+    delete process.env.HEMIUNU_PROBE_TOKEN;
+    const dir = mkdtempSync(join(tmpdir(), "hemiunu-mcp-"));
     try {
-      const reg = loadMcpRegistry();
-      const notion = reg.skipped.find((s) => s.name === "notion");
-      assert(notion !== undefined, "notion should be skipped without NOTION_TOKEN");
-      assert(/missing env/.test(notion.reason), "skip reason should cite missing env");
+      const mcpPath = join(dir, "mcp.json");
+      writeFileSync(
+        mcpPath,
+        JSON.stringify({
+          mcpServers: {
+            probe: {
+              type: "http",
+              url: "https://example.com",
+              headers: { Authorization: "Bearer ${HEMIUNU_PROBE_TOKEN}" },
+            },
+          },
+        }),
+      );
+      const reg = loadMcpRegistry(process.cwd(), mcpPath);
+      const probe = reg.skipped.find((s) => s.name === "probe");
+      assert(probe !== undefined, "probe should be skipped without HEMIUNU_PROBE_TOKEN");
+      assert(/missing env/.test(probe.reason), "skip reason should cite missing env");
     } finally {
-      if (had !== undefined) process.env.NOTION_TOKEN = had;
+      rmSync(dir, { recursive: true, force: true });
+      if (had !== undefined) process.env.HEMIUNU_PROBE_TOKEN = had;
     }
   });
 
@@ -248,18 +263,15 @@ async function main() {
       HEMIUNU_CONFIG_DIR: process.env.HEMIUNU_CONFIG_DIR,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
-      NOTION_TOKEN: process.env.NOTION_TOKEN,
-      TAVILY_API_KEY: process.env.TAVILY_API_KEY,
       HEMIUNU_MODEL: process.env.HEMIUNU_MODEL,
     };
     const dir = mkdtempSync(join(tmpdir(), "hemiunu-cfg-"));
     try {
       process.env.HEMIUNU_CONFIG_DIR = dir;
-      const p = writeUserEnv({ apiKey: "sk-test-123", notionToken: "ntn_test" });
+      const p = writeUserEnv({ apiKey: "sk-test-123" });
       assert(p === join(dir, ".env"), `should write to the config dir, got ${p}`);
       const content = readFileSync(p, "utf8");
       assert(/ANTHROPIC_API_KEY=sk-test-123/.test(content), "key should be written");
-      assert(/NOTION_TOKEN=ntn_test/.test(content), "notion token should be written");
       assert(hasApiKey(), "hasApiKey() should be true after writing a real key");
 
       // A user overlay server merges on top of the app's mcp.json defaults.
@@ -289,7 +301,7 @@ async function main() {
         command: "npx",
         args: ["-y", "@modelcontextprotocol/server-filesystem", "/proj"],
       },
-      notion: { type: "http", url: "https://mcp.notion.com" },
+      remote: { type: "http", url: "https://mcp.example.com" },
     };
     const out = sandboxStdioCwd(servers, {
       shimPath: "/HOME/bin/mcp-in-dir.mjs",
@@ -311,8 +323,8 @@ async function main() {
     // The filesystem server must keep reading the launch dir → not sandboxed.
     assert((out.filesystem as { command: string }).command === "npx", "filesystem is exempt");
     // Remote servers aren't spawned → untouched.
-    const notion = out.notion as { type: string; url: string };
-    assert(notion.type === "http" && !!notion.url, "remote servers pass through unchanged");
+    const remote = out.remote as { type: string; url: string };
+    assert(remote.type === "http" && !!remote.url, "remote servers pass through unchanged");
   });
 
   await check("ask_model reports a missing provider key without a network call", async () => {
@@ -379,16 +391,16 @@ async function main() {
       const root = mkdtempSync(join(tmpdir(), "hemiunu-sources-"));
       try {
         const saved = saveSourceMap({
-          mcp: "Notion",
+          mcp: "Acme",
           description: "Product workspace — roadmap, specs (viewer).",
           body: "## Key locations\n- **Roadmap** — page id `abc123` — quarterly OKRs.",
           root,
         });
-        assert(saved.mcp === "notion", `mcp name should be slugified, got: ${saved.mcp}`);
+        assert(saved.mcp === "acme", `mcp name should be slugified, got: ${saved.mcp}`);
 
         const list = loadSourceMaps(root);
         assert(
-          list.some((m) => m.mcp === "notion"),
+          list.some((m) => m.mcp === "acme"),
           "saved map should be listed",
         );
         assert(
@@ -397,7 +409,7 @@ async function main() {
         );
         assert(!!list[0].scanned, "a scanned date should be recorded in frontmatter");
 
-        const full = loadSourceMap("notion", root);
+        const full = loadSourceMap("acme", root);
         assert(!!full && /abc123/.test(full.body), "full map body should load on demand");
 
         assert(loadSourceMap("missing", root) === undefined, "absent map returns undefined");
@@ -416,7 +428,7 @@ async function main() {
       const small = await cb(
         {
           hook_event_name: "PostToolUse",
-          tool_name: "mcp__notion__API-post-search",
+          tool_name: "mcp__acme__search",
           tool_response: { content: [{ type: "text", text: "ok" }] },
         } as any,
         "id1",
@@ -428,7 +440,7 @@ async function main() {
       const out = (await cb(
         {
           hook_event_name: "PostToolUse",
-          tool_name: "mcp__notion__API-query-data-source",
+          tool_name: "mcp__acme__query",
           tool_response: big,
         } as any,
         "id2",

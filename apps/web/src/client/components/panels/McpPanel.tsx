@@ -76,7 +76,7 @@ interface McpPanelProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** `mcp__notion__notion-search` → `notion-search`. */
+/** `mcp__filesystem__read_file` → `read_file`. */
 const shortTool = (id: string) => {
   const rest = id.startsWith("mcp__") ? id.slice(5) : id;
   const i = rest.indexOf("__");

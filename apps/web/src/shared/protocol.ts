@@ -2,7 +2,15 @@
 // Kept in one place so both sides agree. SSE frames are JSON objects with a
 // discriminating `type`; the client switches on it.
 
-export type PermissionDecision = "yes" | "always" | "no";
+export type PermissionDecision =
+  | "yes"
+  | "always"
+  | "no"
+  // ExitPlanMode plan-approval choices (Claude-Code style): accept and auto-run,
+  // accept but approve each step, or keep planning to refine.
+  | "plan-auto"
+  | "plan-manual"
+  | "plan-refine";
 
 /** Server → client, streamed as SSE `data:` frames during a turn. */
 export type ServerEvent =
@@ -29,6 +37,11 @@ export interface TurnRequest {
   prompt: string;
   /** Resume a prior SDK session (the client echoes back the last `session` id). */
   resume?: string;
+  /** Plan-first mode: start the turn read-only — the agent proposes a plan and
+   *  executes nothing until the user approves it. */
+  planMode?: boolean;
+  /** Auto-accept mode: approve every gated tool without prompting. */
+  autoAccept?: boolean;
 }
 
 /** Body of POST /api/turn/:turnId/permission — answer a permission prompt. */

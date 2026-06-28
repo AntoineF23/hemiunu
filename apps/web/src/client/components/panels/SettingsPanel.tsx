@@ -111,8 +111,8 @@ export function SettingsPanel({
                     </Badge>
                   ))}
                   {settings.mcpSkipped?.map((s) => (
-                    <Badge key={s} variant="outline" title="skipped (missing env)">
-                      {s} (off)
+                    <Badge key={s.name} variant="outline" title={s.reason || "skipped"}>
+                      {s.name} (off)
                     </Badge>
                   ))}
                 </div>

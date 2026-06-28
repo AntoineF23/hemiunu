@@ -19,6 +19,7 @@ import {
   type ToolPolicy,
 } from "@hemiunu/agent-core";
 import {
+  isBuiltinServer,
   parseServerConfig,
   readUserServers,
   removeUserServer,
@@ -33,8 +34,6 @@ const userMcpPath = () => join(configDir(), "mcp.json");
 
 // Known server names → brand domain, for servers without a usable URL (stdio).
 const KNOWN_DOMAINS: Record<string, string> = {
-  notion: "notion.so",
-  tavily: "tavily.com",
   slack: "slack.com",
   github: "github.com",
   linear: "linear.app",
@@ -86,9 +85,15 @@ mcpRoute.get("/api/mcp", async (c) => {
   const maps = new Map(loadSourceMaps().map((m) => [m.mcp, m]));
   const userServers = readUserServers(userMcpPath());
   const userAdded = new Set(Object.keys(userServers));
-  const connected = Object.keys(rt.registry.mcpServers).sort();
+  // Hide the built-in filesystem server: it's a launch-folder capability, not a
+  // user-added integration, so it doesn't belong in the connected-servers list.
+  const connected = Object.keys(rt.registry.mcpServers)
+    .filter((n) => !isBuiltinServer(n, rt.registry.mcpServers[n]))
+    .sort();
   // `skipped` is `{ name, reason }[]` (servers omitted for missing env / disabled).
-  const skipped = (rt.registry.skipped ?? []) as { name: string; reason?: string }[];
+  const skipped = ((rt.registry.skipped ?? []) as { name: string; reason?: string }[]).filter(
+    (s) => !isBuiltinServer(s.name),
+  );
 
   const describe = async (name: string, isConnected: boolean, reason?: string) => {
     // Source maps are saved under the slugified name (e.g. "Playwright" →

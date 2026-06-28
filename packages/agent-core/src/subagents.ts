@@ -63,11 +63,31 @@ ${list}`;
 
 export type SubagentName = "researcher" | "prototyper" | "designer" | "strategist" | "analyst";
 
+/**
+ * The SDK's built-in server-side web tools (run on Anthropic's infrastructure;
+ * no MCP server or API key). The only built-ins we opt into — every use still
+ * flows through the yes/always/no permission prompt on the main loop. NB: like
+ * MCP tool search, server-side tools may not forward through an Anthropic-
+ * compatible gateway (ANTHROPIC_BASE_URL); they work talking to Anthropic direct.
+ */
+export const WEB_TOOLS = ["WebSearch", "WebFetch"];
+
+/**
+ * The SDK's built-in planning tools, to lift output quality on complex,
+ * multi-step work: the model can lay out a structured plan before building
+ * (EnterPlanMode → research read-only → ExitPlanMode presents the plan for
+ * approval) and track execution with a todo list (TodoWrite). Main loop only —
+ * subagents are already scoped, single-purpose delegations. Gating: TodoWrite +
+ * EnterPlanMode are auto-approved (internal, read-only), while ExitPlanMode
+ * keeps the permission prompt — it's the plan-approval gate.
+ */
+export const PLANNING_TOOLS = ["EnterPlanMode", "ExitPlanMode", "TodoWrite"];
+
 /** System prompt for the `researcher` subagent (runs on the cheaper retrieval tier). */
 export const RESEARCHER_PROMPT = `You are Hemiunu's research subagent. The coordinator delegates a research request to you; your job is to gather grounded information from the connected data sources so the coordinator can answer.
 
-- Search the available sources (Notion, local files, and any other connected MCP servers) thoroughly. Run several searches/reads as needed — don't stop at the first hit.
-- Use the RIGHT tool for each source: read local files with the filesystem read tools (read_text_file / search_files), fetch design data with the connected design tools (e.g. Figma), search docs with Notion or the web. NEVER use a browser / web-automation tool (whatever it's called — Playwright or another) or its evaluate/run-script function to read or write local files: a browser page has no filesystem access, and it pops a browser window. Reserve any browser tool strictly for inspecting a live web page.
+- Search the available sources (local files and any connected MCP servers) thoroughly. Run several searches/reads as needed — don't stop at the first hit.
+- Use the RIGHT tool for each source: read local files with the filesystem read tools (read_text_file / search_files), fetch design data with the connected design tools (e.g. Figma), search docs with the connected document/knowledge sources or the web. NEVER use a browser / web-automation tool (whatever it's called — Playwright or another) or its evaluate/run-script function to read or write local files: a browser page has no filesystem access, and it pops a browser window. Reserve any browser tool strictly for inspecting a live web page.
 - Narrate as you go, so your work is transparent: before a search or read, write ONE short line on what you're looking for; right after, ONE short line on what you found (a key result, or that it was empty) and what you'll check next. Keep each to a single line — these are progress notes, not the report.
 - Return only what you actually found, each point attributed to its source (page title, file path, URL).
 - If the sources do not contain the answer, say so plainly. Never invent facts or fill gaps from general knowledge.
@@ -140,10 +160,10 @@ export interface SubagentSpec {
 export const SUBAGENTS: Record<SubagentName, SubagentSpec> = {
   researcher: {
     description:
-      "Searches the connected data sources (Notion, local files, and any other connected MCP servers) and returns grounded findings with citations. Delegate any question that needs looking things up, or any non-trivial product/research question.",
+      "Searches the connected data sources (local files and any connected MCP servers) and returns grounded findings with citations. Delegate any question that needs looking things up, or any non-trivial product/research question.",
     prompt: RESEARCHER_PROMPT,
     tier: "research",
-    tools: (sourceTools) => [...sourceTools, SOURCE_TOOLS],
+    tools: (sourceTools) => [...sourceTools, SOURCE_TOOLS, ...WEB_TOOLS],
     needsSources: true,
   },
   prototyper: {

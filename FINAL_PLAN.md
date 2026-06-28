@@ -58,9 +58,9 @@ Context is assembled each turn from minimal, explicit files in a project-owned *
 The team's knowledge lives in **many MCP servers**, and the agent pulls from them on demand. This is the foundation everything else stands on: the better the connected sources, the better the ideas, wireframes, prototypes, and specs.
 
 - **A registry** maps logical servers → configs (`packages/mcp`, loaded from `mcp.json`; user servers in `~/.hemiunu/mcp.json` merge over the app defaults). `stdio`, `http`, and `sse` transports; `${ENV}` interpolation for secrets; `${CWD}` for the launch dir; auto-skip when a server is `disabled` or its env is unset.
-- **SaaS servers** — Notion, Linear, Slack, Figma, Atlassian/Confluence, Granola, analytics, etc. Today's default set: Notion (read), filesystem (the launch project), Tavily (web search).
+- **SaaS servers** — Notion, Linear, Slack, Figma, Atlassian/Confluence, Granola, analytics, etc. Today the only built-in default is filesystem (the launch project); every other server (including any of the above and a web-search MCP) is added per-user.
 - **Custom Auth0-protected servers** via `{ type: 'http', url, headers: { Authorization: 'Bearer <token>' } }`. A **token broker** exchanges the user's Auth0 session for downstream MCP access tokens (per-user, least-privilege). *(deferred; see `OAUTH_PLAN.md`)*
-- **Web research is part of the backbone**, not a side concern — the Tavily MCP gives the agent public/current/external knowledge (competitor moves, market data, design patterns, standards) to weigh against the team's own sources when proposing ideas.
+- **Web research is part of the backbone**, not a side concern — a connected web-search MCP gives the agent public/current/external knowledge (competitor moves, market data, design patterns, standards) to weigh against the team's own sources when proposing ideas.
 - **The design-system MCP is part of the backbone too** — **whatever design system the team connects via an MCP server**: Figma, shadcn, a custom component registry, or any in-house design system exposed over MCP. The pipeline is design-system-agnostic; it reads the connected DS's components, tokens, and guidelines. This is what makes Stage B prototypes on-brand and component-accurate.
 
 ### From pointers to synthesized memory (planned — see MVP_PLAN M4)
@@ -78,7 +78,7 @@ The pipeline is **research → brief → wireframe → preview → iterate**, wi
 
 Two inputs make the ideas good, not just present:
 - **Deep design knowledge** — `context/knowledge/design.md` (Apple's 8 principles of great design) is injected into the `prototyper` subagent so every wireframe is shaped by real design judgment; a compact digest lives in `soul.md` so the main loop gives grounded design *advice* without paying the full doc's tokens each turn.
-- **Web research** — the agent uses web search (Tavily) to benchmark patterns, study how the best products solve the problem, and propose improvements — so it brings the *best* ideas to the brief, weighed against the team's own sources.
+- **Web research** — the agent uses a connected web-search MCP to benchmark patterns, study how the best products solve the problem, and propose improvements — so it brings the *best* ideas to the brief, weighed against the team's own sources.
 
 > **BUILT (Slice 3a, 2026-06-22) — Stage A wireframes, first slice.** The `researcher` fills brief slots from the sources; the **`prototyper`** subagent (synthesis tier) turns the brief into a **self-contained low-fi HTML wireframe** (grayscale, real labels, inline CSS, no external requests) and saves it via the **`save_prototype`** tool (`packages/agent-core/src/prototype.ts`): writes under `prototypes/<slug>/` with a path-traversal guard, then opens `index.html` in the browser (suppressed by `HEMIUNU_NO_OPEN`). Exported pure `savePrototype()` is smoke-tested (sandbox + traversal). CLI shows `⌂ prototyper · <model>` and a "Prototyping" status. soul.md carries the two-step flow. **Decision: low-fi = HTML** (fastest iteration; design system enters at Stage B). **Architectural finding:** a subagent's tools do NOT need to be in the parent `tools` allowlist (registration + `AgentDefinition.tools` suffices, verified via `allowedTools`) — so a later refinement can hide `save_prototype` from the main loop to *force* delegation. **Not yet:** multi-screen + flows, screenshot self-critique, Vercel Sandbox run/deploy.
 >
@@ -198,7 +198,7 @@ hemiunu/
 
 **Phase 2 — Custom tools & skills.** In-process tools + Agent Skills. *Done when:* the agent calls your tool and a `/skill`. **✅ BUILT** (`remember`, `ask_model`, `save_prototype`, `save_skill`; skills in `~/.hemiunu/skills/`).
 
-**Phase 3 — Knowledge backbone (SaaS first, then Auth0).** Connect SaaS MCPs (Notion, filesystem, Tavily), then a custom **HTTP MCP with a static bearer token**, then the **Auth0 token broker** for per-user tokens. *Done when:* the agent reads real data from a protected custom server using the logged-in user's token. **Partial:** SaaS MCPs + web search connected; token broker deferred (`OAUTH_PLAN.md`).
+**Phase 3 — Knowledge backbone (SaaS first, then Auth0).** Connect SaaS MCPs (filesystem ships by default; add others per-user, e.g. a docs source and a web-search MCP), then a custom **HTTP MCP with a static bearer token**, then the **Auth0 token broker** for per-user tokens. *Done when:* the agent reads real data from a protected custom server using the logged-in user's token. **Partial:** user-added SaaS MCPs + web search work; token broker deferred (`OAUTH_PLAN.md`).
 
 **Phase 4 — Subagents & governance.** `researcher` + `prototyper` (model-specialized); RBAC via `canUseTool` + role→tool/MCP policy; `PostToolUse` audit hook + `maxBudgetUsd`. *Done when:* a low-rights user is blocked from a restricted tool, with an audit entry. **Partial:** subagents + tiers + `parallel` built; RBAC, audit hooks, budget caps remain.
 
@@ -227,7 +227,7 @@ How users get and configure Hemiunu without cloning/editing files:
 - **One-line install:** `curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh | bash` (public repo). `install.sh` checks Node 24+, clones to `~/.hemiunu/app`, `corepack pnpm install` (tolerates pnpm's harmless ignored-builds exit, verifies `tsx` runs), symlinks `~/.local/bin/hemiunu` → `bin/hemiunu.mjs`. Re-run to update.
 - **`hemiunu` command:** the launcher resolves the install dir from its own location, sets `HEMIUNU_HOME`, runs the CLI with the caller's cwd preserved.
 - **User config separate from code (`~/.hemiunu/`):** keys in `~/.hemiunu/.env`, user MCP servers in `~/.hemiunu/mcp.json` (merged over the app default by `loadMcpRegistry(home, userPath)`). Updates never clobber config. `.env` resolution: `~/.hemiunu/.env` → `HEMIUNU_HOME/.env` → cwd.
-- **First-run setup:** if no real key, the CLI shows an Ink prompt for the API key (masked) + optional gateway/Notion/Tavily, writes `~/.hemiunu/.env` via `writeUserEnv()`. `hasApiKey()` gates it; `/setup` shows the config path + which keys are set.
+- **First-run setup:** if no real key, the CLI shows an Ink prompt for the API key (masked) + an optional gateway base URL, writes `~/.hemiunu/.env` via `writeUserEnv()`. `hasApiKey()` gates it; `/setup` shows the config path + which keys are set.
 - **Better URL (TODO):** point a custom domain (e.g. `hemiunu.sh/install`) at the raw `install.sh` via a Vercel/Cloudflare rewrite.
 
 ---
@@ -238,7 +238,7 @@ How users get and configure Hemiunu without cloning/editing files:
 
 **Scope (built):**
 - **Interface:** CLI only (`apps/cli`).
-- **Capability:** a **product-knowledge agent** — agent core + memory + **SaaS MCPs** (Notion default; filesystem; Tavily web search) to answer product questions from real team data, plus Stage-A wireframes.
+- **Capability:** a **product-knowledge agent** — agent core + memory + **MCP servers** (filesystem default; plus any server you add, e.g. a docs source or web search) to answer product questions from real team data, plus Stage-A wireframes.
 - **Users:** just you, **no Auth0 / no RBAC** yet.
 - **Claude access:** Anthropic direct or any Anthropic-compatible gateway via `ANTHROPIC_BASE_URL`.
 - **Context construction:** the four-home model — `soul.md`, global `user.md`, per-project `HEMIUNU.md` (team store), `~/.hemiunu/skills/` — loaded by `packages/memory`, with `remember()` to update user/team context.
@@ -251,7 +251,7 @@ How users get and configure Hemiunu without cloning/editing files:
 **MVP steps (all done):**
 - **M0 — Engine.** `query()` from the CLI against the brain (Anthropic direct or gateway), a real turn completes.
 - **M1 — Persona + memory + sessions.** System prompt from `soul.md`, context homes loaded, session capture + `resume`, SQLite store, ASCII banner.
-- **M2 — SaaS MCP.** Notion (+ filesystem, Tavily) through the registry; answers grounded in real data.
+- **M2 — SaaS MCP.** filesystem through the registry by default, plus user-added servers; answers grounded in real data.
 - **M3 — CLI polish + smoke eval.** Streaming, `list/resume`, cost display, one scenario smoke test.
 
 **Beyond the original MVP, also built:** researcher subagent + model tiers, `ask_model`, `parallel` orchestrator, Stage-A wireframes, skills, and the one-line installer.

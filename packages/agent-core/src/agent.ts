@@ -15,6 +15,8 @@ import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
   SUBAGENTS,
   SUBAGENT_NAMES,
+  WEB_TOOLS,
+  PLANNING_TOOLS,
   subagentPrompt,
   type SubagentRunContext,
   type SubagentEvent,
@@ -46,7 +48,7 @@ export interface RunTurnOptions {
   resume?: string;
   /** Extra MCP servers to connect (from the mcp.json registry). */
   mcpServers?: Record<string, unknown>;
-  /** Tool-availability wildcards for the extra servers, e.g. `mcp__notion__*`. */
+  /** Tool-availability wildcards for the extra servers, e.g. `mcp__filesystem__*`. */
   toolPatterns?: string[];
   /** Interactive permission callback (yes / always / no). If omitted, tools are auto-approved. */
   canUseTool?: Options["canUseTool"];
@@ -61,6 +63,14 @@ export interface RunTurnOptions {
    * the persisted global selection (single-session behavior).
    */
   workspace?: WorkspaceContext;
+  /**
+   * Permission mode for the turn. `'plan'` starts the turn READ-ONLY: the agent
+   * researches and proposes a plan via ExitPlanMode but executes nothing until
+   * the user approves it (at which point the permission callback returns the
+   * SDK's suggested `updatedPermissions` to exit plan mode and continue). Omit
+   * for normal execution.
+   */
+  permissionMode?: Options["permissionMode"];
 }
 
 /**
@@ -91,6 +101,8 @@ export async function* runTurn(opts: RunTurnOptions) {
     SOURCE_TOOLS,
     TEAM_CONTROL_TOOLS,
     ...sourceTools,
+    ...WEB_TOOLS,
+    ...PLANNING_TOOLS,
     DELEGATE_TOOL,
   ];
 
@@ -162,11 +174,14 @@ export async function* runTurn(opts: RunTurnOptions) {
       agents,
       // Restrict the available toolset (default loads ~29 built-ins, whose
       // schemas are billed every turn). Only our in-process tools + enabled
-      // source servers + the delegate tool for subagents.
+      // source servers + the delegate tool + the web tools (WEB_TOOLS) and
+      // planning tools (PLANNING_TOOLS) we deliberately opt into; everything else
+      // stays stripped to keep turns cheap.
       tools,
       // With a permission callback, every tool use is gated (yes/always/no).
       // Without one, pre-approve our tools so non-interactive runs don't block.
       ...(opts.canUseTool ? { canUseTool: opts.canUseTool } : { allowedTools: tools }),
+      ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(opts.abortController ? { abortController: opts.abortController } : {}),
       ...(opts.resume ? { resume: opts.resume } : {}),
     },

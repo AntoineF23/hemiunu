@@ -2,6 +2,7 @@ import {
   Boxes,
   Check,
   type LucideIcon,
+  MapPin,
   MessagesSquare,
   PanelLeft,
   Plug,
@@ -21,7 +22,14 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar } from "./Avatar";
 
-export type Panel = "conversations" | "teams" | "prototypes" | "skills" | "mcp" | "settings";
+export type Panel =
+  | "conversations"
+  | "teams"
+  | "prototypes"
+  | "atlas"
+  | "skills"
+  | "mcp"
+  | "settings";
 
 interface RailProps {
   collapsed: boolean;
@@ -53,6 +61,7 @@ const TOP: NavItem[] = [{ key: "conversations", label: "Conversations", icon: Me
 const WORKSPACE: NavItem[] = [
   { key: "teams", label: "Teams", icon: Users },
   { key: "prototypes", label: "Prototypes", icon: Boxes },
+  { key: "atlas", label: "Atlas", icon: MapPin },
   { key: "skills", label: "Commands & skills", icon: SquareSlash },
   { key: "mcp", label: "MCP servers", icon: Plug },
   { key: "settings", label: "Settings", icon: Settings },

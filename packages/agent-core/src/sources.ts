@@ -12,7 +12,7 @@ import { createToolCapHook } from "./toolcap";
 
 /**
  * Per-MCP "source maps" — a per-user memory of what lives inside each connected
- * MCP server (Notion, filesystem, …). Each map is a Markdown file with flat
+ * MCP server (filesystem, and any others the user adds). Each map is a Markdown file with flat
  * frontmatter (mcp + a one-line description, the discovery surface) and a body
  * holding the server's structure, the ids of key pages/databases with one-line
  * summaries, and how to query it. What's visible depends on the USER's access
@@ -26,7 +26,7 @@ import { createToolCapHook } from "./toolcap";
 
 /** Lightweight metadata for discovery (no body). */
 export interface SourceMapMeta {
-  /** The MCP server name this maps, e.g. "notion". */
+  /** The MCP server name this maps, e.g. "filesystem". */
   mcp: string;
   /** One line: what's inside this source + at what access level. */
   description: string;
@@ -143,7 +143,7 @@ export function createSourcesServer(root: string = configDir()) {
     "save_source_map",
     "Save (create or replace) the source map for an MCP server — a durable note of what's inside it: its structure, the ids of key pages/databases with one-line summaries, and how to query it. Use this after scanning a source, or when you notice during normal work that an existing map is out of date (correct or remove only facts you can verify are wrong; leave anything you can't confirm unchanged).",
     {
-      mcp: z.string().describe("The MCP server name, e.g. 'notion' or 'filesystem'."),
+      mcp: z.string().describe("The MCP server name, e.g. 'filesystem'."),
       description: z
         .string()
         .describe(
@@ -165,7 +165,7 @@ export function createSourcesServer(root: string = configDir()) {
   const getTool = tool(
     "get_source_map",
     "Read the full source map for an MCP server (structure, key page/db ids + summaries, how to query) — consult this before searching a source so you know where to look.",
-    { mcp: z.string().describe("The MCP server name, e.g. 'notion'.") },
+    { mcp: z.string().describe("The MCP server name, e.g. 'filesystem'.") },
     async ({ mcp }) => {
       const m = loadSourceMap(mcp, root);
       if (!m) {
@@ -231,7 +231,7 @@ ${existing}
 
 /** Everything runScan needs, beyond what loadConfig() provides. */
 export interface ScanOptions {
-  /** The MCP server name to scan, e.g. "notion". */
+  /** The MCP server name to scan, e.g. "filesystem". */
   mcp: string;
   /** Connected MCP servers (from the registry) — must include the target. */
   mcpServers?: Record<string, unknown>;

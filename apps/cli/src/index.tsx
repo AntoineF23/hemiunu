@@ -58,6 +58,7 @@ import {
   removeTeammate,
   listOrgMembers,
   asStream,
+  type PermissionUpdate,
 } from "@hemiunu/agent-core";
 import { spawn } from "node:child_process";
 import {
@@ -72,7 +73,7 @@ import {
   type ActivityGroup,
   type ActivityEvent,
 } from "@hemiunu/format";
-import { loadMcpRegistry, sandboxStdioCwd } from "@hemiunu/mcp";
+import { isBuiltinServer, loadMcpRegistry, sandboxStdioCwd } from "@hemiunu/mcp";
 import {
   buildSystemPrompt,
   ConversationStore,
@@ -123,13 +124,15 @@ function Banner() {
 }
 
 const HELP =
-  "/new  /clear  /compact  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /mcp-auth  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /team-add  /team-remove  /restore  /exit";
+  "/new  /clear  /compact  /plan  /auto  /models  /settings  /setup  /trust  /list  /resume <id>  /mcp  /mcp-auth  /scan  /skills  /github  /vercel  /team  /team-new  /team-rename  /team-add  /team-remove  /restore  /exit";
 
 // Built-in commands, with one-line descriptions for the slash menu.
 const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "new", desc: "start a new conversation" },
   { name: "clear", desc: "clear context and the screen" },
   { name: "compact", desc: "summarise & compact the context" },
+  { name: "plan", desc: "toggle plan-first mode (propose a plan, then execute on approval)" },
+  { name: "auto", desc: "toggle auto-accept for this team (run tools without asking)" },
   { name: "models", desc: "switch the model" },
   { name: "settings", desc: "view all settings (model, team, connections…)" },
   { name: "setup", desc: "show config & keys" },
@@ -165,7 +168,7 @@ Use these headings; keep each to short bullets and omit any that are empty:
 - Blockers: anything stuck or waiting on input.
 - Key decisions: choices made and the reasoning.
 - Resolved questions: questions answered, and the answer.
-- Relevant files / sources: files, Notion pages, or data referenced.
+- Relevant files / sources: files or data referenced.
 - Open questions / next steps: what remains.
 
 Be factual and concise. Output only the summary — no preamble.`;
@@ -241,11 +244,18 @@ function openUrl(url: string): void {
   }
 }
 
-type PermValue = "yes" | "always" | "no";
+type PermValue = "yes" | "always" | "no" | "plan-auto" | "plan-manual" | "plan-refine";
 const MENU_CHOICES: { label: string; value: PermValue }[] = [
   { label: "Yes", value: "yes" },
   { label: "Always allow this tool", value: "always" },
   { label: "No, and tell the agent what to do differently", value: "no" },
+];
+// Plan-approval menu (ExitPlanMode), matching Claude Code: accept and auto-run,
+// accept but approve each step, or keep planning to refine with the agent.
+const PLAN_CHOICES: { label: string; value: PermValue }[] = [
+  { label: "Yes, and auto-accept edits", value: "plan-auto" },
+  { label: "Yes, and manually approve edits", value: "plan-manual" },
+  { label: "No, keep planning", value: "plan-refine" },
 ];
 
 // Presentation formatters are shared with the web worker via @hemiunu/format
@@ -458,6 +468,8 @@ function App({
   const [statusLabel, setStatusLabel] = useState("thinking");
   const [permission, setPermission] = useState<{
     name: string;
+    /** Menu options for this prompt (defaults to MENU_CHOICES; ExitPlanMode uses PLAN_CHOICES). */
+    choices?: { label: string; value: PermValue }[];
     onChoice: (c: PermValue) => void;
   } | null>(null);
   const [sel, setSel] = useState(0);
@@ -466,6 +478,21 @@ function App({
   const [ctx, setCtx] = useState(0);
   const [epoch, setEpoch] = useState(0); // bump to remount <Static> (clear/compact)
   const [model, setModel] = useState(initialModel);
+  // Plan-first mode (/plan): when on, every turn starts READ-ONLY — the agent
+  // proposes a plan and executes nothing until you approve it. Persists until
+  // toggled off; shown in the footer.
+  const [planMode, setPlanMode] = useState(false);
+  // Auto-accept mode: approve every gated tool without prompting (set by
+  // accepting a plan with "auto", or toggled via /auto). It is PER-TEAM — saved
+  // in each team's workspace snapshot and restored on switch — so an auto grant
+  // for one repo never leaks into another. The ref is read inside canUseTool
+  // (always current, even mid-turn); the state drives the footer indicator.
+  const autoAcceptRef = useRef(false);
+  const [autoAccept, setAutoAcceptState] = useState(false);
+  const setAuto = (v: boolean) => {
+    autoAcceptRef.current = v;
+    setAutoAcceptState(v);
+  };
   const [picker, setPicker] = useState<{
     title: string;
     options: string[];
@@ -492,12 +519,10 @@ function App({
   useEffect(refreshGithubLogin, []);
 
   // Detect a local filesystem server (it grants access to the launch folder).
-  const fsName = Object.keys(registry.mcpServers).find(
-    (n) =>
-      n === "filesystem" ||
-      (
-        ((registry.mcpServers as Record<string, { args?: unknown[] }>)[n]?.args ?? []) as unknown[]
-      ).some((a) => typeof a === "string" && a.includes("server-filesystem")),
+  // It's a built-in capability, so it's gated by folder-trust and hidden from
+  // the user-facing /mcp + /settings server lists (see hiddenServer below).
+  const fsName = Object.keys(registry.mcpServers).find((n) =>
+    isBuiltinServer(n, registry.mcpServers[n]),
   );
   const [fsTrust, setFsTrust] = useState<boolean | null>(() =>
     fsName ? (store.getFolderTrust(process.cwd()) ?? null) : true,
@@ -528,7 +553,14 @@ function App({
   const workspaces = useRef(
     new Map<
       string,
-      { items: Item[]; sessionId?: string; compacted: string; ctx: number; cost: number }
+      {
+        items: Item[];
+        sessionId?: string;
+        compacted: string;
+        ctx: number;
+        cost: number;
+        autoAccept?: boolean;
+      }
     >(),
   );
   const currentProjectRef = useRef<string | undefined>(initialTeam ?? undefined);
@@ -691,6 +723,80 @@ function App({
             resolve({ behavior: "allow", updatedInput: input });
             return;
           }
+          // Planning tools (built-in). TodoWrite + EnterPlanMode are internal &
+          // read-only — auto-approve, shown as a progress note. ExitPlanMode is
+          // the plan-approval gate: render the plan, then fall through to the
+          // normal yes/no prompt below.
+          if (toolName === "TodoWrite") {
+            const todos = Array.isArray(input.todos)
+              ? (input.todos as { status?: string; activeForm?: string; content?: string }[])
+              : [];
+            const done = todos.filter((t) => t?.status === "completed").length;
+            const active = todos.find((t) => t?.status === "in_progress");
+            const label = active?.activeForm || active?.content || "";
+            push({
+              kind: "note",
+              text: `◷ plan · ${done}/${todos.length}${label ? ` — ${clip(label, 60)}` : ""}`,
+            });
+            resolve({ behavior: "allow", updatedInput: input });
+            return;
+          }
+          if (toolName === "EnterPlanMode") {
+            push({ kind: "note", text: "◷ planning — researching before proposing an approach…" });
+            resolve({ behavior: "allow", updatedInput: input });
+            return;
+          }
+          // ExitPlanMode: the plan-approval gate. Render the plan, then show the
+          // three-way Claude-Code menu (auto-accept / manual / keep planning).
+          if (toolName === "ExitPlanMode") {
+            const plan = typeof input.plan === "string" ? input.plan : "";
+            if (plan) push({ kind: "note", text: `Proposed plan:\n${plan}` });
+            flushGroup();
+            setSel(0);
+            setPermission({
+              name: toolName,
+              choices: PLAN_CHOICES,
+              onChoice: (choice) => {
+                setPermission(null);
+                if (choice === "plan-refine") {
+                  push({ kind: "perm", ok: false, text: "keep planning — refining the plan" });
+                  resolve({
+                    behavior: "deny",
+                    message:
+                      "The user wants to keep refining the plan before any execution. Discuss and revise the plan with them; do not start building yet.",
+                  });
+                  return;
+                }
+                // Accepted: leave plan-first mode and exit the SDK's read-only
+                // plan mode so the plan executes. "auto" turns on auto-accept
+                // (every following tool runs without a prompt — per this team);
+                // "manual" approves each step.
+                setPlanMode(false);
+                if (choice === "plan-auto") setAuto(true);
+                push({
+                  kind: "perm",
+                  ok: true,
+                  text:
+                    choice === "plan-auto"
+                      ? "plan approved — auto-accepting the steps"
+                      : "plan approved — approving each step",
+                });
+                resolve({
+                  behavior: "allow",
+                  updatedInput: input,
+                  updatedPermissions: [{ type: "setMode", mode: "default", destination: "session" }],
+                });
+              },
+            });
+            return;
+          }
+          // Auto-accept mode: approve every gated tool without a prompt (covers
+          // the MCP write tools that `acceptEdits` alone wouldn't). The ref is
+          // current even within the turn a plan was just approved in.
+          if (autoAcceptRef.current) {
+            resolve({ behavior: "allow", updatedInput: input });
+            return;
+          }
           if (alwaysAllow.current.has(toolName)) {
             resolve({ behavior: "allow", updatedInput: input });
             return;
@@ -722,7 +828,11 @@ function App({
       () => {},
     );
     return run as Promise<
-      | { behavior: "allow"; updatedInput: Record<string, unknown> }
+      | {
+          behavior: "allow";
+          updatedInput: Record<string, unknown>;
+          updatedPermissions?: PermissionUpdate[];
+        }
       | { behavior: "deny"; message: string }
     >;
   };
@@ -757,6 +867,7 @@ function App({
         systemPrompt: effectiveSystem(),
         resume: sessionId.current,
         canUseTool,
+        ...(planMode ? { permissionMode: "plan" as const } : {}),
         mcpServers: await applyMcpOAuth(activeServers),
         toolPatterns: activePatterns,
         abortController: ac,
@@ -934,6 +1045,7 @@ function App({
       compacted: compactedRef.current,
       ctx,
       cost: sessionCost,
+      autoAccept: autoAcceptRef.current,
     });
     setCurrentTeam(target); // persist so the agent's tools follow the selection
     const ws = workspaces.current.get(key);
@@ -944,6 +1056,9 @@ function App({
     justCompactedRef.current = false;
     setCtx(ws?.ctx ?? 0);
     setSessionCost(ws?.cost ?? 0);
+    // Auto-accept is per-team: restore the target team's grant (default off), so
+    // switching into a different repo never inherits another team's auto-approve.
+    setAuto(ws?.autoAccept ?? false);
     setItems(
       ws?.items ?? [
         { kind: "banner" },
@@ -1432,13 +1547,37 @@ function App({
       return;
     }
     if (cmd === "compact") return void runCompact();
+    if (cmd === "plan") {
+      const next = !planMode;
+      setPlanMode(next);
+      return push({
+        kind: "note",
+        text: next
+          ? "plan-first mode ON — each turn proposes a plan and waits for your approval before doing anything. /plan again to turn off."
+          : "plan-first mode OFF — turns execute normally.",
+      });
+    }
+    if (cmd === "auto") {
+      const next = !autoAcceptRef.current;
+      setAuto(next);
+      return push({
+        kind: "note",
+        text: next
+          ? `auto-accept ON for ${currentTeam() ?? "local"} — tools run without asking. It's per-team and resets when you switch. /auto to turn off.`
+          : "auto-accept OFF — each tool asks again.",
+      });
+    }
     if (cmd === "trust") {
       if (!fsName) return push({ kind: "note", text: "· no filesystem server configured" });
       return promptTrust();
     }
     if (cmd === "mcp") {
       const userMcp = join(configDir(), "mcp.json");
-      const names = Object.keys(registry.mcpServers);
+      // Hide the built-in filesystem server — it's a launch-folder capability,
+      // not a user-added integration, and listing it only confuses users.
+      const names = Object.keys(registry.mcpServers).filter(
+        (n) => !isBuiltinServer(n, registry.mcpServers[n]),
+      );
       push({
         kind: "note",
         text: `mcp connected: ${names.join(", ") || "none"}\nadd your own servers in ${userMcp} (merged over the defaults)`,
@@ -1475,9 +1614,7 @@ function App({
         kind: "note",
         text:
           `config: ${join(configDir(), ".env")}\n` +
-          `  ANTHROPIC_API_KEY ${set(hasApiKey() ? "y" : "")}   ` +
-          `NOTION_TOKEN ${set(process.env.NOTION_TOKEN)}   ` +
-          `TAVILY_API_KEY ${set(process.env.TAVILY_API_KEY)}\n` +
+          `  ANTHROPIC_API_KEY ${set(hasApiKey() ? "y" : "")}\n` +
           `edit that file to change keys, then restart hemiunu.`,
       });
     }
@@ -1487,7 +1624,10 @@ function App({
       const ghOn = !!resolveGithubToken();
       const vcOn = !!resolveVercelToken() || vercelLoggedIn();
       const trust = fsTrust === true ? "allowed" : fsTrust === false ? "disabled" : "not set";
-      const servers = Object.keys(registry.mcpServers).join(", ") || "none";
+      const servers =
+        Object.keys(registry.mcpServers)
+          .filter((n) => !isBuiltinServer(n, registry.mcpServers[n]))
+          .join(", ") || "none";
       return push({
         kind: "note",
         text:
@@ -1499,7 +1639,7 @@ function App({
           `  Vercel           ${vcOn ? "connected" : "not connected"}   → /vercel\n` +
           `  file access      ${trust} (this folder)   → /trust\n` +
           `  MCP servers      ${servers}   → /mcp\n` +
-          `  keys             ANTHROPIC ${yn(hasApiKey())}  NOTION ${yn(!!process.env.NOTION_TOKEN)}  TAVILY ${yn(!!process.env.TAVILY_API_KEY)}   → /setup\n` +
+          `  keys             ANTHROPIC ${yn(hasApiKey())}   → /setup\n` +
           `  thinking budget  ${process.env.HEMIUNU_THINKING_BUDGET ?? "0"}   context window ${process.env.HEMIUNU_CONTEXT_WINDOW ?? "auto"}   → .env`,
       });
     }
@@ -1876,11 +2016,13 @@ function App({
   useInput(
     (_input, key) => {
       if (permission) {
-        const n = MENU_CHOICES.length;
+        const choices = permission.choices ?? MENU_CHOICES;
+        const n = choices.length;
         if (key.upArrow) setSel((s) => (s - 1 + n) % n);
         else if (key.downArrow) setSel((s) => (s + 1) % n);
-        else if (key.return) permission.onChoice(MENU_CHOICES[sel].value);
-        else if (key.escape) permission.onChoice("no");
+        else if (key.return) permission.onChoice(choices[sel].value);
+        // Esc = the last (decline) option: "No" normally, "keep planning" for a plan.
+        else if (key.escape) permission.onChoice(choices[n - 1].value);
         return;
       }
       if (picker) {
@@ -2029,15 +2171,24 @@ function App({
 
       {permission ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text>
-            <Text color={SAGE}>{"⚙ "}</Text>
-            {"Allow "}
-            <Text color={SAND} bold>
-              {prettyTool(permission.name)}
+          {permission.choices ? (
+            <Text>
+              <Text color={SAGE}>{"⚙ "}</Text>
+              <Text color={SAND} bold>
+                Ready to proceed with this plan?
+              </Text>
             </Text>
-            {"?"}
-          </Text>
-          {MENU_CHOICES.map((c, i) => (
+          ) : (
+            <Text>
+              <Text color={SAGE}>{"⚙ "}</Text>
+              {"Allow "}
+              <Text color={SAND} bold>
+                {prettyTool(permission.name)}
+              </Text>
+              {"?"}
+            </Text>
+          )}
+          {(permission.choices ?? MENU_CHOICES).map((c, i) => (
             <Text key={c.value} color={i === sel ? SAGE : undefined} dimColor={i !== sel}>
               {i === sel ? "❯ " : "  "}
               {c.label}
@@ -2151,7 +2302,7 @@ function App({
             {"  · /github"}
           </Text>
         </Text>
-        <Text color={SAGE}>{`${model} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
+        <Text color={SAGE}>{`${model}${planMode ? " · plan-first" : ""}${autoAccept ? " · auto-accept" : ""} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
       </Box>
     </Box>
   );
@@ -2162,8 +2313,6 @@ function App({
 interface SetupValues {
   apiKey: string;
   baseUrl: string;
-  notionToken: string;
-  tavilyKey: string;
 }
 const SETUP_FIELDS: {
   key: keyof SetupValues;
@@ -2184,8 +2333,6 @@ const SETUP_FIELDS: {
     label: "Gateway base URL",
     hint: "optional — Enter for Anthropic direct, or a proxy URL",
   },
-  { key: "notionToken", label: "Notion token", hint: "optional — press Enter to skip" },
-  { key: "tavilyKey", label: "Tavily key", hint: "optional (web search) — press Enter to skip" },
 ];
 
 function Setup({ onDone }: { onDone: () => void }) {
@@ -2194,8 +2341,6 @@ function Setup({ onDone }: { onDone: () => void }) {
   const valuesRef = useRef<SetupValues>({
     apiKey: "",
     baseUrl: "",
-    notionToken: "",
-    tavilyKey: "",
   });
   const field = SETUP_FIELDS[step];
 
@@ -2211,8 +2356,6 @@ function Setup({ onDone }: { onDone: () => void }) {
       writeUserEnv({
         apiKey: vals.apiKey,
         baseUrl: vals.baseUrl || undefined,
-        notionToken: vals.notionToken || undefined,
-        tavilyKey: vals.tavilyKey || undefined,
       });
       onDone();
     }

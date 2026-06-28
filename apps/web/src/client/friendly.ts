@@ -1,19 +1,19 @@
 // Turn raw tool ids into plain-language labels + a minimalist line icon for
-// non-technical users. "Searching Notion", not "mcp__notion__notion-search".
+// non-technical users. "Reading your files", not "mcp__filesystem__read_file".
 // A UI lookup only — the engine and its tool ids are untouched.
 import {
   type LucideIcon,
-  FileText,
   FolderOpen,
   GitBranch,
   Globe,
+  ClipboardList,
   Layers,
   Link2,
+  ListTodo,
   Map,
   MessageSquare,
   NotebookPen,
   PencilLine,
-  Search,
   Settings2,
   Share2,
   Users,
@@ -26,13 +26,10 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
-  {
-    test: /notion.*search|search.*notion|API-post-search/i,
-    label: "Searching Notion",
-    icon: Search,
-  },
-  { test: /notion.*(fetch|retrieve|get)|-fetch$/i, label: "Reading a Notion page", icon: FileText },
-  { test: /tavily|web.*search|search.*web/i, label: "Searching the web", icon: Globe },
+  { test: /web.*search|search.*web/i, label: "Searching the web", icon: Globe },
+  { test: /web.*fetch|fetch.*url|read.*url/i, label: "Reading a web page", icon: Link2 },
+  { test: /enter.?plan.?mode|exit.?plan.?mode|plan.?mode/i, label: "Planning the work", icon: ClipboardList },
+  { test: /todo.?write|todo.?list/i, label: "Updating the plan", icon: ListTodo },
   {
     test: /server-filesystem|read_file|list_directory|read_text/i,
     label: "Reading your files",
@@ -58,7 +55,7 @@ const RULES: Rule[] = [
   { test: /^parallel$/i, label: "Working in parallel", icon: Share2 },
 ];
 
-/** mcp__notion__notion-search → "notion · notion-search" (last-resort label). */
+/** mcp__filesystem__read_file → "filesystem · read_file" (last-resort label). */
 function prettyTool(name: string): string {
   if (name.startsWith("mcp__")) {
     const rest = name.slice(5);

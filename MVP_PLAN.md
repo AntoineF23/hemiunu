@@ -10,7 +10,7 @@
 
 ## What we're building (MVP)
 
-**Hemiunu** — a CLI **product-knowledge agent**. Single user, no auth. It answers product questions grounded in **Notion (read-only)** via MCP, keeps **full conversations in SQLite** (list / resume / replay), and builds its context each turn from **file-based context construction** (Hermes-inspired): `soul.md` (persona → system prompt), `user.md` (agent-learned user facts), `memory.md` (durable notes). Built on the **Claude Agent SDK (TypeScript)**, talking to **`claude-opus-4.8`** through the org **LiteLLM proxy**.
+**Hemiunu** — a CLI **product-knowledge agent**. Single user, no auth. It answers product questions grounded in **connected MCP sources** (local files by default, plus any server you add), keeps **full conversations in SQLite** (list / resume / replay), and builds its context each turn from **file-based context construction** (Hermes-inspired): `soul.md` (persona → system prompt), `user.md` (agent-learned user facts), `memory.md` (durable notes). Built on the **Claude Agent SDK (TypeScript)**, talking to **`claude-opus-4.8`** through the org **LiteLLM proxy**.
 
 **Out of scope for the MVP:** web UI, Auth0/RBAC, custom Auth0-protected MCP, subagents, prototyping (wireframes/design system), full eval harness. (All in `FINAL_PLAN.md`.)
 
@@ -24,7 +24,7 @@
 - `@anthropic-ai/claude-agent-sdk`
 - `node:sqlite` (Node 24+ built-in) for the conversation store
 - `zod`
-- Notion MCP (read-only)
+- MCP servers (filesystem by default; others added per-user)
 
 ## Repo layout (only what the MVP uses)
 ```
@@ -34,12 +34,12 @@ hemiunu/
 ├─ packages/
 │  ├─ agent-core/         # query() wrapper: system prompt, model/env config, session glue
 │  ├─ memory/             # context/ loader (soul/user/memory) + remember() tool + SQLite conversation store
-│  └─ mcp/                # MCP registry (Notion, read-only)
+│  └─ mcp/                # MCP registry (filesystem default; user-added servers)
 ├─ context/               # file-based context construction (Hermes-inspired)
 │  ├─ soul.md             #   Hemiunu persona/behavior/goals → system prompt
 │  ├─ user.md             #   what the agent learns about you (agent-updatable)
 │  └─ memory.md           #   durable notes / workflows / facts (agent-updatable)
-├─ .env                   # ANTHROPIC_BASE_URL, ANTHROPIC_API_KEY, NOTION_TOKEN (gitignored)
+├─ .env                   # ANTHROPIC_BASE_URL, ANTHROPIC_API_KEY, MCP server secrets (gitignored)
 ├─ .gitignore             # node_modules, dist, *.db, .env
 ├─ pnpm-workspace.yaml
 ├─ turbo.json
@@ -73,12 +73,12 @@ No `web/`, `auth/`, `prototyper/`, `evals/` packages yet — created when their 
 - Interactive `canUseTool` permission gate (yes / always / no), persisted per session.
 - Prompt caching confirmed working through the proxy (turn 2 reads turn 1's cached tokens; ~10× cheaper). CLI cost line shows tokens + cache.
 
-### M2 — General MCP registry ✅ + local & Notion MCP live ✅
+### M2 — General MCP registry ✅ + local MCP live ✅
 - `packages/mcp`: declarative **`mcp.json`** registry (standard `mcpServers` shape) supporting remote (`http`/`sse`) and local (`stdio`) servers, `${ENV}` interpolation (secrets stay in `.env`), `disabled` flag, and **auto-skip** when a referenced env var is unset. Returns `{ mcpServers, toolPatterns, skipped }`.
 - Wired into `runTurn` via `mcpServers` + wildcard `toolPatterns` (`mcp__<name>__*`); every MCP call is gated by the yes/always/no permission prompt. CLI shows connect/skip status + a `/mcp` command. **All verified except a live external connection.**
 - **Local (stdio) MCP ✅ VERIFIED LIVE** — filesystem server; Hemiunu read the real project folder via `mcp__filesystem__*`.
-- **Notion (stdio, integration token) ✅ VERIFIED LIVE** — `@notionhq/notion-mcp-server` with `NOTION_TOKEN` (in `.env`); Hemiunu called `mcp__notion__API-post-search` and returned real workspace pages. ⚠ Cost: ~$0.87 cold turn because Notion exposes ~20+ large-schema tools; mitigate with **MCP tool search** and/or a per-server tool allowlist (search + retrieve only). Also: first `npx` run can exceed the 60s connect timeout — pre-install the server to avoid cold-start failures.
-- **Deferred: OAuth-protected remote servers** (hosted Notion, Auth0 custom) — the Agent SDK does NOT do OAuth automatically, so we build our own token-broker. Full design captured in **`OAUTH_PLAN.md`**.
+- **Third-party stdio server ✅ VERIFIED LIVE** (during M2, using a token-gated SaaS MCP as the example) — Hemiunu connected an `${ENV}`-gated stdio server and returned real data. Such servers are **not built-in defaults** — users add their own. ⚠ Cost learning: a server exposing ~20+ large-schema tools can push a cold turn to ~$0.87; mitigate with **MCP tool search** and/or a per-server tool allowlist (search + retrieve only). Also: first `npx` run can exceed the 60s connect timeout — pre-install the server to avoid cold-start failures.
+- **Deferred: OAuth-protected remote servers** (hosted SaaS, Auth0 custom) — the Agent SDK does NOT do OAuth automatically, so we build our own token-broker. Full design captured in **`OAUTH_PLAN.md`**.
 - **Done when:** Hemiunu answers a question grounded in real local files via a live stdio MCP server, with the permission prompt gating the call.
 
 ### M3 — Polish + smoke check ✅ DONE
@@ -90,7 +90,7 @@ No `web/`, `auth/`, `prototyper/`, `evals/` packages yet — created when their 
 
 ### M4 — Shared multi-source memory (NEXT — design first) ⏳
 The product's core promise is a *shared context filled from all the team's apps*. Today that's partial: live per-turn source reads + **source maps** (pointer indexes of where things live, via `/scan` → `packages/agent-core/src/sources.ts`). The gap is an **aggregation/synthesis layer**.
-- **Ingestion:** a triggered (and later periodic) pass that pulls substance across connected MCPs (Notion, Slack, Linear, Granola, Intercom, …) for the current feature.
+- **Ingestion:** a triggered (and later periodic) pass that pulls substance across connected MCPs (e.g. Slack, Linear, Granola, Intercom, …) for the current feature.
 - **Synthesis → memory:** distil it into the feature's `PROTOTYPE.md` (or a richer store) as structured notes, each with **provenance (source + id/url) and a timestamp**.
 - **Freshness & dedup:** mark stale notes; never duplicate a fact already captured; keep human-written notes the source can't confirm/deny (same reconcile rule `/scan` already uses).
 - **Surface:** a "refresh sources / build feature context" action in CLI + web.
@@ -99,12 +99,11 @@ The product's core promise is a *shared context filled from all the team's apps*
 
 ## Needed from you
 - **LiteLLM key** → `.env` (`ANTHROPIC_API_KEY`). You add it directly so it never passes through me.
-- **Notion** internal integration token + shared workspace (M2).
 - **`context/` content** — `soul.md` (Hemiunu's persona/tone/goals) and a `memory.md` seed (team, product areas, glossary, KPIs). I'll scaffold templates with sensible defaults for you to refine; `user.md` starts empty and the agent fills it.
 
 ## Risks / watch-items
 - **Proxy Anthropic-format gate** (M0) — the one thing that could force a config change or adapter.
-- **Notion MCP shape** — confirm the chosen Notion MCP server accepts an internal-integration token in read-only mode; otherwise fall back to OAuth.
+- **Third-party MCP shape** — a user-added SaaS server may need OAuth rather than a static token; the registry auto-skips servers whose env vars are unset.
 
 ## MVP definition of done
-Ask Hemiunu a product question → it answers grounded in our Notion workspace → the conversation persists in SQLite and can be resumed tomorrow, all running from the CLI via `claude-opus-4.8` on the proxy.
+Ask Hemiunu a product question → it answers grounded in a connected source → the conversation persists in SQLite and can be resumed tomorrow, all running from the CLI via `claude-opus-4.8` on the proxy.

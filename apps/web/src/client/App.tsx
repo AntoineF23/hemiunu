@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, CircleAlert, CornerDownRight, PencilLine, Share2, Wrench } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  ChevronDown,
+  CircleAlert,
+  ClipboardList,
+  CornerDownRight,
+  PencilLine,
+  Share2,
+  Wrench,
+  Zap,
+} from "lucide-react";
 import { summarizeGroup } from "@hemiunu/format/activity";
 import { Button } from "@/components/ui/button";
 import { ArtifactCard } from "@/components/ArtifactCard";
@@ -21,6 +30,12 @@ import { useSettings } from "./useSettings";
 import { useSkills } from "./useSkills";
 import { type ChatItem, useTurnStream } from "./useTurnStream";
 
+// The Atlas globe pulls in three.js (~heavy) — load it only when the panel is
+// opened, so the initial app bundle stays lean.
+const GlobePanel = lazy(() =>
+  import("@/components/panels/GlobePanel").then((m) => ({ default: m.GlobePanel })),
+);
+
 const RAIL_KEY = "hemiunu.rail.collapsed";
 
 // Built-in slash commands — they map to UI actions (a panel or new chat), run
@@ -30,6 +45,7 @@ const COMMANDS: { name: string; desc: string; panel: Panel | null }[] = [
   { name: "conversations", desc: "browse past conversations", panel: "conversations" },
   { name: "teams", desc: "switch / manage teams", panel: "teams" },
   { name: "prototypes", desc: "view the prototype brief", panel: "prototypes" },
+  { name: "atlas", desc: "your world map of discovered monuments", panel: "atlas" },
   { name: "skills", desc: "manage commands & skills", panel: "skills" },
   { name: "mcp", desc: "MCP servers & tool permissions", panel: "mcp" },
   { name: "settings", desc: "model, key, connections", panel: "settings" },
@@ -53,6 +69,13 @@ export function App() {
   } = useTurnStream(refresh);
   const { skills, refresh: refreshSkills } = useSkills();
   const [draft, setDraft] = useState("");
+  // Plan-first mode (/plan or the composer toggle): the next turns start
+  // read-only — the agent proposes a plan and executes nothing until approved.
+  const [planMode, setPlanMode] = useState(false);
+  // Auto-accept mode: run tools without prompting. Set by approving a plan with
+  // "auto" (or the composer toggle). Reset whenever the team changes (below) so
+  // an auto grant for one repo never carries into another.
+  const [autoAccept, setAutoAccept] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) === "1");
   // One docked panel inside a single persistent shell. Switching just swaps the
@@ -72,6 +95,16 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(RAIL_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
+
+  // Auto-accept is a trust grant for ONE team's repo. When the active team
+  // changes (the user switched, or the agent created/switched one mid-turn),
+  // drop it so it never carries auto-approve into a different repo.
+  const prevTeam = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const team = settings?.team ?? null;
+    if (prevTeam.current !== undefined && prevTeam.current !== team) setAutoAccept(false);
+    prevTeam.current = team;
+  }, [settings?.team]);
 
   // The agent can create/switch/rename the team mid-turn (via the control
   // bridge). That only updates server-side state, so refresh settings when a
@@ -122,6 +155,16 @@ export function App() {
       const sp = text.indexOf(" ");
       const name = (sp === -1 ? text.slice(1) : text.slice(1, sp)).toLowerCase();
       const args = sp === -1 ? "" : text.slice(sp + 1);
+      if (name === "plan") {
+        setPlanMode((v) => !v);
+        setDraft("");
+        return;
+      }
+      if (name === "auto") {
+        setAutoAccept((v) => !v);
+        setDraft("");
+        return;
+      }
       if (COMMANDS.some((c) => c.name === name)) {
         setDraft("");
         runCommand(name);
@@ -134,36 +177,84 @@ export function App() {
             `/api/skills/${encodeURIComponent(name)}/expand`,
             { args },
           );
-          send(prompt, text);
+          send(prompt, text, planMode, autoAccept);
         } catch {
-          send(text);
+          send(text, undefined, planMode, autoAccept);
         }
         return;
       }
     }
-    send(text);
+    send(text, undefined, planMode, autoAccept);
     setDraft("");
-  }, [draft, busy, send, skills, runCommand]);
+  }, [draft, busy, send, skills, runCommand, planMode, autoAccept]);
 
   const model = settings?.model ?? "claude-opus-4.8";
   const empty = items.length === 0;
   const lastId = items[items.length - 1]?.id;
 
+  // The two turn modifiers (plan-first / auto-accept) live right under the
+  // composer as clear square pills with a gold "on" state — shown in BOTH the
+  // empty Home and an ongoing thread, since they're bundled into `composer`.
+  const toggleCls = (active: boolean) =>
+    `inline-flex items-center gap-1.5 border px-2.5 py-1 text-[12.5px] transition-colors ${
+      active
+        ? "border-sun/40 bg-sun-soft font-medium text-sun"
+        : "border-border text-ink-3 hover:bg-raised hover:text-ink-2"
+    }`;
+
   const composer = (
-    <Composer
-      draft={draft}
-      setDraft={setDraft}
-      onSubmit={submit}
-      busy={busy}
-      onStop={stop}
-      disabled={!!permission}
-      model={model}
-      onModelChange={setModel}
-      autoFocus
-      commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
-      skills={skills}
-      onRunCommand={runCommand}
-    />
+    <>
+      <Composer
+        draft={draft}
+        setDraft={setDraft}
+        onSubmit={submit}
+        busy={busy}
+        onStop={stop}
+        disabled={!!permission}
+        model={model}
+        onModelChange={setModel}
+        autoFocus
+        commands={COMMANDS.map((c) => ({ name: c.name, desc: c.desc }))}
+        skills={skills}
+        onRunCommand={runCommand}
+      />
+      <div className="mt-2.5 flex items-center justify-between px-1">
+        <div className="flex items-center gap-2">
+          <button
+            className={toggleCls(planMode)}
+            onClick={() => setPlanMode((v) => !v)}
+            title="Plan-first: the agent proposes a plan and waits for your approval before doing anything"
+          >
+            <ClipboardList size={13} />
+            {planMode ? "Plan-first: on" : "Plan-first"}
+          </button>
+          <button
+            className={toggleCls(autoAccept)}
+            onClick={() => setAutoAccept((v) => !v)}
+            title="Auto-accept: run tools without asking. Per-team — resets when you switch teams."
+          >
+            <Zap size={13} />
+            {autoAccept ? "Auto-accept: on" : "Auto-accept"}
+          </button>
+        </div>
+        {lastCost && (
+          <button
+            className="inline-flex items-center gap-1 text-xs text-ink-4 hover:text-ink-2"
+            onClick={() => setShowDetails((v) => !v)}
+          >
+            details
+            <ChevronDown size={12} className={showDetails ? "rotate-180" : ""} />
+          </button>
+        )}
+      </div>
+      {showDetails && lastCost && (
+        <div className="mt-1 px-1 font-mono text-[11.5px] text-ink-4">
+          context ~{Math.round(lastCost.ctxTokens / 1000)}k · last turn{" "}
+          {lastCost.costUsd != null ? `$${lastCost.costUsd.toFixed(4)}` : "—"} ·{" "}
+          {lastCost.outTokens} tokens out
+        </div>
+      )}
+    </>
   );
 
   return (
@@ -212,6 +303,13 @@ export function App() {
             {panel === "prototypes" && (
               <PrototypePanel open onOpenChange={(o) => !o && setPanel(null)} />
             )}
+            {panel === "atlas" && (
+              <Suspense
+                fallback={<p className="text-sm text-ink-3">Loading the globe…</p>}
+              >
+                <GlobePanel open onOpenChange={(o) => !o && setPanel(null)} />
+              </Suspense>
+            )}
             {panel === "skills" && (
               <SkillsPanel
                 open
@@ -254,7 +352,43 @@ export function App() {
                   </div>
                 )}
 
-                {permission && (
+                {permission && permission.name === "ExitPlanMode" && (
+                  <div className="perm">
+                    <div className="perm-head">
+                      <ClipboardList size={16} className="perm-icon" />
+                      <span>
+                        Hemiunu proposed a plan — <strong>ready to proceed?</strong>
+                      </span>
+                    </div>
+                    <div className="perm-actions">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setPlanMode(false);
+                          setAutoAccept(true);
+                          respond("plan-auto");
+                        }}
+                      >
+                        Yes — auto-accept edits
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setPlanMode(false);
+                          respond("plan-manual");
+                        }}
+                      >
+                        Yes — approve each step
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => respond("plan-refine")}>
+                        No, keep planning
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {permission && permission.name !== "ExitPlanMode" && (
                   <div className="perm">
                     <div className="perm-head">
                       <Wrench size={16} className="perm-icon" />
@@ -283,25 +417,6 @@ export function App() {
             <div className="bg-gradient-to-b from-transparent to-ground px-7 pb-4 pt-2.5">
               <div className="mx-auto max-w-[760px]">
                 {composer}
-                <div className="mt-2 flex items-center justify-between px-1 text-xs text-ink-4">
-                  <span />
-                  {lastCost && (
-                    <button
-                      className="inline-flex items-center gap-1 hover:text-ink-2"
-                      onClick={() => setShowDetails((v) => !v)}
-                    >
-                      details
-                      <ChevronDown size={12} className={showDetails ? "rotate-180" : ""} />
-                    </button>
-                  )}
-                </div>
-                {showDetails && lastCost && (
-                  <div className="mt-1 px-1 font-mono text-[11.5px] text-ink-4">
-                    context ~{Math.round(lastCost.ctxTokens / 1000)}k · last turn{" "}
-                    {lastCost.costUsd != null ? `$${lastCost.costUsd.toFixed(4)}` : "—"} ·{" "}
-                    {lastCost.outTokens} tokens out
-                  </div>
-                )}
               </div>
             </div>
           </>
@@ -311,7 +426,7 @@ export function App() {
   );
 }
 
-// A coalesced activity run: one summary row (icon + "Reading Notion pages · 9 —
+// A coalesced activity run: one summary row (icon + "Reading your files · 9 —
 // 'title'"), expandable to reveal the individual steps when there's detail.
 function GroupItem({ item }: { item: ChatItem }) {
   const [open, setOpen] = useState(false);

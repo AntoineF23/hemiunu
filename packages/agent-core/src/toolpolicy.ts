@@ -15,9 +15,9 @@ import { configDir } from "./config";
 export type ToolPolicy = "allow" | "ask" | "block";
 
 export interface ToolPolicyFile {
-  /** Per-server default, keyed by server name (e.g. "notion"). */
+  /** Per-server default, keyed by server name (e.g. "filesystem"). */
   servers: Record<string, ToolPolicy>;
-  /** Per-tool override, keyed by full tool id (e.g. "mcp__notion__notion-search"). */
+  /** Per-tool override, keyed by full tool id (e.g. "mcp__filesystem__read_file"). */
   tools: Record<string, ToolPolicy>;
   /** Tool ids observed in use, per server — so the UI can list real tools. */
   seen: Record<string, string[]>;
@@ -45,7 +45,7 @@ function save(cfg: ToolPolicyFile, root: string): void {
   writeFileSync(policyPath(root), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
 }
 
-/** Server name from a tool id: `mcp__notion__notion-search` → `notion` (else ""). */
+/** Server name from a tool id: `mcp__filesystem__read_file` → `filesystem` (else ""). */
 export function serverOf(toolId: string): string {
   if (!toolId.startsWith("mcp__")) return "";
   const rest = toolId.slice(5);

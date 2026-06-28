@@ -4,10 +4,10 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
  * Generic tool-output cap, the way Claude Code does it: a PostToolUse hook that
  * fires after a tool runs but BEFORE its result is sent to the model, and
  * replaces oversized results with a truncated version (`updatedToolOutput`).
- * Applies to every tool — Notion, filesystem, anything — with no per-tool work.
- * A notice tells the model it was truncated and how to get more, so nothing is
- * silently lost. This keeps fat results (50-row Notion dumps, big file reads)
- * from accumulating in the context window.
+ * Applies to every tool — filesystem, web search, anything — with no per-tool
+ * work. A notice tells the model it was truncated and how to get more, so
+ * nothing is silently lost. This keeps fat results (large search dumps, big
+ * file reads) from accumulating in the context window.
  */
 
 const CHARS_PER_TOKEN = 4;

@@ -197,6 +197,22 @@ export function parseServerConfig(raw: unknown): McpServerConfig {
   return ServerConfig.parse(raw);
 }
 
+/**
+ * The filesystem server is a BUILT-IN capability (it grants the agent access to
+ * the launch folder), not a user-added integration. Detect it — by name or by
+ * the `server-filesystem` package in its args — so the UI can treat it as a
+ * built-in: gate it behind folder-trust and hide it from the "connected MCP
+ * servers" list, where it would only confuse non-technical users.
+ */
+export function isBuiltinServer(name: string, config?: unknown): boolean {
+  if (name === "filesystem") return true;
+  const args = (config as { args?: unknown[] } | undefined)?.args;
+  return (
+    Array.isArray(args) &&
+    args.some((a) => typeof a === "string" && a.includes("server-filesystem"))
+  );
+}
+
 /** Read the raw (un-interpolated) server map from a user mcp.json overlay. */
 export function readUserServers(path: string): Record<string, McpServerConfig> {
   return readServers(path);

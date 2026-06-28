@@ -16,7 +16,7 @@ export const shortId = (id: string) => (id.length > 12 ? `${id.split("-")[0]}…
 export const shortPath = (p: string) =>
   HOME_DIR && p.startsWith(HOME_DIR) ? `~${p.slice(HOME_DIR.length)}` : p;
 
-/** mcp__notion__notion-search → notion·notion-search */
+/** mcp__filesystem__read_file → filesystem·read_file */
 export function prettyTool(name: string): string {
   if (name.startsWith("mcp__")) {
     const rest = name.slice(5);

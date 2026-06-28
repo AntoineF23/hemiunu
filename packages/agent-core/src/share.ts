@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { discoveryLine, recordDiscovery } from "./atlas";
 import { githubViewer, resolveGithubToken, resolveRepo } from "./github";
 import { stopPreview } from "./preview";
 import { vercelDeploy } from "./vercel";
@@ -42,8 +43,13 @@ export function createShareServer() {
       if (to === "main") {
         const binned = discardWorkspace(repo, "pushed to main");
         stopPreview();
+        // Gamification: publishing a new version to main earns a random famous
+        // building, drawn by rarity tier, into the user's global Atlas. The map
+        // itself lives in the web app; here we just announce the find so it
+        // surfaces on every surface (CLI note + web tool result).
+        const discovery = discoveryLine(recordDiscovery(repo));
         return text(
-          `Pushed to ${r.branch} and cleared the local workspace${binned ? " (a snapshot is in the recycle bin)" : ""}. Next iteration re-syncs from the latest.`,
+          `Pushed to ${r.branch} and cleared the local workspace${binned ? " (a snapshot is in the recycle bin)" : ""}. Next iteration re-syncs from the latest.\n\n${discovery}`,
         );
       }
       return text(`${r.note}. Open a PR for it, or share a preview with deploy_prototype.`);

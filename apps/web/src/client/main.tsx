@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-// Fonts (bundled, offline): Inter for UI, Newsreader for agent prose, JetBrains
-// Mono for code. Variable weights so we can use any weight without extra files.
-import "@fontsource-variable/inter";
-import "@fontsource-variable/newsreader";
+// Fonts (bundled, offline): Ubuntu for UI + agent prose, JetBrains Mono for code.
+import "@fontsource/ubuntu/300.css";
+import "@fontsource/ubuntu/400.css";
+import "@fontsource/ubuntu/500.css";
+import "@fontsource/ubuntu/700.css";
 import "@fontsource-variable/jetbrains-mono";
 // Noto Egyptian Hieroglyphs — so the glyph spinner / inscribing animation render
 // on any OS (macOS ships no hieroglyph font by default).

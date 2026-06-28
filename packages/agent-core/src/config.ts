@@ -74,8 +74,6 @@ export interface UserEnv {
   apiKey: string;
   baseUrl?: string;
   model?: string;
-  notionToken?: string;
-  tavilyKey?: string;
 }
 
 /**
@@ -91,16 +89,12 @@ export function writeUserEnv(env: UserEnv): string {
   const lines = [`ANTHROPIC_API_KEY=${env.apiKey}`];
   if (baseUrl) lines.unshift(`ANTHROPIC_BASE_URL=${baseUrl}`);
   if (env.model) lines.push(`HEMIUNU_MODEL=${env.model}`);
-  if (env.notionToken) lines.push(`NOTION_TOKEN=${env.notionToken}`);
-  if (env.tavilyKey) lines.push(`TAVILY_API_KEY=${env.tavilyKey}`);
   const path = join(dir, ".env");
   writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
 
   process.env.ANTHROPIC_API_KEY = env.apiKey;
   if (baseUrl) process.env.ANTHROPIC_BASE_URL = baseUrl;
   if (env.model) process.env.HEMIUNU_MODEL = env.model;
-  if (env.notionToken) process.env.NOTION_TOKEN = env.notionToken;
-  if (env.tavilyKey) process.env.TAVILY_API_KEY = env.tavilyKey;
   return path;
 }
 

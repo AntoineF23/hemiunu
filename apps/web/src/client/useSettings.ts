@@ -11,7 +11,8 @@ export interface Settings {
   team: string | null;
   teams: string[];
   mcpServers: string[];
-  mcpSkipped: string[];
+  /** Servers that didn't load, with why (e.g. a missing env var). */
+  mcpSkipped: { name: string; reason: string }[];
 }
 
 /** Fetch /api/settings once, with a refresh hook and an optimistic model setter. */

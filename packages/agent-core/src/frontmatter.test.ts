@@ -10,9 +10,9 @@ test("parseFrontmatter: no fence → everything is body", () => {
 
 test("parseFrontmatter: reads flat key/values and trims quotes", () => {
   const { meta, body } = parseFrontmatter(
-    `---\nmcp: notion\ndescription: "what's inside"\n---\n\nThe body.`,
+    `---\nmcp: acme\ndescription: "what's inside"\n---\n\nThe body.`,
   );
-  assert.equal(meta.mcp, "notion");
+  assert.equal(meta.mcp, "acme");
   assert.equal(meta.description, "what's inside");
   assert.equal(body, "The body.");
 });
@@ -24,9 +24,9 @@ test("parseFrontmatter: ignores malformed lines without a colon", () => {
 });
 
 test("renderFrontmatter: round-trips and skips undefined values", () => {
-  const text = renderFrontmatter({ mcp: "notion", description: "x", scanned: undefined }, "Body");
+  const text = renderFrontmatter({ mcp: "acme", description: "x", scanned: undefined }, "Body");
   const { meta, body } = parseFrontmatter(text);
-  assert.equal(meta.mcp, "notion");
+  assert.equal(meta.mcp, "acme");
   assert.equal(meta.description, "x");
   assert.equal(meta.scanned, undefined);
   assert.equal(body, "Body");

@@ -1,5 +1,9 @@
 export { runTurn } from "./agent";
 export type { RunTurnOptions } from "./agent";
+/** SDK permission-update suggestion type — surfaced so the CLI/web permission
+ *  callbacks can type the `suggestions` they pass back as `updatedPermissions`
+ *  (used to exit plan mode when the user approves an ExitPlanMode plan). */
+export type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 export { withWorkspace, currentWorkspace } from "./workspace-context";
 export type { WorkspaceContext } from "./workspace-context";
 export { loadConfig, configDir, hasApiKey, writeUserEnv } from "./config";
@@ -116,6 +120,16 @@ export {
 } from "./workspace";
 export type { PushResult } from "./workspace";
 export { createShareServer, SHARE_TOOLS } from "./share";
+export {
+  MONUMENTS,
+  TIERS,
+  TIER_ORDER,
+  atlasPath,
+  loadAtlas,
+  recordDiscovery,
+  discoveryLine,
+} from "./atlas";
+export type { Tier, TierMeta, Monument, Discovery, DiscoveryResult } from "./atlas";
 export {
   loadSourceMaps,
   loadSourceMap,

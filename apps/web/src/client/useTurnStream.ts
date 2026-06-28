@@ -43,7 +43,7 @@ export interface TurnState {
   lastCost: { costUsd: number | null; outTokens: number; ctxTokens: number } | null;
   /** Send a turn. `display` overrides the user-bubble text (e.g. show `/skill`
    *  while sending its expanded body). */
-  send: (prompt: string, display?: string) => void;
+  send: (prompt: string, display?: string, planMode?: boolean, autoAccept?: boolean) => void;
   respond: (decision: PermissionDecision) => void;
   stop: () => void;
   /** Clear the conversation and start fresh (new chat). */
@@ -128,7 +128,7 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
   }, []);
 
   const send = useCallback(
-    (prompt: string, display?: string) => {
+    (prompt: string, display?: string, planMode?: boolean, autoAccept?: boolean) => {
       const text = prompt.trim();
       if (!text || busy) return;
       push({ kind: "user", text: (display ?? prompt).trim() });
@@ -139,7 +139,12 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
           const res = await fetch("/api/turn", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ prompt: text, resume: sessionRef.current }),
+            body: JSON.stringify({
+              prompt: text,
+              resume: sessionRef.current,
+              ...(planMode ? { planMode: true } : {}),
+              ...(autoAccept ? { autoAccept: true } : {}),
+            }),
           });
           if (!res.ok || !res.body) {
             push({ kind: "error", text: `Worker error (${res.status})` });

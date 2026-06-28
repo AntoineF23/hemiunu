@@ -53,6 +53,10 @@ turnRoute.post("/api/turn", async (c) => {
   if (!body.resume) resetAlwaysAllow();
   const turnId = randomUUID();
   const session = createSession(turnId);
+  // Seed auto-accept from the request (the client echoes its per-team toggle).
+  // Plan-first turns start read-only, so auto-accept only kicks in once the plan
+  // is approved with "auto" (resolvePermission flips it on then).
+  session.autoAccept = body.planMode ? false : !!body.autoAccept;
   const { servers, patterns } = activeMcp(rt);
 
   return streamSSE(c, async (stream) => {
@@ -96,6 +100,39 @@ turnRoute.post("/api/turn", async (c) => {
               resolve({ behavior: "allow", updatedInput: input });
               return;
             }
+            // Planning tools (built-in). TodoWrite + EnterPlanMode are internal
+            // & read-only — auto-approve, shown as a note. ExitPlanMode is the
+            // plan-approval gate: surface the plan, then fall through to gating.
+            if (toolName === "TodoWrite") {
+              const todos = Array.isArray(input.todos)
+                ? (input.todos as { status?: string; activeForm?: string; content?: string }[])
+                : [];
+              const done = todos.filter((t) => t?.status === "completed").length;
+              const active = todos.find((t) => t?.status === "in_progress");
+              const label = active?.activeForm || active?.content || "";
+              emit({
+                type: "note",
+                text: `◷ plan · ${done}/${todos.length}${label ? ` — ${clip(label, 60)}` : ""}`,
+              });
+              resolve({ behavior: "allow", updatedInput: input });
+              return;
+            }
+            if (toolName === "EnterPlanMode") {
+              emit({ type: "note", text: "◷ planning — researching before proposing an approach…" });
+              resolve({ behavior: "allow", updatedInput: input });
+              return;
+            }
+            if (toolName === "ExitPlanMode") {
+              const plan = typeof input.plan === "string" ? input.plan : "";
+              if (plan) emit({ type: "note", text: `Proposed plan:\n${plan}` });
+              // Park for the client's plan menu (handled by the gating below).
+            } else if (session.autoAccept) {
+              // Auto-accept mode: approve every gated tool without asking. Flipped
+              // on by the request body or by approving a plan with "auto"; the
+              // client resets it when the team changes, so it never crosses repos.
+              resolve({ behavior: "allow", updatedInput: input });
+              return;
+            }
             // Persistent per-tool / per-server policy (set in the MCP panel).
             // Record the tool so the panel can list it, then honor the policy.
             recordSeenTool(toolName);
@@ -112,7 +149,9 @@ turnRoute.post("/api/turn", async (c) => {
               resolve({ behavior: "allow", updatedInput: input });
               return;
             }
-            // Genuinely gated: park the resolver and ask the browser.
+            // Genuinely gated: park the resolver and ask the browser. ExitPlanMode
+            // shows the Claude-Code plan menu client-side; the chosen decision
+            // drives the mode switch in resolvePermission.
             const requestId = randomUUID();
             session.pending.set(requestId, { resolve, toolName, input });
             emit({ type: "permission", requestId, name: toolName, preview: toolPreview(input) });
@@ -156,6 +195,7 @@ turnRoute.post("/api/turn", async (c) => {
         systemPrompt: effectiveSystem(rt, Object.keys(servers)),
         resume: body.resume,
         canUseTool,
+        ...(body.planMode ? { permissionMode: "plan" as const } : {}),
         // Inject a fresh OAuth bearer (refreshed if needed) for any remote server
         // the user authorized; a no-op when none are.
         mcpServers: await applyMcpOAuth(servers),
@@ -339,11 +379,16 @@ turnRoute.post("/api/turn/:turnId/permission", async (c) => {
   const ok = resolvePermission(turnId, requestId, decision);
   if (!ok) return c.json({ error: "no such pending permission" }, 404);
   // Echo a decision note onto the turn's stream (mirrors the CLI's perm chip).
+  const DECISION_NOTE: Record<string, string> = {
+    always: "always allowed",
+    yes: "allowed",
+    no: "denied",
+    "plan-auto": "plan approved — auto-accepting edits",
+    "plan-manual": "plan approved — approving each step",
+    "plan-refine": "keep planning — refining the plan",
+  };
   const s = getSession(turnId);
-  s?.emit({
-    type: "note",
-    text: `${decision === "always" ? "always allowed" : decision === "yes" ? "allowed" : "denied"}`,
-  });
+  s?.emit({ type: "note", text: DECISION_NOTE[decision] ?? "denied" });
   return c.json({ ok: true });
 });
 

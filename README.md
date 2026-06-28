@@ -8,8 +8,8 @@ An organization-wide AI **Product Agent** for a product team, built on the
 [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk) (TypeScript).
 
 The current build is the **CLI MVP**: a product-knowledge agent that answers
-questions grounded in your connected sources (Notion, local files, any MCP
-server), remembers what it learns, and keeps full conversations on disk. The
+questions grounded in your connected sources (local files and any MCP servers
+you add), remembers what it learns, and keeps full conversations on disk. The
 long-term vision — prototyping (wireframes → design system → deploy), a hosted
 web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
 
@@ -17,8 +17,8 @@ web app, and per-user auth — lives in [`FINAL_PLAN.md`](./FINAL_PLAN.md).
 
 - **Chat REPL** (Ink TUI) with a pyramid banner, live status line, and
   Claude-Code-style streaming.
-- **Grounded answers** — connects to MCP servers (Notion read-only, local
-  filesystem, or anything you add to `mcp.json`) and searches them before
+- **Grounded answers** — connects to MCP servers (the local filesystem, plus
+  anything you add to `mcp.json`) and searches them before
   answering. Every tool call is gated by a **yes / always / no** permission
   prompt (queued, arrow-key select, `Esc` to interrupt).
 - **Source maps (`/scan`)** — `/scan <mcp>` (or just `/scan` for all connected
@@ -85,9 +85,9 @@ hemiunu
 ```
 
 **On first run it asks for your Anthropic API key** (the Claude brain) and,
-optionally, a gateway base URL and Notion / Tavily tokens — no file editing.
-Your keys are saved to `~/.hemiunu/.env`. `/setup` shows where they live; `/mcp`
-shows connected servers.
+optionally, a gateway base URL — no file editing. Your keys are saved to
+`~/.hemiunu/.env`. `/setup` shows where they live; `/mcp` shows connected
+servers and lets you add more.
 
 **Models are bring-your-own.** The brain is Claude (Anthropic directly, or any
 Anthropic-compatible gateway via `ANTHROPIC_BASE_URL`). The `ask_model` tool can
@@ -124,7 +124,7 @@ corepack pnpm link --global   # optional: expose the `hemiunu` command
 | `HEMIUNU_MODEL` | Main / synthesis model id, e.g. `claude-opus-4.8` / `claude-sonnet-4.6`. |
 | `HEMIUNU_MODEL_RESEARCH` | Retrieval tier for the `researcher` subagent (default `claude-sonnet-4.6`). Haiku isn't supported — see note below. |
 | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY` | *Optional, per provider.* Enable that provider for the `ask_model` tool. |
-| `NOTION_TOKEN`, `TAVILY_API_KEY` | *Optional.* Enable the Notion / Tavily MCP servers. |
+| *(MCP server secrets)* | *Optional.* Any `${ENV_VAR}` referenced by a server you add to `mcp.json` (e.g. an API token). |
 | `HEMIUNU_THINKING_BUDGET` | Extended-thinking tokens. `0`/unset = disabled (cheaper, works everywhere). |
 | `HEMIUNU_CONTEXT_WINDOW` / `HEMIUNU_COMPACT_THRESHOLD` | Context window override / auto-compaction threshold (default `0.5`). |
 
@@ -153,10 +153,10 @@ project.
 ```md
 ---
 name: weekly-report
-description: Draft the weekly product status report from Notion updates.
+description: Draft the weekly product status report from the team's updates.
 argument-hint: "[week]"
 ---
-Gather this week's updates from Notion (delegate to the researcher), then write a
+Gather this week's updates from the connected sources (delegate to the researcher), then write a
 concise status report covering shipped / in-progress / blocked, scoped to:
 $ARGUMENTS
 ```

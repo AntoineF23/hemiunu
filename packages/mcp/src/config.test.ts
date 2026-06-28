@@ -42,7 +42,7 @@ test("loadMcpRegistry: interpolates ${ENV} and emits one tool pattern per server
   try {
     withTempMcp(
       {
-        notion: {
+        acme: {
           type: "http",
           url: "https://example.com",
           headers: { Authorization: "Bearer ${HEMIUNU_TEST_TOKEN}" },
@@ -50,8 +50,8 @@ test("loadMcpRegistry: interpolates ${ENV} and emits one tool pattern per server
       },
       (dir) => {
         const reg = loadMcpRegistry(dir);
-        assert.deepEqual(reg.toolPatterns, ["mcp__notion__*"]);
-        const cfg = reg.mcpServers.notion as { headers: Record<string, string> };
+        assert.deepEqual(reg.toolPatterns, ["mcp__acme__*"]);
+        const cfg = reg.mcpServers.acme as { headers: Record<string, string> };
         assert.equal(cfg.headers.Authorization, "Bearer secret123");
         assert.equal(reg.skipped.length, 0);
       },

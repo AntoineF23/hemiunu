@@ -1,6 +1,6 @@
 # Hemiunu — OAuth / Token-Broker for MCP (deferred milestone)
 
-> **Status:** DEFERRED. Captured for later. Hemiunu starts with local (stdio) MCP servers, which need no auth. Build this when we want OAuth-protected remote servers (hosted Notion at `mcp.notion.com`, and the final-vision Auth0-protected custom servers).
+> **Status:** DEFERRED. Captured for later. Hemiunu starts with local (stdio) MCP servers, which need no auth. Build this when we want OAuth-protected remote servers (e.g. a hosted SaaS MCP at `mcp.<vendor>.com`, and the final-vision Auth0-protected custom servers).
 
 ## Why this is needed
 
@@ -57,4 +57,4 @@ Spawn `open` (darwin) / `xdg-open` (linux) / `start` (win); always also print th
 ## Verification
 
 - Unit-test **discovery** against public metadata (no consent needed).
-- Full flow: `/login notion` → browser consent → token stored → `mcp__notion__*` available → a Notion-grounded answer. Then quit/relaunch and confirm refresh works without re-consent.
+- Full flow: `/login <server>` → browser consent → token stored → `mcp__<server>__*` available → an answer grounded in that server. Then quit/relaunch and confirm refresh works without re-consent.

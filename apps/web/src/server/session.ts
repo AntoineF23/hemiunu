@@ -2,10 +2,15 @@
 // cross-request state the worker holds; all durable state stays in the engine's
 // SQLite + disk. A turn lives here only while its SSE stream is open, so the
 // `/permission` and `/abort` routes can find the right turn to act on.
-import type { ServerEvent } from "../shared/protocol";
+import type { PermissionUpdate } from "@hemiunu/agent-core";
+import type { PermissionDecision, ServerEvent } from "../shared/protocol";
 
 export type PermissionResult =
-  | { behavior: "allow"; updatedInput: Record<string, unknown> }
+  | {
+      behavior: "allow";
+      updatedInput: Record<string, unknown>;
+      updatedPermissions?: PermissionUpdate[];
+    }
   | { behavior: "deny"; message: string };
 
 interface PendingPermission {
@@ -22,6 +27,9 @@ export interface TurnSession {
   permChain: Promise<unknown>;
   /** Push an event onto this turn's SSE stream (set by the turn handler). */
   emit: (e: ServerEvent) => void;
+  /** Auto-accept mode: approve every gated tool without prompting. Seeded from
+   *  the turn request and flipped on when a plan is approved with "auto". */
+  autoAccept: boolean;
 }
 
 const sessions = new Map<string, TurnSession>();
@@ -43,6 +51,7 @@ export function createSession(turnId: string): TurnSession {
     pending: new Map(),
     permChain: Promise.resolve(),
     emit: () => {},
+    autoAccept: false,
   };
   sessions.set(turnId, s);
   return s;
@@ -56,17 +65,39 @@ export function getSession(turnId: string): TurnSession | undefined {
 export function resolvePermission(
   turnId: string,
   requestId: string,
-  decision: "yes" | "always" | "no",
+  decision: PermissionDecision,
 ): boolean {
   const s = sessions.get(turnId);
   const p = s?.pending.get(requestId);
   if (!s || !p) return false;
   s.pending.delete(requestId);
   if (decision === "always") alwaysAllow.add(p.toolName);
+  // Approving a plan with "auto" turns on auto-accept for the rest of this turn
+  // (and seeds the next via the client echoing it back in the request body).
+  if (decision === "plan-auto") s.autoAccept = true;
+  // Accepting a plan switches the session OUT of plan mode (the approved plan
+  // then executes this turn): "plan-auto" → auto-accept edits, "plan-manual" →
+  // approve each step. "plan-refine" and "no" deny so the agent keeps planning.
+  const mode: "acceptEdits" | "default" | null =
+    decision === "plan-auto" ? "acceptEdits" : decision === "plan-manual" ? "default" : null;
+  const allow: PermissionResult = mode
+    ? {
+        behavior: "allow",
+        updatedInput: p.input,
+        updatedPermissions: [{ type: "setMode", mode, destination: "session" }],
+      }
+    : { behavior: "allow", updatedInput: p.input };
+  const denied = decision === "no" || decision === "plan-refine";
   p.resolve(
-    decision === "no"
-      ? { behavior: "deny", message: "Denied by user." }
-      : { behavior: "allow", updatedInput: p.input },
+    denied
+      ? {
+          behavior: "deny",
+          message:
+            decision === "plan-refine"
+              ? "The user wants to keep refining the plan before any execution. Discuss and revise the plan with them; do not start building yet."
+              : "Denied by user.",
+        }
+      : allow,
   );
   return true;
 }

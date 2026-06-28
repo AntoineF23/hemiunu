@@ -14,7 +14,7 @@ export interface ActivityChild {
 export type ActivityGroup =
   | {
       kind: "tool-run";
-      /** Friendly label the run coalesces on, e.g. "Reading a Notion page". */
+      /** Friendly label the run coalesces on, e.g. "Reading your files". */
       label: string;
       count: number;
       /** Most-recent preview (page title / query), shown inline. */
