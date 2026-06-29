@@ -12,6 +12,18 @@ updates:
         update-types:
           - minor
           - patch
+    # The repo enforces a pnpm minimum-release-age supply-chain policy, so a
+    # version published moments ago is rejected at install time. Wait for a
+    # version to age before proposing it, so Dependabot PRs pass CI. Bump these
+    # days if updates still trip the policy.
+    cooldown:
+      default-days: 7
+    # Don't auto-open major-version bumps — they can carry breaking changes and
+    # deserve a deliberate, hands-on upgrade. Minor/patch flow automatically.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   # Keep the GitHub Actions in .github/workflows up to date too.
   - package-ecosystem: github-actions
