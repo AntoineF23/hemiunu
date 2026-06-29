@@ -1,0 +1,53 @@
+name: CI
+
+# Gates every push to main and every pull request on the same checks a
+# developer runs locally (see the "Develop & verify" section of the README).
+# Live `smoke` / `cap` are intentionally NOT run here: they call the model,
+# cost money, and need an ANTHROPIC_API_KEY — CI carries no secrets. The
+# offline smoke below is free and deterministic.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref so a quick succession of pushes
+# doesn't pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # corepack provides the exact pnpm pinned in package.json
+      # (packageManager: pnpm@11.8.0) as a real binary on PATH, which both
+      # setup-node's cache and turbo need.
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format
+
+      - name: Test
+        run: pnpm test
+
+      - name: Smoke (offline)
+        run: pnpm smoke --offline

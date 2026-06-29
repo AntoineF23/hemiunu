@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # npm/pnpm dependencies across the workspace. Dependabot reads the pnpm
+  # lockfile and opens grouped PRs so routine minor/patch bumps don't sprawl.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Keep the GitHub Actions in .github/workflows up to date too.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
