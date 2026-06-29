@@ -4,8 +4,10 @@
 import { join } from "node:path";
 import { Hono } from "hono";
 import {
+  applyMcpOAuth,
   configDir,
   deleteSourceMap,
+  enumerateServerTools,
   loadSourceMap,
   loadSourceMaps,
   loadToolPolicy,
@@ -13,6 +15,7 @@ import {
   probeMcpServer,
   runScan,
   saveSourceMap,
+  setSeenTools,
   setServerPolicy,
   setToolPolicy,
   slugify,
@@ -31,6 +34,27 @@ export const mcpRoute = new Hono();
 
 const POLICIES = new Set<ToolPolicy>(["allow", "ask", "block"]);
 const userMcpPath = () => join(configDir(), "mcp.json");
+
+/**
+ * List every tool a connected server exposes and record the full inventory in
+ * the tool-policy so the panel shows them all (each with allow/ask/block) — not
+ * just the lazily-observed subset. Uses the registry's already-sandboxed config
+ * and injects any OAuth token (remote servers). Best-effort: returns 0 and
+ * records nothing if the server is unreachable / needs auth / cold-starts slowly.
+ */
+async function discoverTools(name: string): Promise<number> {
+  const rt = bootRuntime();
+  const config = rt.registry.mcpServers[name];
+  if (!config) return 0;
+  const withAuth = await applyMcpOAuth({ [name]: config });
+  const tools = await enumerateServerTools(withAuth[name]);
+  if (!tools) return 0;
+  setSeenTools(
+    name,
+    tools.map((t) => t.name),
+  );
+  return tools.length;
+}
 
 // Known server names → brand domain, for servers without a usable URL (stdio).
 const KNOWN_DOMAINS: Record<string, string> = {
@@ -163,6 +187,10 @@ mcpRoute.post("/api/mcp/server", async (c) => {
   }
   upsertUserServer(userMcpPath(), name.trim(), parsed);
   reloadRegistry();
+  // Enumerate the new server's tools in the background so the panel can show
+  // every tool (with allow/ask/block) — without blocking this response on a
+  // cold `npx` boot. The user can also hit "Discover tools" to force a refresh.
+  void discoverTools(name.trim()).catch(() => {});
   return c.json({ ok: true });
 });
 
@@ -222,6 +250,25 @@ mcpRoute.put("/api/mcp/:name/sourcemap", async (c) => {
 mcpRoute.delete("/api/mcp/:name/sourcemap", (c) => {
   deleteSourceMap(c.req.param("name"));
   return c.json({ ok: true });
+});
+
+// List (or refresh) a connected server's full tool inventory and record it, so
+// the panel shows every tool with an allow/ask/block control. No LLM turn, no
+// cost — just an MCP `tools/list`.
+mcpRoute.post("/api/mcp/:name/tools", async (c) => {
+  const rt = bootRuntime();
+  const name = c.req.param("name");
+  if (!(name in rt.registry.mcpServers)) {
+    return c.json({ error: `${name} isn't a connected MCP server.` }, 400);
+  }
+  const count = await discoverTools(name);
+  if (count === 0) {
+    return c.json(
+      { error: "Couldn't list this server's tools — it may be offline, need authorizing, or still starting up. Try again in a moment." },
+      502,
+    );
+  }
+  return c.json({ count });
 });
 
 // Re-scan a connected server (runs the scanner subagent — costs a turn).

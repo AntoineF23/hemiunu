@@ -1,4 +1,5 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { createPolicyBlockHook } from "./toolpolicy";
 
 /**
  * Generic tool-output cap, the way Claude Code does it: a PostToolUse hook that
@@ -32,6 +33,16 @@ function textOf(resp: unknown): string {
     return JSON.stringify(resp);
   }
   return String(resp);
+}
+
+/**
+ * The full hook set every `query()` should run: the PostToolUse output cap plus
+ * the PreToolUse user-block enforcement. The two use disjoint event keys, so a
+ * shallow merge composes them. Use this everywhere instead of the bare
+ * `createToolCapHook()` so a user's "block" is honored in subagents too.
+ */
+export function createAgentHooks(budgetTokens?: number): NonNullable<Options["hooks"]> {
+  return { ...createPolicyBlockHook(), ...createToolCapHook(budgetTokens) };
 }
 
 /** Build the PostToolUse cap hook for the SDK `hooks` option. */

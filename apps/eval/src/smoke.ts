@@ -39,6 +39,10 @@ import {
   loadSourceMaps,
   loadSourceMap,
   createToolCapHook,
+  createPolicyBlockHook,
+  setSeenTools,
+  setToolPolicy,
+  loadToolPolicy,
   appendKnowledge,
   normalizeRepo,
   prototypePath,
@@ -452,6 +456,54 @@ async function main() {
         replaced.length < 5000 && /truncated/i.test(replaced),
         "replacement should be shorter and carry a truncation notice",
       );
+    },
+  );
+
+  await check(
+    "tool policy: setSeenTools records the full inventory; block hook denies only blocked tools",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hemiunu-policy-"));
+      const prevDir = process.env.HEMIUNU_CONFIG_DIR;
+      process.env.HEMIUNU_CONFIG_DIR = root; // so the hook's resolveToolPolicy() reads here
+      try {
+        // Full inventory: bare names get normalised to ids, sorted & deduped;
+        // Hemiunu's own servers are skipped.
+        setSeenTools("demo", ["write", "search", "search"], root);
+        setSeenTools("hemiunu-memory", ["remember"], root);
+        const cfg = loadToolPolicy(root);
+        assert(
+          JSON.stringify(cfg.seen.demo) ===
+            JSON.stringify(["mcp__demo__search", "mcp__demo__write"]),
+          `seen.demo should be the sorted, prefixed inventory, got ${JSON.stringify(cfg.seen.demo)}`,
+        );
+        assert(!cfg.seen["hemiunu-memory"], "Hemiunu's own servers must not be recorded");
+
+        // Block hook denies a tool the user set to "block", passes everything else.
+        setToolPolicy("mcp__demo__write", "block", root);
+        const cb = createPolicyBlockHook().PreToolUse![0].hooks[0];
+        const denied = (await cb(
+          { hook_event_name: "PreToolUse", tool_name: "mcp__demo__write" } as any,
+          "id1",
+          {} as any,
+        )) as any;
+        assert(
+          denied.hookSpecificOutput?.permissionDecision === "deny",
+          "a blocked tool should be denied by the PreToolUse hook",
+        );
+        const allowed = (await cb(
+          { hook_event_name: "PreToolUse", tool_name: "mcp__demo__search" } as any,
+          "id2",
+          {} as any,
+        )) as any;
+        assert(
+          !allowed.hookSpecificOutput,
+          "a non-blocked tool must pass through untouched (no automatic blocking)",
+        );
+      } finally {
+        if (prevDir === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+        else process.env.HEMIUNU_CONFIG_DIR = prevDir;
+        rmSync(root, { recursive: true, force: true });
+      }
     },
   );
 

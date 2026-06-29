@@ -9,7 +9,7 @@ import { createPrototypeKnowledgeServer, PROTOTYPE_KNOWLEDGE_TOOLS } from "./pro
 import { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 import { createShareServer, SHARE_TOOLS } from "./share";
 import { createSourcesServer, SOURCE_TOOLS } from "./sources";
-import { createToolCapHook } from "./toolcap";
+import { createAgentHooks } from "./toolcap";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
 import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
@@ -157,7 +157,7 @@ export async function* runTurn(opts: RunTurnOptions) {
       systemPrompt: opts.systemPrompt ?? DEFAULT_SOUL,
       // Cap oversized tool results before they enter context (covers the main
       // loop AND SDK-delegated subagents). See toolcap.ts.
-      hooks: createToolCapHook(),
+      hooks: createAgentHooks(),
       // Context is fully ours — don't load filesystem .claude/ config.
       settingSources: [],
       env: {

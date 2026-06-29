@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { configDir } from "./config";
 
 /**
@@ -89,4 +90,52 @@ export function recordSeenTool(toolId: string, root: string = configDir()): void
   arr.sort();
   cfg.seen[s] = arr;
   save(cfg, root);
+}
+
+/**
+ * Replace a server's full "seen" tool list authoritatively — used when we
+ * enumerate every tool a server exposes (via `enumerateServerTools`) at add /
+ * refresh time, so the panel shows the COMPLETE inventory up front rather than
+ * the lazily-discovered subset `recordSeenTool` accretes. Bare tool names are
+ * normalised to full ids (`mcp__<server>__<name>`); existing per-tool policies
+ * are untouched (they're keyed separately). No-op for Hemiunu's own servers.
+ */
+export function setSeenTools(server: string, toolIds: string[], root: string = configDir()): void {
+  if (!server || server.startsWith("hemiunu")) return;
+  const prefix = `mcp__${server}__`;
+  const ids = [...new Set(toolIds.map((t) => (t.startsWith("mcp__") ? t : `${prefix}${t}`)))].sort();
+  const cfg = loadToolPolicy(root);
+  cfg.seen[server] = ids;
+  save(cfg, root);
+}
+
+/**
+ * A PreToolUse hook that refuses any tool the USER has explicitly set to
+ * "block" in the MCP panel — and ONLY those (never anything automatic, so a
+ * genuinely useful tool is never caught). Unlike the web `canUseTool` gate, a
+ * PreToolUse hook also fires inside auto-approving subagent / scanner sub-runs
+ * (SDK PreToolUse denies bypass canUseTool), so a block finally means block
+ * everywhere — main agent and any delegated work alike.
+ */
+export function createPolicyBlockHook(): NonNullable<Options["hooks"]> {
+  return {
+    PreToolUse: [
+      {
+        hooks: [
+          async (input) => {
+            const name = (input as { tool_name?: string }).tool_name ?? "";
+            if (resolveToolPolicy(name) !== "block") return {};
+            return {
+              hookSpecificOutput: {
+                hookEventName: "PreToolUse",
+                permissionDecision: "deny",
+                permissionDecisionReason:
+                  "Blocked in your MCP settings. Change it to Allow or Ask in the MCP panel to use this tool.",
+              },
+            };
+          },
+        ],
+      },
+    ],
+  };
 }

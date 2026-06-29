@@ -8,7 +8,7 @@ import { configDir, loadConfig } from "./config";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
 import { asStream } from "./messages";
 import { slugify } from "./prototype";
-import { createToolCapHook } from "./toolcap";
+import { createAgentHooks } from "./toolcap";
 
 /**
  * Per-MCP "source maps" — a per-user memory of what lives inside each connected
@@ -257,7 +257,7 @@ export async function runScan(opts: ScanOptions): Promise<string> {
       model: cfg.researchModel,
       thinking: cfg.thinking,
       systemPrompt: SCANNER_PROMPT,
-      hooks: createToolCapHook(),
+      hooks: createAgentHooks(),
       settingSources: [],
       env: {
         ...process.env,

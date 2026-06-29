@@ -106,6 +106,7 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState<string | null>(null);
+  const [discovering, setDiscovering] = useState<string | null>(null);
   const [mapView, setMapView] = useState<{ name: string; body: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<ServerInfo | null>(null);
@@ -168,6 +169,21 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
       setMapView({ name, body: m.exists ? m.body : "_No source map yet — run a scan._" });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // List every tool the server exposes (no LLM turn) and refresh the panel so
+  // each tool gets an allow/ask/block control — even ones never called yet.
+  const refreshTools = async (name: string) => {
+    setDiscovering(name);
+    setError(null);
+    try {
+      await sendJSON(`/api/mcp/${encodeURIComponent(name)}/tools`, {});
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiscovering(null);
     }
   };
 
@@ -248,7 +264,9 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
             onCancel={() => setAdding(false)}
             onDone={async (name) => {
               setAdding(false);
-              setFlash(`Added “${name}” — it connects on your next message.`);
+              setFlash(
+                `Added “${name}” — discovering its tools now. Use “Discover tools” if they don't appear.`,
+              );
               await load();
             }}
             onError={setError}
@@ -381,21 +399,49 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
                   </div>
                 </div>
 
-                {/* Per-tool overrides (tools observed in use) */}
-                {s.tools.length > 0 && (
+                {/* Per-tool permissions — the server's full tool inventory,
+                    each with allow / ask / block (inherits the server default). */}
+                {s.connected && (
                   <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
-                    {s.tools.map((t) => (
-                      <div key={t.id} className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">
-                          {shortTool(t.id)}
-                        </span>
-                        <PolicyToggle
-                          value={t.policy}
-                          inherited={s.serverPolicy}
-                          onChange={(p) => setPolicy("tool", t.id, p)}
-                        />
-                      </div>
-                    ))}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-ink-3">
+                        Tools{s.tools.length > 0 ? ` (${s.tools.length})` : ""}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={discovering === s.name}
+                        onClick={() => refreshTools(s.name)}
+                        title="List every tool this server exposes"
+                      >
+                        {discovering === s.name ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-3.5" />
+                        )}
+                        {s.tools.length > 0 ? "Refresh tools" : "Discover tools"}
+                      </Button>
+                    </div>
+                    {s.tools.length > 0 ? (
+                      s.tools.map((t) => (
+                        <div key={t.id} className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">
+                            {shortTool(t.id)}
+                          </span>
+                          <PolicyToggle
+                            value={t.policy}
+                            inherited={s.serverPolicy}
+                            onChange={(p) => setPolicy("tool", t.id, p)}
+                          />
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-xs text-ink-4">
+                        {discovering === s.name
+                          ? "Discovering tools…"
+                          : "No tools listed yet — Discover to load them."}
+                      </span>
+                    )}
                   </div>
                 )}
 

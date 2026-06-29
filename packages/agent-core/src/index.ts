@@ -143,16 +143,25 @@ export {
   GET_SOURCE_MAP_TOOL_ID,
 } from "./sources";
 export type { SourceMap, SourceMapMeta, SaveSourceMapOptions, ScanOptions } from "./sources";
-export { createToolCapHook, resultBudgetTokens, DEFAULT_RESULT_BUDGET_TOKENS } from "./toolcap";
+export {
+  createToolCapHook,
+  createAgentHooks,
+  resultBudgetTokens,
+  DEFAULT_RESULT_BUDGET_TOKENS,
+} from "./toolcap";
 export {
   loadToolPolicy,
   setServerPolicy,
   setToolPolicy,
   resolveToolPolicy,
   recordSeenTool,
+  setSeenTools,
+  createPolicyBlockHook,
   serverOf,
 } from "./toolpolicy";
 export type { ToolPolicy, ToolPolicyFile } from "./toolpolicy";
+export { enumerateServerTools } from "./mcp-tools";
+export type { McpToolInfo } from "./mcp-tools";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
 export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";

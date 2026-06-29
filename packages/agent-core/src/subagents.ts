@@ -4,7 +4,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { asStream } from "./messages";
 import { SOURCE_TOOLS, loadSourceMaps } from "./sources";
-import { createToolCapHook } from "./toolcap";
+import { createAgentHooks } from "./toolcap";
 
 /** save_prototype tool pattern (the prototyper's only tool). */
 const PROTOTYPE_TOOLS = "mcp__hemiunu-prototype__*";
@@ -262,7 +262,7 @@ export async function runSubagent(
       model: modelFor(spec, ctx),
       thinking: ctx.thinking,
       systemPrompt: subagentPrompt(name),
-      hooks: createToolCapHook(),
+      hooks: createAgentHooks(),
       settingSources: [],
       env: {
         ...process.env,
