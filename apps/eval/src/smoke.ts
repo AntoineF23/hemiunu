@@ -1051,8 +1051,10 @@ async function main() {
       setControlHandler(async (e) => {
         if (e.type === "create-team") return `made ${e.name}`;
         if (e.type === "rename-team") return `renamed ${e.name}`;
-        if (e.type === "ask-user") return e.questions.map((q) => `${q.header}: ${q.options[0].label}`).join("\n");
-        return `switched ${e.repo}`;
+        if (e.type === "ask-user")
+          return e.questions.map((q) => `${q.header}: ${q.options[0].label}`).join("\n");
+        if (e.type === "switch-team") return `switched ${e.repo}`;
+        return e.line; // discovery
       });
       assert(
         (await requestControl({ type: "create-team", name: "foo" })) === "made foo",
