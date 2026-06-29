@@ -10,6 +10,8 @@ import {
   mcpOAuthStatus,
   REMEMBER_TOOL_ID,
   ASK_USER_TOOL_ID,
+  resolveToolPolicy,
+  setToolPolicy,
   PARALLEL_TOOL_ID,
   configDir,
   hasApiKey,
@@ -909,7 +911,17 @@ function App({
             resolve({ behavior: "allow", updatedInput: input });
             return;
           }
-          if (alwaysAllow.current.has(toolName)) {
+          // Persistent per-tool policy — an "always allow" is saved here, so it
+          // survives across turns, auto-compaction, and restarts (the session Set
+          // alone was lost when the session reset mid-conversation). "block" hard-
+          // denies. resolveToolPolicy reads fresh each call.
+          const policy = resolveToolPolicy(toolName);
+          if (policy === "block") {
+            push({ kind: "perm", ok: false, text: `blocked ${prettyTool(toolName)}` });
+            resolve({ behavior: "deny", message: "Blocked in your tool settings." });
+            return;
+          }
+          if (policy === "allow" || alwaysAllow.current.has(toolName)) {
             resolve({ behavior: "allow", updatedInput: input });
             return;
           }
@@ -920,7 +932,10 @@ function App({
             name: toolName,
             onChoice: (choice) => {
               setPermission(null);
-              if (choice === "always") alwaysAllow.current.add(toolName);
+              if (choice === "always") {
+                alwaysAllow.current.add(toolName); // immediate
+                setToolPolicy(toolName, "allow"); // persist — "always" must stick
+              }
               push({
                 kind: "perm",
                 ok: choice !== "no",

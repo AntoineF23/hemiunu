@@ -93,7 +93,13 @@ export function resolvePermission(
   const p = s?.pending.get(requestId);
   if (!s || !p) return false;
   s.pending.delete(requestId);
-  if (decision === "always") alwaysAllow.add(p.toolName);
+  if (decision === "always") {
+    alwaysAllow.add(p.toolName); // immediate, this session
+    // PERSIST it too — "always allow" should stick across conversations and
+    // restarts (otherwise a new chat re-asks). Recorded as an allow in the
+    // tool-policy, the same store the MCP panel edits; revocable there.
+    setToolPolicy(p.toolName, "allow");
+  }
   // Approving a plan with "auto" turns on auto-accept for the rest of this turn
   // (and seeds the next via the client echoing it back in the request body).
   if (decision === "plan-auto") s.autoAccept = true;

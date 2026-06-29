@@ -503,6 +503,14 @@ async function main() {
           !allowed.hookSpecificOutput,
           "a non-blocked tool must pass through untouched (no automatic blocking)",
         );
+
+        // "Always allow" persists by writing an allow policy here — so it sticks
+        // across turns/compaction/restarts instead of being lost with the session.
+        setToolPolicy("mcp__demo__search", "allow", root);
+        assert(
+          loadToolPolicy(root).tools["mcp__demo__search"] === "allow",
+          "an 'always allow' grant must persist to the tool policy",
+        );
       } finally {
         if (prevDir === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
         else process.env.HEMIUNU_CONFIG_DIR = prevDir;
