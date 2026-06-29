@@ -67,21 +67,34 @@ turnRoute.post("/api/turn", async (c) => {
   const { servers, patterns } = activeMcp(rt);
 
   return streamSSE(c, async (stream) => {
-    const emit = (e: ServerEvent) => void stream.writeSSE({ data: JSON.stringify(e) });
+    // Idle guard: catch a real stall (upstream hang, model stall) without killing
+    // a turn that's actively making progress. A long prototyping turn narrates and
+    // writes files step-by-step for many minutes — all of that flows through emit()
+    // below, so every event re-arms the timer. The turn only aborts after idleMs of
+    // complete silence. Override with HEMIUNU_WEB_TURN_IDLE_MS (old
+    // HEMIUNU_WEB_TURN_TIMEOUT_MS still honored); default 5 min.
+    const idleMs =
+      Number(process.env.HEMIUNU_WEB_TURN_IDLE_MS) ||
+      Number(process.env.HEMIUNU_WEB_TURN_TIMEOUT_MS) ||
+      5 * 60_000;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!session.ac.signal.aborted) {
+          emit({ type: "note", text: "turn stalled (no activity) — stopping." });
+          session.ac.abort();
+        }
+      }, idleMs);
+    };
+    const emit = (e: ServerEvent) => {
+      armIdle();
+      return void stream.writeSSE({ data: JSON.stringify(e) });
+    };
     session.emit = emit;
     // Browser closed the tab / navigated away → abort the live turn.
     stream.onAbort(() => session.ac.abort());
-
-    // Hard ceiling: if a turn never completes (upstream hang, model stall), abort
-    // it instead of streaming forever and burning tokens. Override with
-    // HEMIUNU_WEB_TURN_TIMEOUT_MS; default 10 min.
-    const maxTurnMs = Number(process.env.HEMIUNU_WEB_TURN_TIMEOUT_MS) || 10 * 60_000;
-    const turnTimeout = setTimeout(() => {
-      if (!session.ac.signal.aborted) {
-        emit({ type: "note", text: "⏱ turn exceeded the time limit — stopping." });
-        session.ac.abort();
-      }
-    }, maxTurnMs);
+    armIdle(); // guard the gap before the first event
 
     await emit({ type: "turn", turnId });
 
@@ -353,7 +366,7 @@ turnRoute.post("/api/turn", async (c) => {
       if (session.ac.signal.aborted) emit({ type: "interrupted" });
       else emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
-      clearTimeout(turnTimeout);
+      clearTimeout(idleTimer);
     }
 
     const ctxTokens =
