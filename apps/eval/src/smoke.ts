@@ -301,39 +301,42 @@ async function main() {
     }
   });
 
-  await check("mcp sandbox: stdio servers run via the cwd shim; filesystem + remote pass through", () => {
-    const servers: Record<string, unknown> = {
-      playwright: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"] },
-      filesystem: {
-        type: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-filesystem", "/proj"],
-      },
-      remote: { type: "http", url: "https://mcp.example.com" },
-    };
-    const out = sandboxStdioCwd(servers, {
-      shimPath: "/HOME/bin/mcp-in-dir.mjs",
-      rootDir: "/CFG/tmp/mcp",
-    });
+  await check(
+    "mcp sandbox: stdio servers run via the cwd shim; filesystem + remote pass through",
+    () => {
+      const servers: Record<string, unknown> = {
+        playwright: { type: "stdio", command: "npx", args: ["@playwright/mcp@latest"] },
+        filesystem: {
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "/proj"],
+        },
+        remote: { type: "http", url: "https://mcp.example.com" },
+      };
+      const out = sandboxStdioCwd(servers, {
+        shimPath: "/HOME/bin/mcp-in-dir.mjs",
+        rootDir: "/CFG/tmp/mcp",
+      });
 
-    // A normal stdio server is rewritten to launch via the node shim in its own
-    // throwaway cwd, with the real command/args trailing — so its output can't
-    // land in the user's launch folder.
-    const pw = out.playwright as { command: string; args: string[] };
-    assert(pw.command === process.execPath, "stdio server should launch via node (the shim)");
-    assert(pw.args[0] === "/HOME/bin/mcp-in-dir.mjs", "arg[0] should be the shim path");
-    assert(pw.args[1] === "/CFG/tmp/mcp/playwright", "arg[1] should be the per-server cwd");
-    assert(
-      pw.args[2] === "npx" && pw.args[3] === "@playwright/mcp@latest",
-      "the real command + args should follow the shim args",
-    );
+      // A normal stdio server is rewritten to launch via the node shim in its own
+      // throwaway cwd, with the real command/args trailing — so its output can't
+      // land in the user's launch folder.
+      const pw = out.playwright as { command: string; args: string[] };
+      assert(pw.command === process.execPath, "stdio server should launch via node (the shim)");
+      assert(pw.args[0] === "/HOME/bin/mcp-in-dir.mjs", "arg[0] should be the shim path");
+      assert(pw.args[1] === "/CFG/tmp/mcp/playwright", "arg[1] should be the per-server cwd");
+      assert(
+        pw.args[2] === "npx" && pw.args[3] === "@playwright/mcp@latest",
+        "the real command + args should follow the shim args",
+      );
 
-    // The filesystem server must keep reading the launch dir → not sandboxed.
-    assert((out.filesystem as { command: string }).command === "npx", "filesystem is exempt");
-    // Remote servers aren't spawned → untouched.
-    const remote = out.remote as { type: string; url: string };
-    assert(remote.type === "http" && !!remote.url, "remote servers pass through unchanged");
-  });
+      // The filesystem server must keep reading the launch dir → not sandboxed.
+      assert((out.filesystem as { command: string }).command === "npx", "filesystem is exempt");
+      // Remote servers aren't spawned → untouched.
+      const remote = out.remote as { type: string; url: string };
+      assert(remote.type === "http" && !!remote.url, "remote servers pass through unchanged");
+    },
+  );
 
   await check("ask_model reports a missing provider key without a network call", async () => {
     const prev = process.env.OPENAI_API_KEY;
@@ -428,27 +431,27 @@ async function main() {
   );
 
   await check(
-    "tool cap: PostToolUse hook truncates oversized results, leaves small ones",
+    "tool cap: PostToolUse hook truncates oversized built-in results, exempts MCP, leaves small ones",
     async () => {
       const budget = 100; // tokens → 400 chars
       const cb = createToolCapHook(budget).PostToolUse![0].hooks[0];
-      // Small result (MCP content shape) passes through untouched.
+      // Small built-in result passes through untouched.
       const small = await cb(
         {
           hook_event_name: "PostToolUse",
-          tool_name: "mcp__acme__search",
+          tool_name: "WebSearch",
           tool_response: { content: [{ type: "text", text: "ok" }] },
         } as any,
         "id1",
         {} as any,
       );
       assert(!(small as any).hookSpecificOutput, "small result should not be modified");
-      // Oversized result is replaced with a truncated string + a notice.
+      // Oversized built-in result is replaced with a truncated string + a notice.
       const big = { content: [{ type: "text", text: "x".repeat(5000) }] };
       const out = (await cb(
         {
           hook_event_name: "PostToolUse",
-          tool_name: "mcp__acme__query",
+          tool_name: "WebFetch",
           tool_response: big,
         } as any,
         "id2",
@@ -460,6 +463,17 @@ async function main() {
         replaced.length < 5000 && /truncated/i.test(replaced),
         "replacement should be shorter and carry a truncation notice",
       );
+      // MCP results are exempt — an oversized MCP retrieval is never truncated.
+      const mcp = (await cb(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "mcp__acme__query",
+          tool_response: big,
+        } as any,
+        "id3",
+        {} as any,
+      )) as any;
+      assert(!mcp.hookSpecificOutput, "oversized MCP result should be left intact");
     },
   );
 
@@ -738,63 +752,67 @@ async function main() {
     }
   });
 
-  await check("workspace: clone, then sync PRESERVES in-progress work (rebases onto latest, never discards)", async () => {
-    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
-    const remote = mkdtempSync(join(tmpdir(), "hemiunu-remote-"));
-    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
-    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
-    try {
-      process.env.HEMIUNU_CONFIG_DIR = cfg;
-      // A local "remote" repo with one commit on main (no network).
-      g(["init", "-q", "-b", "main"], remote);
-      g(["config", "user.email", "t@t.co"], remote);
-      g(["config", "user.name", "t"], remote);
-      writeFileSync(join(remote, "index.html"), "<h1>v1</h1>");
-      g(["add", "."], remote);
-      g(["commit", "-qm", "v1"], remote);
+  await check(
+    "workspace: clone, then sync PRESERVES in-progress work (rebases onto latest, never discards)",
+    async () => {
+      const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
+      const remote = mkdtempSync(join(tmpdir(), "hemiunu-remote-"));
+      const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+      const g = (args: string[], cwd: string) =>
+        execFileSync("git", args, { cwd, stdio: "ignore" });
+      try {
+        process.env.HEMIUNU_CONFIG_DIR = cfg;
+        // A local "remote" repo with one commit on main (no network).
+        g(["init", "-q", "-b", "main"], remote);
+        g(["config", "user.email", "t@t.co"], remote);
+        g(["config", "user.name", "t"], remote);
+        writeFileSync(join(remote, "index.html"), "<h1>v1</h1>");
+        g(["add", "."], remote);
+        g(["commit", "-qm", "v1"], remote);
 
-      // First iterate → clone the latest.
-      let r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
-      assert(r.action === "cloned", `should clone, got ${r.action} ${r.note ?? ""}`);
-      assert(readFileSync(join(r.path, "index.html"), "utf8").includes("v1"), "cloned content");
+        // First iterate → clone the latest.
+        let r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
+        assert(r.action === "cloned", `should clone, got ${r.action} ${r.note ?? ""}`);
+        assert(readFileSync(join(r.path, "index.html"), "utf8").includes("v1"), "cloned content");
 
-      // In-progress prototype code locally, while the remote advances a DIFFERENT
-      // file (e.g. a PROTOTYPE.md note). Syncing must KEEP the local work and
-      // rebase it onto the latest — never reset/bin it (the old, lossy behavior).
-      writeFileSync(join(r.path, "app.tsx"), "export const App = () => 'mine';");
-      writeFileSync(join(remote, "PROTOTYPE.md"), "## Decisions\n- a remote note");
-      g(["add", "."], remote);
-      g(["commit", "-qm", "note"], remote);
-      const trashBefore = listTrash().length;
-      r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
-      assert(r.action === "kept", `should keep+rebase, got ${r.action} ${r.note ?? ""}`);
-      assert(
-        readFileSync(join(r.path, "app.tsx"), "utf8").includes("mine"),
-        "the in-progress local code must be preserved",
-      );
-      assert(
-        existsSync(join(r.path, "PROTOTYPE.md")),
-        "the remote change must be integrated via rebase",
-      );
-      assert(
-        listTrash().length === trashBefore,
-        "nothing should be discarded to the recycle bin on a normal sync",
-      );
+        // In-progress prototype code locally, while the remote advances a DIFFERENT
+        // file (e.g. a PROTOTYPE.md note). Syncing must KEEP the local work and
+        // rebase it onto the latest — never reset/bin it (the old, lossy behavior).
+        writeFileSync(join(r.path, "app.tsx"), "export const App = () => 'mine';");
+        writeFileSync(join(remote, "PROTOTYPE.md"), "## Decisions\n- a remote note");
+        g(["add", "."], remote);
+        g(["commit", "-qm", "note"], remote);
+        const trashBefore = listTrash().length;
+        r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
+        assert(r.action === "kept", `should keep+rebase, got ${r.action} ${r.note ?? ""}`);
+        assert(
+          readFileSync(join(r.path, "app.tsx"), "utf8").includes("mine"),
+          "the in-progress local code must be preserved",
+        );
+        assert(
+          existsSync(join(r.path, "PROTOTYPE.md")),
+          "the remote change must be integrated via rebase",
+        );
+        assert(
+          listTrash().length === trashBefore,
+          "nothing should be discarded to the recycle bin on a normal sync",
+        );
 
-      // restoreTrash still recovers a snapshot when one IS made (e.g. start-fresh).
-      const binId = binWorkspace(r.path, "acme/proto", "test snapshot");
-      const dest = restoreTrash(basename(binId));
-      assert(
-        readFileSync(join(dest, "app.tsx"), "utf8").includes("mine"),
-        "restore should recover a binned snapshot",
-      );
-    } finally {
-      rmSync(cfg, { recursive: true, force: true });
-      rmSync(remote, { recursive: true, force: true });
-      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
-      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
-    }
-  });
+        // restoreTrash still recovers a snapshot when one IS made (e.g. start-fresh).
+        const binId = binWorkspace(r.path, "acme/proto", "test snapshot");
+        const dest = restoreTrash(basename(binId));
+        assert(
+          readFileSync(join(dest, "app.tsx"), "utf8").includes("mine"),
+          "restore should recover a binned snapshot",
+        );
+      } finally {
+        rmSync(cfg, { recursive: true, force: true });
+        rmSync(remote, { recursive: true, force: true });
+        if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+        else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      }
+    },
+  );
 
   await check("preview: static server serves the workspace on localhost", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hemiunu-prev-"));
@@ -913,138 +931,154 @@ async function main() {
     }
   });
 
-  await check("auto-save → checkpoint branch (main stays clean); publish → main; reconcile detects divergence", async () => {
-    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-cpcfg-"));
-    const bare = mkdtempSync(join(tmpdir(), "hemiunu-cpbare-"));
-    const seed = mkdtempSync(join(tmpdir(), "hemiunu-cpseed-"));
-    const verify = mkdtempSync(join(tmpdir(), "hemiunu-cpver-"));
-    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
-    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
-    const out = (args: string[], cwd: string) =>
-      execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-    try {
-      process.env.HEMIUNU_CONFIG_DIR = cfg;
-      g(["init", "--bare", "-b", "main"], bare);
-      g(["clone", bare, seed], tmpdir());
-      writeFileSync(join(seed, "README.md"), "init");
-      g(["config", "user.email", "t@t.co"], seed);
-      g(["config", "user.name", "t"], seed);
-      g(["add", "."], seed);
-      g(["commit", "-qm", "init"], seed);
-      g(["push", "origin", "HEAD:main"], seed);
+  await check(
+    "auto-save → checkpoint branch (main stays clean); publish → main; reconcile detects divergence",
+    async () => {
+      const cfg = mkdtempSync(join(tmpdir(), "hemiunu-cpcfg-"));
+      const bare = mkdtempSync(join(tmpdir(), "hemiunu-cpbare-"));
+      const seed = mkdtempSync(join(tmpdir(), "hemiunu-cpseed-"));
+      const verify = mkdtempSync(join(tmpdir(), "hemiunu-cpver-"));
+      const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+      const g = (args: string[], cwd: string) =>
+        execFileSync("git", args, { cwd, stdio: "ignore" });
+      const out = (args: string[], cwd: string) =>
+        execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+      try {
+        process.env.HEMIUNU_CONFIG_DIR = cfg;
+        g(["init", "--bare", "-b", "main"], bare);
+        g(["clone", bare, seed], tmpdir());
+        writeFileSync(join(seed, "README.md"), "init");
+        g(["config", "user.email", "t@t.co"], seed);
+        g(["config", "user.name", "t"], seed);
+        g(["add", "."], seed);
+        g(["commit", "-qm", "init"], seed);
+        g(["push", "origin", "HEAD:main"], seed);
 
-      // Clone into the managed workspace, write a prototype file, auto-save it.
-      await ensureWorkspace("acme/cp", { cloneUrl: bare });
-      writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
-      const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
-      assert(cp.pushed, `auto-save should push: ${cp.note}`);
-      assert(
-        cp.branch === CHECKPOINT_BRANCH,
-        `auto-save should hit the checkpoint branch, got ${cp.branch}`,
-      );
+        // Clone into the managed workspace, write a prototype file, auto-save it.
+        await ensureWorkspace("acme/cp", { cloneUrl: bare });
+        writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
+        const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
+        assert(cp.pushed, `auto-save should push: ${cp.note}`);
+        assert(
+          cp.branch === CHECKPOINT_BRANCH,
+          `auto-save should hit the checkpoint branch, got ${cp.branch}`,
+        );
 
-      // main stays CLEAN; the un-published work lives on the checkpoint branch.
-      g(["clone", bare, verify], tmpdir());
-      assert(
-        !existsSync(join(verify, "index.html")),
-        "main must NOT have un-published work (auto-save goes to the checkpoint branch)",
-      );
-      assert(
-        out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
-        "the checkpoint branch should carry the work",
-      );
+        // main stays CLEAN; the un-published work lives on the checkpoint branch.
+        g(["clone", bare, verify], tmpdir());
+        assert(
+          !existsSync(join(verify, "index.html")),
+          "main must NOT have un-published work (auto-save goes to the checkpoint branch)",
+        );
+        assert(
+          out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
+          "the checkpoint branch should carry the work",
+        );
 
-      // reconcile sees the divergence (un-published work differs from main).
-      const rec = await reconcileWorkspace("acme/cp", { cloneUrl: bare });
-      assert(rec.status === "diverged", `reconcile should report diverged, got ${rec.status}`);
+        // reconcile sees the divergence (un-published work differs from main).
+        const rec = await reconcileWorkspace("acme/cp", { cloneUrl: bare });
+        assert(rec.status === "diverged", `reconcile should report diverged, got ${rec.status}`);
 
-      // A clean tree is a no-op (no empty commit/push).
-      const noop = await checkpointWorkspace("acme/cp", { login: "tester" });
-      assert(!noop.pushed && /nothing changed/.test(noop.note), `clean tree should no-op: ${noop.note}`);
+        // A clean tree is a no-op (no empty commit/push).
+        const noop = await checkpointWorkspace("acme/cp", { login: "tester" });
+        assert(
+          !noop.pushed && /nothing changed/.test(noop.note),
+          `clean tree should no-op: ${noop.note}`,
+        );
 
-      // Publishing ships the work to main but KEEPS the workspace so the user can
-      // keep iterating (it's only cleared on leaving the team).
-      const pub = await publishWorkspace("acme/cp", { login: "tester" });
-      assert(pub.ok && pub.branch === "main", `publish should push to main: ${pub.note}`);
-      assert(existsSync(workspacePath("acme/cp")), "publish should KEEP the workspace for further iteration");
-      const verify2 = mkdtempSync(join(tmpdir(), "hemiunu-cpver2-"));
-      g(["clone", bare, verify2], tmpdir());
-      assert(
-        readFileSync(join(verify2, "index.html"), "utf8").includes("v1"),
-        "main should have the published prototype after publish",
-      );
-      rmSync(verify2, { recursive: true, force: true });
-    } finally {
-      for (const d of [cfg, bare, seed, verify]) rmSync(d, { recursive: true, force: true });
-      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
-      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
-    }
-  });
+        // Publishing ships the work to main but KEEPS the workspace so the user can
+        // keep iterating (it's only cleared on leaving the team).
+        const pub = await publishWorkspace("acme/cp", { login: "tester" });
+        assert(pub.ok && pub.branch === "main", `publish should push to main: ${pub.note}`);
+        assert(
+          existsSync(workspacePath("acme/cp")),
+          "publish should KEEP the workspace for further iteration",
+        );
+        const verify2 = mkdtempSync(join(tmpdir(), "hemiunu-cpver2-"));
+        g(["clone", bare, verify2], tmpdir());
+        assert(
+          readFileSync(join(verify2, "index.html"), "utf8").includes("v1"),
+          "main should have the published prototype after publish",
+        );
+        rmSync(verify2, { recursive: true, force: true });
+      } finally {
+        for (const d of [cfg, bare, seed, verify]) rmSync(d, { recursive: true, force: true });
+        if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+        else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      }
+    },
+  );
 
-  await check("PROTOTYPE.md notes land in the workspace (not main) when a checkout exists; publish rebases over a moved main", async () => {
-    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ppcfg-"));
-    const bare = mkdtempSync(join(tmpdir(), "hemiunu-ppbare-"));
-    const seed = mkdtempSync(join(tmpdir(), "hemiunu-ppseed-"));
-    const side = mkdtempSync(join(tmpdir(), "hemiunu-ppside-"));
-    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
-    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
-    const out = (args: string[], cwd: string) =>
-      execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-    try {
-      process.env.HEMIUNU_CONFIG_DIR = cfg;
-      g(["init", "--bare", "-b", "main"], bare);
-      g(["clone", bare, seed], tmpdir());
-      writeFileSync(join(seed, "README.md"), "init");
-      g(["config", "user.email", "t@t.co"], seed);
-      g(["config", "user.name", "t"], seed);
-      g(["add", "."], seed);
-      g(["commit", "-qm", "init"], seed);
-      g(["push", "origin", "HEAD:main"], seed);
+  await check(
+    "PROTOTYPE.md notes land in the workspace (not main) when a checkout exists; publish rebases over a moved main",
+    async () => {
+      const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ppcfg-"));
+      const bare = mkdtempSync(join(tmpdir(), "hemiunu-ppbare-"));
+      const seed = mkdtempSync(join(tmpdir(), "hemiunu-ppseed-"));
+      const side = mkdtempSync(join(tmpdir(), "hemiunu-ppside-"));
+      const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+      const g = (args: string[], cwd: string) =>
+        execFileSync("git", args, { cwd, stdio: "ignore" });
+      const out = (args: string[], cwd: string) =>
+        execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+      try {
+        process.env.HEMIUNU_CONFIG_DIR = cfg;
+        g(["init", "--bare", "-b", "main"], bare);
+        g(["clone", bare, seed], tmpdir());
+        writeFileSync(join(seed, "README.md"), "init");
+        g(["config", "user.email", "t@t.co"], seed);
+        g(["config", "user.name", "t"], seed);
+        g(["add", "."], seed);
+        g(["commit", "-qm", "init"], seed);
+        g(["push", "origin", "HEAD:main"], seed);
 
-      // A checkout exists → a note writes to the workspace PROTOTYPE.md, NOT main.
-      await ensureWorkspace("acme/pp", { cloneUrl: bare });
-      const mainBefore = out(["ls-remote", bare, "refs/heads/main"], tmpdir());
-      await addPrototypeNote("decision", "Tabs over a wizard", { repo: "acme/pp" });
-      assert(
-        readFileSync(join(workspacePath("acme/pp"), "PROTOTYPE.md"), "utf8").includes("Tabs over a wizard"),
-        "the note should be written into the workspace PROTOTYPE.md",
-      );
-      assert(
-        out(["ls-remote", bare, "refs/heads/main"], tmpdir()) === mainBefore,
-        "the note must NOT create an out-of-band commit on main when a checkout exists",
-      );
+        // A checkout exists → a note writes to the workspace PROTOTYPE.md, NOT main.
+        await ensureWorkspace("acme/pp", { cloneUrl: bare });
+        const mainBefore = out(["ls-remote", bare, "refs/heads/main"], tmpdir());
+        await addPrototypeNote("decision", "Tabs over a wizard", { repo: "acme/pp" });
+        assert(
+          readFileSync(join(workspacePath("acme/pp"), "PROTOTYPE.md"), "utf8").includes(
+            "Tabs over a wizard",
+          ),
+          "the note should be written into the workspace PROTOTYPE.md",
+        );
+        assert(
+          out(["ls-remote", bare, "refs/heads/main"], tmpdir()) === mainBefore,
+          "the note must NOT create an out-of-band commit on main when a checkout exists",
+        );
 
-      // Build code in the workspace + checkpoint it (commits note + code).
-      writeFileSync(join(workspacePath("acme/pp"), "index.html"), "<h1>built</h1>");
-      await checkpointWorkspace("acme/pp", { login: "tester" });
+        // Build code in the workspace + checkpoint it (commits note + code).
+        writeFileSync(join(workspacePath("acme/pp"), "index.html"), "<h1>built</h1>");
+        await checkpointWorkspace("acme/pp", { login: "tester" });
 
-      // Meanwhile main moves out-of-band (e.g. a teammate). Publish must rebase
-      // our work on top of it and fast-forward — not fail non-fast-forward.
-      g(["clone", bare, side], tmpdir());
-      writeFileSync(join(side, "NOTES.md"), "from a teammate");
-      g(["config", "user.email", "u@u.co"], side);
-      g(["config", "user.name", "u"], side);
-      g(["add", "."], side);
-      g(["commit", "-qm", "teammate change"], side);
-      g(["push", "origin", "HEAD:main"], side);
+        // Meanwhile main moves out-of-band (e.g. a teammate). Publish must rebase
+        // our work on top of it and fast-forward — not fail non-fast-forward.
+        g(["clone", bare, side], tmpdir());
+        writeFileSync(join(side, "NOTES.md"), "from a teammate");
+        g(["config", "user.email", "u@u.co"], side);
+        g(["config", "user.name", "u"], side);
+        g(["add", "."], side);
+        g(["commit", "-qm", "teammate change"], side);
+        g(["push", "origin", "HEAD:main"], side);
 
-      const pub = await publishWorkspace("acme/pp", { login: "tester" });
-      assert(pub.ok, `publish should rebase over the moved main and succeed: ${pub.note}`);
-      const ppver = mkdtempSync(join(tmpdir(), "hemiunu-ppver-"));
-      g(["clone", bare, ppver], tmpdir());
-      assert(
-        readFileSync(join(ppver, "index.html"), "utf8").includes("built") &&
-          existsSync(join(ppver, "NOTES.md")) &&
-          readFileSync(join(ppver, "PROTOTYPE.md"), "utf8").includes("Tabs over a wizard"),
-        "main should end with our code, our note, AND the teammate's change (clean rebase)",
-      );
-      rmSync(ppver, { recursive: true, force: true });
-    } finally {
-      for (const d of [cfg, bare, seed, side]) rmSync(d, { recursive: true, force: true });
-      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
-      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
-    }
-  });
+        const pub = await publishWorkspace("acme/pp", { login: "tester" });
+        assert(pub.ok, `publish should rebase over the moved main and succeed: ${pub.note}`);
+        const ppver = mkdtempSync(join(tmpdir(), "hemiunu-ppver-"));
+        g(["clone", bare, ppver], tmpdir());
+        assert(
+          readFileSync(join(ppver, "index.html"), "utf8").includes("built") &&
+            existsSync(join(ppver, "NOTES.md")) &&
+            readFileSync(join(ppver, "PROTOTYPE.md"), "utf8").includes("Tabs over a wizard"),
+          "main should end with our code, our note, AND the teammate's change (clean rebase)",
+        );
+        rmSync(ppver, { recursive: true, force: true });
+      } finally {
+        for (const d of [cfg, bare, seed, side]) rmSync(d, { recursive: true, force: true });
+        if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+        else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+      }
+    },
+  );
 
   await check("control bridge: requestControl routes to the registered handler", async () => {
     try {
@@ -1071,7 +1105,9 @@ async function main() {
       // ask_user routes its questions through the same bridge and returns the answer.
       const answer = await requestControl({
         type: "ask-user",
-        questions: [{ header: "Approach", question: "Which way?", options: [{ label: "A" }, { label: "B" }] }],
+        questions: [
+          { header: "Approach", question: "Which way?", options: [{ label: "A" }, { label: "B" }] },
+        ],
       });
       assert(answer === "Approach: A", `should route ask-user, got: ${answer}`);
     } finally {
