@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { sdkConfigDir } from "./config";
 import { asStream } from "./messages";
 import { SOURCE_TOOLS, loadSourceMaps } from "./sources";
 import { createAgentHooks } from "./toolcap";
@@ -268,6 +269,8 @@ export async function runSubagent(
         ...process.env,
         ANTHROPIC_API_KEY: ctx.apiKey,
         ...(ctx.baseUrl ? { ANTHROPIC_BASE_URL: ctx.baseUrl } : {}),
+        // Keep the SDK's session data under ~/.hemiunu, not ~/.claude.
+        CLAUDE_CONFIG_DIR: sdkConfigDir(),
       } as Record<string, string>,
       mcpServers: ctx.mcpServers,
       tools,

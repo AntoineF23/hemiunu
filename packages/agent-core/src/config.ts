@@ -10,6 +10,20 @@ export function configDir(): string {
   return process.env.HEMIUNU_CONFIG_DIR ?? join(homedir(), ".hemiunu");
 }
 
+/**
+ * Where the Claude Agent SDK keeps its own session bookkeeping — transcripts,
+ * subagent logs, and large tool-result overflow. The SDK defaults this to
+ * `~/.claude/projects/<launch-dir>/…` (via `CLAUDE_CONFIG_DIR ?? ~/.claude`),
+ * which litters `~/.claude` and confusingly looks like the agent is working
+ * there. We pin it under Hemiunu's own config dir so everything Hemiunu lives in
+ * one place and a user's real Claude Code (also `~/.claude`) is left untouched.
+ * Pass this as `CLAUDE_CONFIG_DIR` in each SDK `query()` env (scoped to our
+ * subprocess — we never mutate the user's shell env).
+ */
+export function sdkConfigDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR ?? join(configDir(), "agent");
+}
+
 // Load .env from EVERY place it may live — the user's config dir (~/.hemiunu),
 // Hemiunu's home (install/repo dir), and the cwd — in that precedence order.
 // Earlier files (and the real shell environment) win: a var already set is never

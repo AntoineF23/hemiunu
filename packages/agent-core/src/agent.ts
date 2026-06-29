@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentDefinition, Options } from "@anthropic-ai/claude-agent-sdk";
-import { loadConfig } from "./config";
+import { loadConfig, sdkConfigDir } from "./config";
 import { createMemoryServer, createModelsServer } from "./tools";
 import { createPrototypeServer } from "./prototype";
 import { createOrchestratorServer } from "./orchestrator";
@@ -164,6 +164,8 @@ export async function* runTurn(opts: RunTurnOptions) {
         ...process.env,
         ANTHROPIC_API_KEY: cfg.apiKey,
         ...(cfg.baseUrl ? { ANTHROPIC_BASE_URL: cfg.baseUrl } : {}),
+        // Keep the SDK's session data under ~/.hemiunu, not ~/.claude.
+        CLAUDE_CONFIG_DIR: sdkConfigDir(),
       } as Record<string, string>,
       mcpServers: {
         ...baseServers,

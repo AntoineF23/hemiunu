@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createSdkMcpServer, tool, query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { configDir, loadConfig } from "./config";
+import { configDir, loadConfig, sdkConfigDir } from "./config";
 import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
 import { asStream } from "./messages";
 import { slugify } from "./prototype";
@@ -263,6 +263,8 @@ export async function runScan(opts: ScanOptions): Promise<string> {
         ...process.env,
         ANTHROPIC_API_KEY: cfg.apiKey,
         ...(cfg.baseUrl ? { ANTHROPIC_BASE_URL: cfg.baseUrl } : {}),
+        // Keep the SDK's session data under ~/.hemiunu, not ~/.claude.
+        CLAUDE_CONFIG_DIR: sdkConfigDir(),
       } as Record<string, string>,
       mcpServers: {
         ...(opts.mcpServers ?? {}),
