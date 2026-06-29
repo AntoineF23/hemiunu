@@ -21,7 +21,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # corepack provides the exact pnpm pinned in package.json
       # (packageManager: pnpm@11.8.0) as a real binary on PATH, which both
