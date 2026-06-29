@@ -54,6 +54,25 @@ function previewPhrase(url: string): string {
     : `Live preview: ${url}.`;
 }
 
+/**
+ * Make sure the active prototype dir is populated before listing / reading /
+ * editing it. With a team selected and no local checkout yet, clone the repo so
+ * the existing prototype already on main is pulled in AUTOMATICALLY — otherwise
+ * the read tools see an empty folder when starting a fresh session on a team
+ * whose work is on GitHub. No-op once a checkout exists (skips the network), and
+ * for local (no-team) work. Best-effort: returns the dir even if the sync fails.
+ */
+async function ensureProtoReady(): Promise<string> {
+  const dir = activeProtoDir();
+  if (existsSync(join(dir, ".git"))) return dir; // already a checkout — don't re-fetch per call
+  const repo = resolveRepo();
+  if (repo) {
+    const synced = await ensureWorkspace(repo, { token: resolveGithubToken() });
+    if (synced.action !== "failed") return synced.path;
+  }
+  return dir;
+}
+
 export function createWorkspaceServer() {
   const iterateTool = tool(
     "iterate_prototype",
@@ -93,7 +112,7 @@ export function createWorkspaceServer() {
     "List files in the current prototype's workspace (excludes node_modules, .git, build output).",
     {},
     async () => {
-      const dir = activeProtoDir();
+      const dir = await ensureProtoReady();
       if (!existsSync(dir))
         return text("Nothing yet — run iterate_prototype or save a prototype first.");
       const { files, total } = listFiles(dir);
@@ -116,7 +135,7 @@ export function createWorkspaceServer() {
         .describe("Path relative to the workspace root, e.g. 'index.html' or 'app/page.tsx'."),
     },
     async ({ path }) => {
-      const dir = activeProtoDir();
+      const dir = await ensureProtoReady();
       const file = confined(dir, path);
       if (!file) return text(`Refused: '${path}' is outside the workspace.`);
       if (!existsSync(file)) return text(`No such file: ${path}`);
@@ -133,7 +152,7 @@ export function createWorkspaceServer() {
       content: z.string().describe("Full file contents."),
     },
     async ({ path, content }) => {
-      const dir = activeProtoDir();
+      const dir = await ensureProtoReady();
       const file = confined(dir, path);
       if (!file) return text(`Refused: '${path}' is outside the workspace.`);
       mkdirSync(dirname(file), { recursive: true });
