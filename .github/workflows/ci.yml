@@ -51,5 +51,10 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Offline mode makes no network calls, but the harness still loads config
+      # (it asserts the key is wired up), so it needs a key to be present. This
+      # placeholder is never sent anywhere — it just satisfies loadConfig().
       - name: Smoke (offline)
+        env:
+          ANTHROPIC_API_KEY: sk-ci-offline-placeholder-never-used
         run: pnpm smoke --offline
