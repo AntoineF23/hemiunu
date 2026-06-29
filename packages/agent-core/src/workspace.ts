@@ -357,7 +357,7 @@ export async function ensureWorkspace(
   // different files → clean rebase; on a real conflict, keep our work untouched.
   const ahead = (await gitOut(["rev-list", "--count", `origin/${main}..HEAD`], path)) !== "0";
   if (ahead) {
-    const rb = await git(["rebase", `origin/${main}`], { cwd: path });
+    const rb = await git([...ident, "rebase", `origin/${main}`], { cwd: path });
     if (!rb.ok) {
       await git(["rebase", "--abort"], { cwd: path });
       return {
@@ -500,8 +500,20 @@ const AUTO_PUSH_TO_MAIN = false;
 
 /** The repo's default branch (what we publish to), from the remote; "main" if unknown. */
 async function defaultBranch(path: string): Promise<string> {
-  const ref = await gitOut(["rev-parse", "--abbrev-ref", "origin/HEAD"], path);
-  return ref.replace(/^origin\//, "").trim() || "main";
+  // Prefer the remote's advertised default via origin/HEAD. But not every
+  // clone/git version sets origin/HEAD — when it's missing, `rev-parse` echoes
+  // the literal "origin/HEAD" (→ "HEAD"), which is NOT a real branch and would
+  // make every `rebase origin/HEAD` fail. Fall back to the conventional names
+  // (verified to exist on the remote) so a sync never targets a bogus ref.
+  const ref = (await gitOut(["rev-parse", "--abbrev-ref", "origin/HEAD"], path))
+    .replace(/^origin\//, "")
+    .trim();
+  if (ref && ref !== "HEAD") return ref;
+  for (const cand of ["main", "master"]) {
+    const ok = await git(["rev-parse", "--verify", "--quiet", `origin/${cand}`], { cwd: path });
+    if (ok.ok) return cand;
+  }
+  return "main";
 }
 
 /**
@@ -522,14 +534,17 @@ export async function commitAndPush(
   if (!opts.toMain) await git(["checkout", "-B", branch], { cwd: path });
 
   await git(["add", "-A"], { cwd: path });
+  // Identity for any commit-creating git op (commit AND rebase replay). git
+  // refuses to create a commit without one, and the CI runner / fresh clones
+  // have no global identity to fall back on.
+  const ident = [
+    "-c",
+    `user.name=${opts.login ?? "Hemiunu"}`,
+    "-c",
+    `user.email=${opts.login ? `${opts.login}@users.noreply.github.com` : "hemiunu@users.noreply.github.com"}`,
+  ];
   const dirty = (await gitOut(["status", "--porcelain"], path)).length > 0;
   if (dirty) {
-    const ident = [
-      "-c",
-      `user.name=${opts.login ?? "Hemiunu"}`,
-      "-c",
-      `user.email=${opts.login ? `${opts.login}@users.noreply.github.com` : "hemiunu@users.noreply.github.com"}`,
-    ];
     const c = await git([...ident, "commit", "-m", opts.message], { cwd: path });
     if (!c.ok)
       return { ok: false, branch, note: `commit failed: ${c.stderr.trim().slice(0, 200)}` };
@@ -544,7 +559,7 @@ export async function commitAndPush(
     await git(["fetch", "origin", branch], { cwd: path, token: opts.token });
     const behind = (await gitOut(["rev-list", "--count", `HEAD..origin/${branch}`], path)) !== "0";
     if (behind) {
-      const rb = await git(["rebase", `origin/${branch}`], { cwd: path });
+      const rb = await git([...ident, "rebase", `origin/${branch}`], { cwd: path });
       if (!rb.ok) {
         await git(["rebase", "--abort"], { cwd: path });
         return {
