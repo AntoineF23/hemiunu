@@ -1,5 +1,7 @@
+import { basename, isAbsolute, join, relative } from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { createPolicyBlockHook } from "./toolpolicy";
+import { activeProtoDir } from "./workspace";
 
 /**
  * Generic tool-output cap, the way Claude Code does it: a PostToolUse hook that
@@ -36,13 +38,76 @@ function textOf(resp: unknown): string {
 }
 
 /**
- * The full hook set every `query()` should run: the PostToolUse output cap plus
- * the PreToolUse user-block enforcement. The two use disjoint event keys, so a
- * shallow merge composes them. Use this everywhere instead of the bare
- * `createToolCapHook()` so a user's "block" is honored in subagents too.
+ * The full hook set every `query()` should run: the PostToolUse output cap, the
+ * PreToolUse user-block enforcement, and the PreToolUse workspace guard. The two
+ * PreToolUse hooks are concatenated (a shallow spread would drop one); PostToolUse
+ * is its own key. Use this everywhere instead of the bare `createToolCapHook()`
+ * so a user's "block" AND the workspace confinement are honored in subagents too.
  */
 export function createAgentHooks(budgetTokens?: number): NonNullable<Options["hooks"]> {
-  return { ...createPolicyBlockHook(), ...createToolCapHook(budgetTokens) };
+  const block = createPolicyBlockHook();
+  const guard = createWorkspaceGuardHook();
+  return {
+    PreToolUse: [...(block.PreToolUse ?? []), ...(guard.PreToolUse ?? [])],
+    ...createToolCapHook(budgetTokens),
+  };
+}
+
+// Tool-input keys that name a file a tool will WRITE to. External MCP tools
+// (e.g. canal-image's download_image `destPath`) resolve these against the
+// worker's cwd — the Hemiunu app folder — so a relative path silently writes
+// the file INTO the app instead of the prototype. Hemiunu's own prototype tools
+// use `path` (resolved against the workspace internally), which is deliberately
+// NOT in this list, so they're left untouched.
+const WRITE_DEST_KEYS = ["destPath", "dest", "outputPath", "outPath", "savePath"];
+
+/** Resolve `p` to an absolute path INSIDE `dir`. A relative path keeps its
+ *  subpath under the workspace (so `public/x.png` → `<workspace>/public/x.png`);
+ *  an absolute path already inside is kept; anything else is pulled in by name. */
+function confineToDir(dir: string, p: string): string {
+  const abs = isAbsolute(p) ? p : join(dir, p);
+  const rel = relative(dir, abs);
+  const inside = rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  return inside ? abs : join(dir, basename(p));
+}
+
+/**
+ * A PreToolUse hook that confines every file-writing tool to the active
+ * prototype workspace (a ~/.hemiunu/tmp folder) by rewriting its destination
+ * path. This guarantees the agent — main loop or any subagent — can never write
+ * into the Hemiunu app folder, only into the throwaway prototype workspace it
+ * owns. It rewrites the input via `updatedInput` rather than denying, so the
+ * tool still runs, just in the right place.
+ */
+export function createWorkspaceGuardHook(): NonNullable<Options["hooks"]> {
+  return {
+    PreToolUse: [
+      {
+        hooks: [
+          async (input) => {
+            const toolInput = (input as { tool_input?: Record<string, unknown> }).tool_input;
+            if (!toolInput) return {};
+            const dir = activeProtoDir();
+            let changed = false;
+            const next: Record<string, unknown> = { ...toolInput };
+            for (const key of WRITE_DEST_KEYS) {
+              const v = next[key];
+              if (typeof v !== "string" || !v) continue;
+              const confined = confineToDir(dir, v);
+              if (confined !== v) {
+                next[key] = confined;
+                changed = true;
+              }
+            }
+            if (!changed) return {};
+            return {
+              hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: next },
+            };
+          },
+        ],
+      },
+    ],
+  };
 }
 
 /** Build the PostToolUse cap hook for the SDK `hooks` option. */
