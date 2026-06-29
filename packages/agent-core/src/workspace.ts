@@ -392,12 +392,12 @@ export interface ReconcileResult {
 
 /**
  * Inspect the team's workspace at the start of a NEW conversation and reconcile
- * it with main. Because a validated publish clears the workspace (see
- * `commit_prototype`/`discardWorkspace`), a *surviving* workspace means there's
- * un-published work — so this either silently brings an aligned workspace to the
- * latest main, or reports `diverged` so the UI can offer Keep / Fresh / Publish.
- * It NEVER discards divergent work itself. No-team (local) prototypes have no
- * main and should not call this.
+ * it with main, by COMPARING CONTENT (not mere existence — a published workspace
+ * is kept for further iteration and simply equals main). If the working tree
+ * matches the latest main it silently fast-forwards (`aligned`, no prompt); if it
+ * carries un-published work it reports `diverged` so the UI can offer Keep /
+ * Fresh / Publish. It NEVER discards divergent work itself. No-team (local)
+ * prototypes have no main and should not call this.
  */
 export async function reconcileWorkspace(
   repo: string,
@@ -453,23 +453,21 @@ export async function freshenWorkspace(
 }
 
 /**
- * The "publish" reconcile action: commit + push the workspace to main, then clear
- * it (next iterate re-clones fresh). Thin wrapper over `commitAndPush(toMain)` +
- * `discardWorkspace` — the same end state as `commit_prototype(to='main')`.
+ * The "publish" reconcile action: commit + push the workspace to main (rebasing
+ * onto the latest first). The workspace is KEPT so the user can keep iterating —
+ * publishing is a checkpoint, not the end; it's only cleared on leaving the team
+ * (see `discardWorkspace`). Same publish path as `commit_prototype(to='main')`.
  */
 export async function publishWorkspace(
   repo: string,
   opts: { token?: string; login?: string; message?: string } = {},
-): Promise<PushResult & { binned?: string }> {
-  const r = await commitAndPush(repo, {
+): Promise<PushResult> {
+  return commitAndPush(repo, {
     message: opts.message || "Published prototype to main",
     token: opts.token,
     login: opts.login,
     toMain: true,
   });
-  if (!r.ok) return r;
-  const binned = discardWorkspace(repo, "published to main from reconcile");
-  return { ...r, binned };
 }
 
 export interface PushResult {

@@ -9,6 +9,7 @@ import {
   configDir,
   currentGithubLogin,
   currentTeam,
+  discardWorkspace,
   githubStatus,
   hasApiKey,
   listTeams,
@@ -62,6 +63,7 @@ settingsRoute.get("/api/settings", async (c) => {
   let team = currentTeam();
   if (team && token && !(await repoExists(token, team))) {
     removeTeam(team);
+    discardWorkspace(team, "team repo no longer on GitHub"); // clean its tmp workspace (binned)
     team = currentTeam();
   }
   return c.json({

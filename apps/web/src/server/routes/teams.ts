@@ -8,6 +8,7 @@ import {
   connectGithubAccount,
   createRepo,
   currentTeam,
+  discardWorkspace,
   disconnectGithub,
   syncGithubStatus,
   githubViewer,
@@ -105,6 +106,7 @@ teamsRoute.post("/api/teams/remove", async (c) => {
   const { ref } = (await c.req.json().catch(() => ({}))) as { ref?: string };
   if (!ref?.trim()) return c.json({ error: "Missing repo." }, 400);
   removeTeam(ref);
+  discardWorkspace(ref, "left the team"); // clean its tmp workspace (binned, recoverable via /restore)
   return c.json(await snapshot());
 });
 

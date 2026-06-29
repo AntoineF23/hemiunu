@@ -954,10 +954,11 @@ async function main() {
       const noop = await checkpointWorkspace("acme/cp", { login: "tester" });
       assert(!noop.pushed && /nothing changed/.test(noop.note), `clean tree should no-op: ${noop.note}`);
 
-      // Publishing ships the work to main and clears the local workspace.
+      // Publishing ships the work to main but KEEPS the workspace so the user can
+      // keep iterating (it's only cleared on leaving the team).
       const pub = await publishWorkspace("acme/cp", { login: "tester" });
       assert(pub.ok && pub.branch === "main", `publish should push to main: ${pub.note}`);
-      assert(!existsSync(workspacePath("acme/cp")), "publish should clear the local workspace");
+      assert(existsSync(workspacePath("acme/cp")), "publish should KEEP the workspace for further iteration");
       const verify2 = mkdtempSync(join(tmpdir(), "hemiunu-cpver2-"));
       g(["clone", bare, verify2], tmpdir());
       assert(

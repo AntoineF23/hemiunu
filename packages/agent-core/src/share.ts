@@ -4,9 +4,8 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { discoveryLine, recordDiscovery } from "./atlas";
 import { githubViewer, resolveGithubToken, resolveRepo } from "./github";
-import { stopPreview } from "./preview";
 import { vercelDeploy } from "./vercel";
-import { commitAndPush, discardWorkspace, workspacePath } from "./workspace";
+import { commitAndPush, workspacePath } from "./workspace";
 
 /**
  * Sharing a prototype: commit + push the local workspace to its repo, and
@@ -41,15 +40,17 @@ export function createShareServer() {
       const r = await commitAndPush(repo, { message, token, login, toMain: to === "main" });
       if (!r.ok) return text(r.note);
       if (to === "main") {
-        const binned = discardWorkspace(repo, "pushed to main");
-        stopPreview();
+        // Keep the workspace and the live preview — publishing is a checkpoint,
+        // not the end. The user can keep iterating right where they are; the
+        // workspace is only cleared when they leave the team. (commitAndPush
+        // already rebased onto the latest main, so the checkout matches main.)
         // Gamification: publishing a new version to main earns a random famous
         // building, drawn by rarity tier, into the user's global Atlas. The map
         // itself lives in the web app; here we just announce the find so it
         // surfaces on every surface (CLI note + web tool result).
         const discovery = discoveryLine(recordDiscovery(repo));
         return text(
-          `Pushed to ${r.branch} and cleared the local workspace${binned ? " (a snapshot is in the recycle bin)" : ""}. Next iteration re-syncs from the latest.\n\n${discovery}`,
+          `Published to ${r.branch}. Your workspace stays open — keep iterating and publish again whenever you're ready.\n\n${discovery}`,
         );
       }
       return text(`${r.note}. Open a PR for it, or share a preview with deploy_prototype.`);

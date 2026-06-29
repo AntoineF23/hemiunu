@@ -37,6 +37,7 @@ import {
   pruneTeams,
   migrateLocalIntoTeam,
   checkpointWorkspace,
+  discardWorkspace,
   reconcileWorkspace,
   freshenWorkspace,
   publishWorkspace,
@@ -1209,6 +1210,7 @@ function App({
     if (!token) return true;
     if (await repoExists(token, repo)) return true;
     removeTeam(repo);
+    discardWorkspace(repo, "team repo no longer on GitHub"); // clean its tmp workspace (binned, /restore)
     setTeams(listTeams());
     push({ kind: "note", text: `· ${repo} no longer on GitHub — working locally` });
     return false;
