@@ -77,6 +77,11 @@ export function App() {
   // an auto grant for one repo never carries into another.
   const [autoAccept, setAutoAccept] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // New-conversation reconcile: un-published prototype work that diverges from main.
+  const [reconcile, setReconcile] = useState<{ summary: string | null; mainMoved: boolean } | null>(
+    null,
+  );
+  const [reconcileBusy, setReconcileBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(RAIL_KEY) === "1");
   // One docked panel inside a single persistent shell. Switching just swaps the
   // shell's content (the column never closes/reopens), so there's no flash.
@@ -105,6 +110,41 @@ export function App() {
     if (prevTeam.current !== undefined && prevTeam.current !== team) setAutoAccept(false);
     prevTeam.current = team;
   }, [settings?.team]);
+
+  // On a new conversation (initial load + team switch), reconcile the team's tmp
+  // workspace with main. If there's un-published work it surfaces a Keep / Fresh /
+  // Publish prompt; otherwise (aligned / local / offline) it stays silent.
+  const checkReconcile = useCallback(async () => {
+    try {
+      const r = (await fetch("/api/reconcile").then((res) => res.json())) as {
+        status: string;
+        summary: string | null;
+        mainMoved: boolean;
+      };
+      setReconcile(r.status === "diverged" ? { summary: r.summary, mainMoved: r.mainMoved } : null);
+    } catch {
+      setReconcile(null);
+    }
+  }, []);
+  useEffect(() => {
+    void checkReconcile();
+  }, [settings?.team, checkReconcile]);
+
+  const resolveReconcile = useCallback(
+    async (action: "keep" | "fresh" | "publish") => {
+      setReconcileBusy(true);
+      try {
+        await sendJSON("/api/reconcile", { action });
+      } catch {
+        /* leave the workspace as-is on error */
+      } finally {
+        setReconcileBusy(false);
+        setReconcile(null);
+        if (action !== "keep") refresh();
+      }
+    },
+    [refresh],
+  );
 
   // The agent can create/switch/rename the team mid-turn (via the control
   // bridge). That only updates server-side state, so refresh settings when a
@@ -202,8 +242,44 @@ export function App() {
         : "border-border text-ink-3 hover:bg-raised hover:text-ink-2"
     }`;
 
+  const reconcilePrompt =
+    reconcile && !permission ? (
+      <div className="perm mb-2.5">
+        <div className="perm-head">
+          <CornerDownRight size={16} className="perm-icon" />
+          <span>
+            You have <strong>un-published prototype changes</strong> from a previous session
+            {reconcile.mainMoved ? " (and main has moved on since)" : ""}.
+          </span>
+        </div>
+        {reconcile.summary && <div className="perm-preview">Changed: {reconcile.summary}</div>}
+        <div className="perm-actions">
+          <Button size="sm" disabled={reconcileBusy} onClick={() => resolveReconcile("keep")}>
+            Keep iterating
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={reconcileBusy}
+            onClick={() => resolveReconcile("fresh")}
+          >
+            Start fresh from main
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={reconcileBusy}
+            onClick={() => resolveReconcile("publish")}
+          >
+            Publish to main
+          </Button>
+        </div>
+      </div>
+    ) : null;
+
   const composer = (
     <>
+      {reconcilePrompt}
       <Composer
         draft={draft}
         setDraft={setDraft}

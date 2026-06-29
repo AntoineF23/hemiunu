@@ -68,6 +68,8 @@ import {
   commitAndPush,
   migrateLocalIntoTeam,
   checkpointWorkspace,
+  reconcileWorkspace,
+  publishWorkspace,
   CHECKPOINT_BRANCH,
   workspacePath,
   resolveVercelToken,
@@ -891,7 +893,7 @@ async function main() {
     }
   });
 
-  await check("auto-save: pushes prototype work straight to main each turn; clean tree no-ops", async () => {
+  await check("auto-save → checkpoint branch (main stays clean); publish → main; reconcile detects divergence", async () => {
     const cfg = mkdtempSync(join(tmpdir(), "hemiunu-cpcfg-"));
     const bare = mkdtempSync(join(tmpdir(), "hemiunu-cpbare-"));
     const seed = mkdtempSync(join(tmpdir(), "hemiunu-cpseed-"));
@@ -916,32 +918,39 @@ async function main() {
       writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
       const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
       assert(cp.pushed, `auto-save should push: ${cp.note}`);
-      assert(cp.branch === "main", `should push straight to main, got ${cp.branch}`);
+      assert(
+        cp.branch === CHECKPOINT_BRANCH,
+        `auto-save should hit the checkpoint branch, got ${cp.branch}`,
+      );
 
-      // main has the work; no review/checkpoint branch was created (direct-to-main).
+      // main stays CLEAN; the un-published work lives on the checkpoint branch.
       g(["clone", bare, verify], tmpdir());
       assert(
-        readFileSync(join(verify, "index.html"), "utf8").includes("v1"),
-        "main should have the prototype",
+        !existsSync(join(verify, "index.html")),
+        "main must NOT have un-published work (auto-save goes to the checkpoint branch)",
       );
       assert(
-        !out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
-        "no checkpoint branch should be created when pushing direct-to-main",
+        out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
+        "the checkpoint branch should carry the work",
       );
+
+      // reconcile sees the divergence (un-published work differs from main).
+      const rec = await reconcileWorkspace("acme/cp", { cloneUrl: bare });
+      assert(rec.status === "diverged", `reconcile should report diverged, got ${rec.status}`);
 
       // A clean tree is a no-op (no empty commit/push).
       const noop = await checkpointWorkspace("acme/cp", { login: "tester" });
       assert(!noop.pushed && /nothing changed/.test(noop.note), `clean tree should no-op: ${noop.note}`);
 
-      // A second change auto-saves to main again (accumulates, ff push).
-      writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v2</h1>");
-      const cp2 = await checkpointWorkspace("acme/cp", { login: "tester" });
-      assert(cp2.pushed && cp2.branch === "main", `second save should hit main: ${cp2.note}`);
+      // Publishing ships the work to main and clears the local workspace.
+      const pub = await publishWorkspace("acme/cp", { login: "tester" });
+      assert(pub.ok && pub.branch === "main", `publish should push to main: ${pub.note}`);
+      assert(!existsSync(workspacePath("acme/cp")), "publish should clear the local workspace");
       const verify2 = mkdtempSync(join(tmpdir(), "hemiunu-cpver2-"));
       g(["clone", bare, verify2], tmpdir());
       assert(
-        readFileSync(join(verify2, "index.html"), "utf8").includes("v2"),
-        "main should have the latest prototype",
+        readFileSync(join(verify2, "index.html"), "utf8").includes("v1"),
+        "main should have the published prototype after publish",
       );
       rmSync(verify2, { recursive: true, force: true });
     } finally {

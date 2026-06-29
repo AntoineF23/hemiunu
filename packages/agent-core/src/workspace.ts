@@ -357,6 +357,107 @@ export async function ensureWorkspace(
   return { path, action: moved ? "reset" : "synced", binned };
 }
 
+// --- new-conversation reconciliation -----------------------------------------
+
+export type ReconcileStatus = "clone" | "aligned" | "diverged" | "offline";
+
+export interface ReconcileResult {
+  path: string;
+  /**
+   * `clone`    — no workspace yet; the next iterate clones latest main (no prompt).
+   * `aligned`  — workspace matched main (or was behind); brought to latest, no prompt.
+   * `diverged` — un-published work differs from main; the caller should prompt.
+   * `offline`  — couldn't reach the remote; left untouched, no prompt.
+   */
+  status: ReconcileStatus;
+  /** True when origin/<default> advanced beyond this workspace's base (e.g. a teammate pushed). */
+  mainMoved?: boolean;
+  /** Short file-list of what diverges from main, for the prompt. */
+  summary?: string;
+}
+
+/**
+ * Inspect the team's workspace at the start of a NEW conversation and reconcile
+ * it with main. Because a validated publish clears the workspace (see
+ * `commit_prototype`/`discardWorkspace`), a *surviving* workspace means there's
+ * un-published work — so this either silently brings an aligned workspace to the
+ * latest main, or reports `diverged` so the UI can offer Keep / Fresh / Publish.
+ * It NEVER discards divergent work itself. No-team (local) prototypes have no
+ * main and should not call this.
+ */
+export async function reconcileWorkspace(
+  repo: string,
+  opts: EnsureOptions = {},
+): Promise<ReconcileResult> {
+  const norm = normalizeRepo(repo);
+  const path = workspacePath(norm);
+  const cloneUrl = opts.cloneUrl ?? `https://github.com/${norm}.git`;
+  const { token } = opts;
+
+  if (!(await isValidWorkspace(path, cloneUrl))) return { path, status: "clone" };
+  if (!(await git(["fetch", "origin"], { cwd: path, token })).ok) return { path, status: "offline" };
+
+  const main = await defaultBranch(path);
+  const mainRef = `origin/${main}`;
+  // Working tree (incl. committed checkpoint work) vs latest main, plus untracked.
+  const diff = await gitOut(["diff", "--name-only", mainRef], path);
+  const dirty = (await gitOut(["status", "--porcelain"], path)).length > 0;
+
+  if (!diff && !dirty) {
+    // Equals main (possibly just behind) → fast-forward to latest, no prompt.
+    await git(["reset", "--hard", mainRef], { cwd: path });
+    await git(["clean", "-fd"], { cwd: path });
+    return { path, status: "aligned" };
+  }
+
+  // Un-published work. Is main an ancestor of HEAD? If not, it moved beyond us.
+  const mainMoved = !(await git(["merge-base", "--is-ancestor", mainRef, "HEAD"], { cwd: path })).ok;
+  const files = diff.split("\n").filter(Boolean);
+  const summary =
+    files.slice(0, 8).join(", ") + (files.length > 8 ? `, +${files.length - 8} more` : "");
+  return { path, status: "diverged", mainMoved, summary };
+}
+
+/**
+ * The "start fresh from main" reconcile action: snapshot the un-published work to
+ * the recycle bin (recoverable via /restore), then hard-reset the checkout to the
+ * latest default branch. Returns the bin entry path.
+ */
+export async function freshenWorkspace(
+  repo: string,
+  opts: EnsureOptions = {},
+): Promise<{ path: string; binned: string }> {
+  const norm = normalizeRepo(repo);
+  const path = workspacePath(norm);
+  const binned = binWorkspace(path, norm, "started fresh from main — prior un-published work snapshotted");
+  await git(["fetch", "origin"], { cwd: path, token: opts.token });
+  const main = await defaultBranch(path);
+  await git(["checkout", "-B", main, `origin/${main}`], { cwd: path });
+  await git(["reset", "--hard", `origin/${main}`], { cwd: path });
+  await git(["clean", "-fd"], { cwd: path });
+  return { path, binned };
+}
+
+/**
+ * The "publish" reconcile action: commit + push the workspace to main, then clear
+ * it (next iterate re-clones fresh). Thin wrapper over `commitAndPush(toMain)` +
+ * `discardWorkspace` — the same end state as `commit_prototype(to='main')`.
+ */
+export async function publishWorkspace(
+  repo: string,
+  opts: { token?: string; login?: string; message?: string } = {},
+): Promise<PushResult & { binned?: string }> {
+  const r = await commitAndPush(repo, {
+    message: opts.message || "Published prototype to main",
+    token: opts.token,
+    login: opts.login,
+    toMain: true,
+  });
+  if (!r.ok) return r;
+  const binned = discardWorkspace(repo, "published to main from reconcile");
+  return { ...r, binned };
+}
+
 export interface PushResult {
   ok: boolean;
   branch?: string;
@@ -367,11 +468,13 @@ export interface PushResult {
 export const CHECKPOINT_BRANCH = "hemiunu/checkpoint";
 
 /**
- * FOR NOW: auto-saves go straight to the default branch (main) every turn — the
- * user wants direct-to-main, not review branches/PRs. Flip to `false` to commit
- * each turn to CHECKPOINT_BRANCH instead (review-based flow, main left clean).
+ * Auto-saves commit each turn to CHECKPOINT_BRANCH (`hemiunu/checkpoint`), NOT
+ * main — so in-progress prototype work is safely pushed (survives a workspace
+ * reset) while main stays clean. main is published only when the user validates
+ * the live preview and the agent runs `commit_prototype(to='main')`. Flip to
+ * `true` to go back to direct-to-main every turn.
  */
-const AUTO_PUSH_TO_MAIN = true;
+const AUTO_PUSH_TO_MAIN = false;
 
 /** The repo's default branch (what we publish to), from the remote; "main" if unknown. */
 async function defaultBranch(path: string): Promise<string> {

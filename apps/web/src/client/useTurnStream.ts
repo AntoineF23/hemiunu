@@ -195,9 +195,11 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
                 });
                 break;
               case "subagent":
-                // Empty label = subagent narration — folded away to keep the block
-                // clean; labelled events feed the delegation group.
+                // Labelled events feed the delegation group; an empty label is
+                // subagent step narration ("Building the Header", "Fixing …") —
+                // surface it as its own visible line so the build is legible.
                 if (e.label) addActivity(subagentEvent(e.label, e.detail));
+                else if (e.detail) push({ kind: "subagent", text: e.detail });
                 break;
               case "note":
                 push({ kind: "note", text: e.text });

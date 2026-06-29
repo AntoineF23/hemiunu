@@ -14,6 +14,7 @@ import { conversationsRoute } from "./routes/conversations";
 import { mcpRoute } from "./routes/mcp";
 import { mcpOAuthRoute } from "./routes/mcp-oauth";
 import { prototypeRoute } from "./routes/prototype";
+import { reconcileRoute } from "./routes/reconcile";
 import { settingsRoute } from "./routes/settings";
 import { skillsRoute } from "./routes/skills";
 import { teammatesRoute } from "./routes/teammates";
@@ -55,6 +56,7 @@ app.route("/", atlasRoute);
 app.route("/", skillsRoute);
 app.route("/", mcpRoute);
 app.route("/", mcpOAuthRoute);
+app.route("/", reconcileRoute);
 app.route("/", turnRoute);
 
 // In production the worker also serves the built SPA. In dev the client is

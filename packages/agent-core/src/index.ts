@@ -96,6 +96,9 @@ export type { NoteKind } from "./prototypes";
 export {
   ensureWorkspace,
   ensureCloned,
+  reconcileWorkspace,
+  freshenWorkspace,
+  publishWorkspace,
   discardWorkspace,
   binWorkspace,
   listTrash,
@@ -107,7 +110,7 @@ export {
   localWorkspaceDir,
   activeProtoDir,
 } from "./workspace";
-export type { EnsureOptions, EnsureResult, TrashEntry } from "./workspace";
+export type { EnsureOptions, EnsureResult, TrashEntry, ReconcileResult, ReconcileStatus } from "./workspace";
 export { startPreview, stopPreview, previewStatus, hasDevScript } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 export {

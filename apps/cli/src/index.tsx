@@ -36,6 +36,9 @@ import {
   pruneTeams,
   migrateLocalIntoTeam,
   checkpointWorkspace,
+  reconcileWorkspace,
+  freshenWorkspace,
+  publishWorkspace,
   askAnthropic,
   normalizeRepo,
   githubViewer,
@@ -629,6 +632,62 @@ function App({
     });
   }
 
+  // On a new conversation, reconcile the selected team's tmp workspace with main.
+  // Because a validated publish clears the workspace, a surviving one means there's
+  // un-published work — so if it diverges from main, ask whether to keep iterating,
+  // start fresh from main, or publish it now. No-op for local (no-team) prototypes
+  // (no main to pull) and when offline / not signed in.
+  async function promptReconcile() {
+    const team = currentProjectRef.current;
+    if (!team) return;
+    const token = resolveGithubToken();
+    if (!token) return;
+    let rec: Awaited<ReturnType<typeof reconcileWorkspace>>;
+    try {
+      rec = await reconcileWorkspace(team, { token });
+    } catch {
+      return;
+    }
+    if (rec.status !== "diverged") return;
+    const KEEP = "Keep iterating on the un-published work";
+    const FRESH = "Start fresh from main (current work → recycle bin)";
+    const PUBLISH = "Publish the un-published work to main now";
+    setSel(0);
+    setPicker({
+      title: `${team}: you have un-published prototype changes from a previous session${
+        rec.mainMoved ? " (and main has moved on since)" : ""
+      }.${rec.summary ? `\n  Changed: ${clip(rec.summary, 100)}` : ""}\nWhat should I do?`,
+      options: [KEEP, FRESH, PUBLISH],
+      onChoice: (v) => {
+        setPicker(null);
+        if (!v || v === KEEP) {
+          push({ kind: "note", text: "· keeping your un-published work — picking up where you left off" });
+          return;
+        }
+        void (async () => {
+          try {
+            if (v === FRESH) {
+              const { binned } = await freshenWorkspace(team, { token });
+              push({
+                kind: "note",
+                text: `↻ started fresh from main${binned ? " — previous work saved to the recycle bin (/restore)" : ""}`,
+              });
+            } else if (v === PUBLISH) {
+              const login = (await githubViewer(token)) ?? undefined;
+              const r = await publishWorkspace(team, { token, login });
+              push({
+                kind: "note",
+                text: r.ok ? `⤴ published your previous work to ${team} (main)` : `couldn't publish: ${r.note}`,
+              });
+            }
+          } catch (e) {
+            push({ kind: "note", text: `reconcile failed: ${e instanceof Error ? e.message : String(e)}` });
+          }
+        })();
+      },
+    });
+  }
+
   // On startup: prompt if this folder hasn't been decided, else note the memory.
   useEffect(() => {
     if (!fsName) return;
@@ -638,6 +697,16 @@ function App({
         kind: "note",
         text: `· file access ${fsTrust ? "allowed" : "disabled"} for this folder (remembered — /trust to change)`,
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On a fresh launch (a new conversation), reconcile un-published work with main.
+  // Skipped on resume, and deferred when the folder-trust prompt owns the picker
+  // (they share one slot) — that rare first-decision launch skips the check.
+  useEffect(() => {
+    if (sessionId.current) return;
+    if (fsName && fsTrust === null) return;
+    void promptReconcile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -907,9 +976,15 @@ function App({
           for (const b of msg.message?.content ?? []) {
             if (b.type === "text") {
               const txt = b.text ?? "";
-              // A subagent's narration folds into the delegation group (its count
-              // already conveys progress); never saved to the transcript.
-              if (sub) continue;
+              // A subagent's step narration ("Building the Header", "Fixing …").
+              // Surface it as a readable, indented step line under the delegation
+              // (kind:"text"+sub) so the build is legible — not saved to the
+              // transcript, not folded into the bare step count.
+              if (sub) {
+                const tx = txt.trim();
+                if (tx) push({ kind: "text", text: clip(tx, 200), sub: true });
+                continue;
+              }
               // Top-level prose resumes — close any open activity group first so
               // it lands in scrollback above the answer.
               if (txt.trim()) flushGroup();
@@ -1031,7 +1106,7 @@ function App({
         login,
         message: title(text),
       });
-      if (cp.pushed) push({ kind: "note", text: `⤴ saved to ${team} (${cp.branch})` });
+      if (cp.pushed) push({ kind: "note", text: `⤴ progress saved (not yet published to main)` });
     }
 
     // Auto-compact when context crosses the threshold (Hermes-style). Done

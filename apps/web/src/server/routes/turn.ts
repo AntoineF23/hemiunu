@@ -333,7 +333,7 @@ turnRoute.post("/api/turn", async (c) => {
             login,
             message: title(prompt),
           });
-          if (cp.pushed) await emit({ type: "note", text: `⤴ saved to ${repo} (${cp.branch})` });
+          if (cp.pushed) await emit({ type: "note", text: `⤴ progress saved (not yet published to main)` });
         }
       }
     } catch (e) {
