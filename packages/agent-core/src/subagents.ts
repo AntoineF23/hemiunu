@@ -241,6 +241,9 @@ export interface SubagentRunContext {
   thinking: Options["thinking"];
   /** Live progress sink for parallel subtasks (CLI visibility). */
   onEvent?: (e: SubagentEvent) => void;
+  /** Turn-wide abort signal. Threaded into every sub-run's query so stopping the
+   *  turn also cancels in-flight subagents instead of letting them run on. */
+  abortController?: AbortController;
 }
 
 function modelFor(spec: SubagentSpec, ctx: SubagentRunContext): string {
@@ -281,6 +284,7 @@ export async function runSubagent(
       mcpServers: ctx.mcpServers,
       tools,
       allowedTools: tools,
+      ...(ctx.abortController ? { abortController: ctx.abortController } : {}),
     },
   })) {
     const msg = asStream(m);

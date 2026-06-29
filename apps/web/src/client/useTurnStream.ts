@@ -103,6 +103,9 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
   const idRef = useRef(0);
   const turnIdRef = useRef<string | null>(null);
   const sessionRef = useRef<string | undefined>(undefined);
+  // Aborts the live turn's fetch so stop() tears down the client stream at once,
+  // rather than waiting on the server to close it.
+  const abortRef = useRef<AbortController | null>(null);
 
   const push = useCallback((item: Omit<ChatItem, "id">) => {
     setItems((prev) => [...prev, { ...item, id: idRef.current++ }]);
@@ -145,6 +148,9 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
       push({ kind: "user", text: (display ?? prompt).trim() });
       setBusy(true);
 
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       (async () => {
         try {
           const res = await fetch("/api/turn", {
@@ -156,6 +162,7 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
               ...(planMode ? { planMode: true } : {}),
               ...(autoAccept ? { autoAccept: true } : {}),
             }),
+            signal: ac.signal,
           });
           if (!res.ok || !res.body) {
             push({ kind: "error", text: `Worker error (${res.status})` });
@@ -248,12 +255,16 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
             }
           }
         } catch (err) {
-          push({ kind: "error", text: err instanceof Error ? err.message : String(err) });
+          // stop() aborts the fetch → reader.read() rejects with AbortError; that's
+          // a user interruption, not a failure, so don't surface it as an error.
+          if (!(err instanceof DOMException && err.name === "AbortError"))
+            push({ kind: "error", text: err instanceof Error ? err.message : String(err) });
         } finally {
           setBusy(false);
           setPermission(null);
           setQuestion(null);
           turnIdRef.current = null;
+          abortRef.current = null;
         }
       })();
     },
@@ -291,9 +302,12 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
   );
 
   const stop = useCallback(() => {
+    // Tell the server to abort the turn (releases parked prompts + cancels
+    // subagents), then tear down our own stream so the UI stops immediately even
+    // if the turn started before its turnId arrived.
     const turnId = turnIdRef.current;
-    if (!turnId) return;
-    void fetch(`/api/turn/${turnId}/abort`, { method: "POST" });
+    if (turnId) void fetch(`/api/turn/${turnId}/abort`, { method: "POST" });
+    abortRef.current?.abort();
   }, []);
 
   const reset = useCallback(() => {

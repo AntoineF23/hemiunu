@@ -2,6 +2,7 @@
 // cross-request state the worker holds; all durable state stays in the engine's
 // SQLite + disk. A turn lives here only while its SSE stream is open, so the
 // `/permission` and `/abort` routes can find the right turn to act on.
+import { setToolPolicy } from "@hemiunu/agent-core";
 import type { PermissionUpdate } from "@hemiunu/agent-core";
 import type { PermissionDecision, ServerEvent } from "../shared/protocol";
 
@@ -123,17 +124,34 @@ export function resolvePermission(
   return true;
 }
 
+/** Release every parked resolver so the SDK unblocks and the generator can
+ *  finish/throw rather than hang forever. Used on both abort and end-of-turn. */
+function drainPending(s: TurnSession, reason: string): void {
+  // Reject any still-parked permission as a deny.
+  for (const p of s.pending.values()) p.resolve({ behavior: "deny", message: reason });
+  s.pending.clear();
+  // Unblock any parked ask_user question so its tool call returns.
+  for (const resolve of s.askPending.values()) resolve(`(no answer — ${reason})`);
+  s.askPending.clear();
+}
+
+/** Stop a live turn: abort its SDK query AND release any parked permission /
+ *  question prompt. Without the drain, a turn waiting on a prompt would stay
+ *  blocked on that promise (abort alone never rejects it), so the generator
+ *  never finishes, `done` is never emitted, and the stream never closes — the
+ *  stop button appears dead. The session is left for the turn's own finally to
+ *  endSession(); we only unblock it here. */
+export function abortSession(turnId: string): boolean {
+  const s = sessions.get(turnId);
+  if (!s) return false;
+  s.ac.abort();
+  drainPending(s, "the turn was stopped");
+  return true;
+}
+
 export function endSession(turnId: string): void {
   const s = sessions.get(turnId);
   if (!s) return;
-  // Reject any still-parked permission as a deny so the SDK unblocks and the
-  // generator can finish/throw rather than hang forever.
-  for (const p of s.pending.values()) {
-    p.resolve({ behavior: "deny", message: "Turn ended." });
-  }
-  s.pending.clear();
-  // Unblock any parked ask_user question so its tool call returns instead of hanging.
-  for (const resolve of s.askPending.values()) resolve("(no answer — the turn ended)");
-  s.askPending.clear();
+  drainPending(s, "the turn ended");
   sessions.delete(turnId);
 }

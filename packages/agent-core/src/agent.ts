@@ -149,6 +149,9 @@ export async function* runTurn(opts: RunTurnOptions) {
     apiKey: cfg.apiKey,
     thinking: cfg.thinking,
     onEvent: opts.onSubagentEvent,
+    // Stopping the turn must also cancel any subagent fanned out by the
+    // orchestrator (those run their own query, outside the SDK's Task tree).
+    abortController: opts.abortController,
   };
 
   const queryOptions = {

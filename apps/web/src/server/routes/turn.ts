@@ -31,6 +31,7 @@ import { recordArtifact } from "../artifacts";
 import { clip, prettyTool, resultText, cleanResultPreview, title, toolPreview } from "../format";
 import { activeMcp, bootRuntime, effectiveSystem, turnRepo } from "../runtime";
 import {
+  abortSession,
   alwaysAllow,
   createSession,
   endSession,
@@ -430,7 +431,6 @@ turnRoute.post("/api/turn/:turnId/question", async (c) => {
 });
 
 turnRoute.post("/api/turn/:turnId/abort", (c) => {
-  const s = getSession(c.req.param("turnId"));
-  s?.ac.abort();
+  abortSession(c.req.param("turnId"));
   return c.json({ ok: true });
 });
