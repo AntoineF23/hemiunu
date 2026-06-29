@@ -3,14 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
-import {
-  discoveryLine,
-  loadAtlas,
-  MONUMENTS,
-  recordDiscovery,
-  TIER_ORDER,
-  TIERS,
-} from "./atlas";
+import { discoveryLine, loadAtlas, MONUMENTS, recordDiscovery, TIER_ORDER, TIERS } from "./atlas";
 
 // Each test runs against a throwaway config dir so atlas.json never touches the
 // real one (or another test's state).
@@ -41,7 +34,10 @@ test("tier rates sum to 1 and every tier has monuments", () => {
   const sum = TIER_ORDER.reduce((s, t) => s + TIERS[t].rate, 0);
   assert.ok(Math.abs(sum - 1) < 1e-9, `rates sum to ${sum}`);
   for (const t of TIER_ORDER) {
-    assert.ok(MONUMENTS.some((m) => m.tier === t), `tier ${t} has no monuments`);
+    assert.ok(
+      MONUMENTS.some((m) => m.tier === t),
+      `tier ${t} has no monuments`,
+    );
   }
 });
 

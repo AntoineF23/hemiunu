@@ -18,13 +18,13 @@
 
     /* Brand surfaces — near-black canvas, one raised gray */
     --ground: #222831; /* main canvas */
-    --rail: #393E46; /* the icon rail, composer, cards, panels */
-    --paper: #393E46; /* composer, cards, panels */
+    --rail: #393e46; /* the icon rail, composer, cards, panels */
+    --paper: #393e46; /* composer, cards, panels */
     --raised: rgba(238, 238, 238, 0.06); /* hovers, user bubble, menu hover */
     --raised-2: rgba(238, 238, 238, 0.1);
 
     /* Ink — near-white on dark, stepped via alpha */
-    --ink: #EEEEEE;
+    --ink: #eeeeee;
     --ink-2: rgba(238, 238, 238, 0.72);
     --ink-3: rgba(238, 238, 238, 0.5);
     --ink-4: rgba(238, 238, 238, 0.34);
@@ -34,18 +34,18 @@
     --line-2: rgba(238, 238, 238, 0.16);
 
     /* Accent — gold (the single luxe note) */
-    --sun: #FFD369;
-    --sun-strong: #FFD369; /* same gold for hover/links on dark */
+    --sun: #ffd369;
+    --sun-strong: #ffd369; /* same gold for hover/links on dark */
     --sun-soft: rgba(255, 211, 105, 0.14);
     /* Secondary stops collapsed onto the four-color system */
-    --olive: #FFD369;
-    --tan: #FFD369;
-    --forest: #393E46;
+    --olive: #ffd369;
+    --tan: #ffd369;
+    --forest: #393e46;
     /* Oasis — the functional success / connected note (gold) */
-    --oasis: #FFD369;
-    --water: #FFD369;
+    --oasis: #ffd369;
+    --water: #ffd369;
     /* Danger — monochrome (red is off-palette); icon carries the meaning */
-    --danger: #EEEEEE;
+    --danger: #eeeeee;
 
     --code-bg: #222831;
 
@@ -153,12 +153,11 @@
     height: 100%;
     margin: 0;
   }
-    /* Flat near-black canvas with one faint top-left vignette (in-palette gray)
+  /* Flat near-black canvas with one faint top-left vignette (in-palette gray)
        so the dark surface has a touch of depth without any texture. */
   body {
     background:
-      radial-gradient(80% 60% at 12% 0%, rgba(57, 62, 70, 0.5), transparent 60%),
-      var(--ground);
+      radial-gradient(80% 60% at 12% 0%, rgba(57, 62, 70, 0.5), transparent 60%), var(--ground);
     background-attachment: fixed;
     color: var(--ink);
     font-family: var(--font-sans);

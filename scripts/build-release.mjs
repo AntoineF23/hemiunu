@@ -26,11 +26,7 @@ const externalDeps = {
   react: "^19.2.7",
   zod: "^4.4.3",
 };
-const external = [
-  ...Object.keys(externalDeps),
-  "react/jsx-runtime",
-  "react/jsx-dev-runtime",
-];
+const external = [...Object.keys(externalDeps), "react/jsx-runtime", "react/jsx-dev-runtime"];
 
 console.log("• cleaning release/");
 rmSync(out, { recursive: true, force: true });

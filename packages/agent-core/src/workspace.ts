@@ -360,7 +360,11 @@ export async function ensureWorkspace(
     const rb = await git(["rebase", `origin/${main}`], { cwd: path });
     if (!rb.ok) {
       await git(["rebase", "--abort"], { cwd: path });
-      return { path, action: "kept", note: "kept your work (couldn't auto-rebase onto the latest main)" };
+      return {
+        path,
+        action: "kept",
+        note: "kept your work (couldn't auto-rebase onto the latest main)",
+      };
     }
     return { path, action: "kept", note: "kept your work, rebased onto the latest main" };
   }
@@ -409,7 +413,8 @@ export async function reconcileWorkspace(
   const { token } = opts;
 
   if (!(await isValidWorkspace(path, cloneUrl))) return { path, status: "clone" };
-  if (!(await git(["fetch", "origin"], { cwd: path, token })).ok) return { path, status: "offline" };
+  if (!(await git(["fetch", "origin"], { cwd: path, token })).ok)
+    return { path, status: "offline" };
 
   const main = await defaultBranch(path);
   const mainRef = `origin/${main}`;
@@ -425,7 +430,8 @@ export async function reconcileWorkspace(
   }
 
   // Un-published work. Is main an ancestor of HEAD? If not, it moved beyond us.
-  const mainMoved = !(await git(["merge-base", "--is-ancestor", mainRef, "HEAD"], { cwd: path })).ok;
+  const mainMoved = !(await git(["merge-base", "--is-ancestor", mainRef, "HEAD"], { cwd: path }))
+    .ok;
   const files = diff.split("\n").filter(Boolean);
   const summary =
     files.slice(0, 8).join(", ") + (files.length > 8 ? `, +${files.length - 8} more` : "");
@@ -443,7 +449,11 @@ export async function freshenWorkspace(
 ): Promise<{ path: string; binned: string }> {
   const norm = normalizeRepo(repo);
   const path = workspacePath(norm);
-  const binned = binWorkspace(path, norm, "started fresh from main — prior un-published work snapshotted");
+  const binned = binWorkspace(
+    path,
+    norm,
+    "started fresh from main — prior un-published work snapshotted",
+  );
   await git(["fetch", "origin"], { cwd: path, token: opts.token });
   const main = await defaultBranch(path);
   await git(["checkout", "-B", main, `origin/${main}`], { cwd: path });
@@ -605,9 +615,14 @@ export async function restoreCheckpoint(
     const cloned = await ensureCloned(normalizeRepo(repo), opts);
     if (cloned.action === "failed") return null;
     const path = cloned.path;
-    const fetched = await git(["fetch", "origin", CHECKPOINT_BRANCH], { cwd: path, token: opts.token });
+    const fetched = await git(["fetch", "origin", CHECKPOINT_BRANCH], {
+      cwd: path,
+      token: opts.token,
+    });
     if (fetched.ok)
-      await git(["checkout", "-B", CHECKPOINT_BRANCH, `origin/${CHECKPOINT_BRANCH}`], { cwd: path });
+      await git(["checkout", "-B", CHECKPOINT_BRANCH, `origin/${CHECKPOINT_BRANCH}`], {
+        cwd: path,
+      });
     return existsSync(join(path, "index.html")) ? path : null;
   } catch {
     return null;
