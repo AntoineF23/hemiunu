@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { sdkConfigDir } from "./config";
 import { resolveGithubToken, resolveRepo } from "./github";
 import { previewStatus, startPreview } from "./preview";
 import { activeProtoDir, ensureWorkspace, localWorkspaceDir } from "./workspace";
@@ -22,6 +23,23 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 function confined(dir: string, rel: string): string | null {
   const target = resolve(dir, rel);
   return target === dir || target.startsWith(dir + sep) ? target : null;
+}
+
+/**
+ * Allow reading the SDK's persisted tool-result overflow files. When a tool
+ * result is too large to inline, the SDK saves the full output under
+ * `<sdkConfigDir>/…/tool-results/…` and tells the model to read it with
+ * offset/limit. Those files live OUTSIDE the prototype workspace, so the read
+ * sandbox would otherwise refuse them and the agent could never retrieve a big
+ * result (e.g. a full DIVE template). Scoped to `tool-results` dirs only — NOT
+ * the rest of ~/.hemiunu, which holds secrets (.env, the GitHub token, the DB).
+ * Exported for tests.
+ */
+export function spilledResult(p: string): string | null {
+  const abs = resolve(p);
+  const root = sdkConfigDir();
+  const inHome = abs === root || abs.startsWith(root + sep);
+  return inHome && abs.includes(`${sep}tool-results${sep}`) ? abs : null;
 }
 
 /** List files under `dir`, capped at `max`. `total` is the true count so the
@@ -151,7 +169,7 @@ export function createWorkspaceServer() {
 
   const readTool = tool(
     "read_workspace_file",
-    "Read a file from the current prototype's workspace, to build on top of the existing code. For a big file (a template bundle, a large tokens/CSS file), read it in windows with offset/limit instead of all at once — search_workspace first to find the line you want, then read around it.",
+    "Read a file from the current prototype's workspace, to build on top of the existing code. For a big file (a template bundle, a large tokens/CSS file), read it in windows with offset/limit instead of all at once — search_workspace first to find the line you want, then read around it. If another tool's result was too large and got saved to a file (a path under …/tool-results/…), pass that path here with offset/limit to read it in windows.",
     {
       path: z
         .string()
@@ -173,7 +191,9 @@ export function createWorkspaceServer() {
     },
     async ({ path, offset, limit }) => {
       const dir = await ensureProtoReady();
-      const file = confined(dir, path);
+      // A workspace file, or an SDK tool-result overflow file (read-only escape
+      // hatch so the agent can follow "output saved to …/tool-results/…").
+      const file = confined(dir, path) ?? spilledResult(path);
       if (!file) return text(`Refused: '${path}' is outside the workspace.`);
       if (!existsSync(file)) return text(`No such file: ${path}`);
       const raw = readFileSync(file, "utf8");

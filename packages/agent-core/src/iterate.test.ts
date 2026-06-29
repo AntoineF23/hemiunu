@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
-import { readWindow, searchRegex } from "./iterate";
+// Pin the SDK home so spilledResult() has a known root to test against.
+process.env.CLAUDE_CONFIG_DIR = "/tmp/hemiunu-agent-test";
+const { readWindow, searchRegex, spilledResult } = await import("./iterate");
+const AGENT_HOME = "/tmp/hemiunu-agent-test";
 
 const SAMPLE = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
 
@@ -32,4 +36,21 @@ test("searchRegex: an invalid regex falls back to a literal match", () => {
   const re = searchRegex("rgb(");
   assert.ok(re.test("color: rgb(0,0,0)"));
   assert.ok(!re.test("plain text"));
+});
+
+test("spilledResult: allows reading an SDK tool-result overflow file", () => {
+  const p = join(AGENT_HOME, "projects/x/session/tool-results/mcp-dive-template.txt");
+  assert.equal(spilledResult(p), p);
+});
+
+test("spilledResult: refuses secrets in the agent home (no tool-results segment)", () => {
+  // .env, the GitHub token, sessions, the DB — all under the home but NOT spill files.
+  assert.equal(spilledResult(join(AGENT_HOME, ".claude.json")), null);
+  assert.equal(spilledResult(join(AGENT_HOME, "../.env")), null);
+  assert.equal(spilledResult(join(AGENT_HOME, "../github.json")), null);
+});
+
+test("spilledResult: refuses paths outside the agent home", () => {
+  assert.equal(spilledResult("/etc/passwd"), null);
+  assert.equal(spilledResult("/tmp/elsewhere/tool-results/x.txt"), null);
 });
