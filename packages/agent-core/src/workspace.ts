@@ -336,25 +336,39 @@ export async function ensureWorkspace(
   const fetched = await git(["fetch", "origin"], { cwd: path, token });
   if (!fetched.ok) return { path, action: "failed", note: fetched.stderr.trim().slice(0, 300) };
 
-  const branch = (await gitOut(["rev-parse", "--abbrev-ref", "HEAD"], path)) || "HEAD";
+  const main = await defaultBranch(path);
+  const ident = ["-c", "user.name=Hemiunu", "-c", "user.email=hemiunu@users.noreply.github.com"];
   const dirty = (await gitOut(["status", "--porcelain"], path)).length > 0;
-  const localSha = await gitOut(["rev-parse", "HEAD"], path);
-  const remoteSha = await gitOut(["rev-parse", `origin/${branch}`], path);
-  const moved = !!remoteSha && localSha !== remoteSha;
 
-  // In-progress edits on an unchanged remote → keep them (safe, latest base).
-  if (dirty && !moved) {
-    return { path, action: "kept", note: "kept your in-progress edits (remote unchanged)" };
+  // NEVER discard in-progress work on a sync. The deferred-publish model keeps
+  // un-pushed prototype code locally until the user validates, so first commit
+  // any working-tree edits onto the checkpoint branch — they must survive.
+  if (dirty) {
+    await git(["checkout", "-B", CHECKPOINT_BRANCH], { cwd: path });
+    await git(["add", "-A"], { cwd: path });
+    const staged = (await gitOut(["diff", "--cached", "--name-only"], path)).length > 0;
+    if (staged)
+      await git([...ident, "commit", "-m", "Auto-saved prototype work (pre-sync)"], { cwd: path });
   }
 
-  // Otherwise bring the tree to the latest remote, binning edits we'd discard.
-  let binned: string | undefined;
-  if (dirty && moved) {
-    binned = binWorkspace(path, norm, "reset to latest — prior un-pushed edits snapshotted");
+  // Does the checkout carry commits the default branch lacks (un-published code)?
+  // main also gains PROTOTYPE.md note commits out-of-band, so REPLAY our work on
+  // top of the latest main rather than resetting it away. Code and notes touch
+  // different files → clean rebase; on a real conflict, keep our work untouched.
+  const ahead = (await gitOut(["rev-list", "--count", `origin/${main}..HEAD`], path)) !== "0";
+  if (ahead) {
+    const rb = await git(["rebase", `origin/${main}`], { cwd: path });
+    if (!rb.ok) {
+      await git(["rebase", "--abort"], { cwd: path });
+      return { path, action: "kept", note: "kept your work (couldn't auto-rebase onto the latest main)" };
+    }
+    return { path, action: "kept", note: "kept your work, rebased onto the latest main" };
   }
-  await git(["reset", "--hard", `origin/${branch}`], { cwd: path });
+
+  // No local commits ahead of main → fast-forward the checkout to the latest main.
+  await git(["reset", "--hard", `origin/${main}`], { cwd: path });
   await git(["clean", "-fd"], { cwd: path });
-  return { path, action: moved ? "reset" : "synced", binned };
+  return { path, action: "synced" };
 }
 
 // --- new-conversation reconciliation -----------------------------------------
@@ -511,6 +525,27 @@ export async function commitAndPush(
     const c = await git([...ident, "commit", "-m", opts.message], { cwd: path });
     if (!c.ok)
       return { ok: false, branch, note: `commit failed: ${c.stderr.trim().slice(0, 200)}` };
+  }
+
+  // Publishing to main is often non-fast-forward: PROTOTYPE.md notes are committed
+  // to main out-of-band (the GitHub Contents API), so main gains commits the local
+  // branch lacks. Replay our work on top of the latest main first — code and notes
+  // touch different files, so it's a clean rebase — then the push fast-forwards
+  // instead of being rejected.
+  if (opts.toMain) {
+    await git(["fetch", "origin", branch], { cwd: path, token: opts.token });
+    const behind = (await gitOut(["rev-list", "--count", `HEAD..origin/${branch}`], path)) !== "0";
+    if (behind) {
+      const rb = await git(["rebase", `origin/${branch}`], { cwd: path });
+      if (!rb.ok) {
+        await git(["rebase", "--abort"], { cwd: path });
+        return {
+          ok: false,
+          branch,
+          note: `couldn't auto-merge with the latest ${branch} (a real conflict in the same files) — resolve it manually.`,
+        };
+      }
+    }
   }
 
   const p = await git(["push", "-u", "origin", `HEAD:${branch}`], { cwd: path, token: opts.token });

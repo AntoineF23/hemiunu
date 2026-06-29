@@ -19,7 +19,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -44,6 +44,7 @@ import {
   setToolPolicy,
   loadToolPolicy,
   appendKnowledge,
+  addPrototypeNote,
   normalizeRepo,
   prototypePath,
   upsertUserEnv,
@@ -62,6 +63,7 @@ import {
   ensureWorkspace,
   listTrash,
   restoreTrash,
+  binWorkspace,
   startPreview,
   stopPreview,
   previewStatus,
@@ -728,7 +730,7 @@ async function main() {
     }
   });
 
-  await check("workspace: clone, sync-to-latest, bin discarded edits, restore", async () => {
+  await check("workspace: clone, then sync PRESERVES in-progress work (rebases onto latest, never discards)", async () => {
     const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ws-"));
     const remote = mkdtempSync(join(tmpdir(), "hemiunu-remote-"));
     const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
@@ -748,25 +750,35 @@ async function main() {
       assert(r.action === "cloned", `should clone, got ${r.action} ${r.note ?? ""}`);
       assert(readFileSync(join(r.path, "index.html"), "utf8").includes("v1"), "cloned content");
 
-      // Make a local edit AND advance the remote → reset to latest, snapshot the edit.
-      writeFileSync(join(r.path, "index.html"), "<h1>my local edit</h1>");
-      writeFileSync(join(remote, "index.html"), "<h1>v2</h1>");
-      g(["commit", "-aqm", "v2"], remote);
+      // In-progress prototype code locally, while the remote advances a DIFFERENT
+      // file (e.g. a PROTOTYPE.md note). Syncing must KEEP the local work and
+      // rebase it onto the latest — never reset/bin it (the old, lossy behavior).
+      writeFileSync(join(r.path, "app.tsx"), "export const App = () => 'mine';");
+      writeFileSync(join(remote, "PROTOTYPE.md"), "## Decisions\n- a remote note");
+      g(["add", "."], remote);
+      g(["commit", "-qm", "note"], remote);
+      const trashBefore = listTrash().length;
       r = await ensureWorkspace("acme/proto", { cloneUrl: remote });
-      assert(r.action === "reset", `should reset to latest, got ${r.action} ${r.note ?? ""}`);
+      assert(r.action === "kept", `should keep+rebase, got ${r.action} ${r.note ?? ""}`);
       assert(
-        readFileSync(join(r.path, "index.html"), "utf8").includes("v2"),
-        "workspace now at latest",
+        readFileSync(join(r.path, "app.tsx"), "utf8").includes("mine"),
+        "the in-progress local code must be preserved",
       );
-      assert(!!r.binned, "discarded edits should be snapshotted to the recycle bin");
-
-      // The bin holds the forgotten edit; restore recovers it.
-      const entries = listTrash();
-      assert(entries.length >= 1, "recycle bin should have an entry");
-      const dest = restoreTrash(entries[0].id);
       assert(
-        readFileSync(join(dest, "index.html"), "utf8").includes("my local edit"),
-        "restore should recover the un-pushed edit",
+        existsSync(join(r.path, "PROTOTYPE.md")),
+        "the remote change must be integrated via rebase",
+      );
+      assert(
+        listTrash().length === trashBefore,
+        "nothing should be discarded to the recycle bin on a normal sync",
+      );
+
+      // restoreTrash still recovers a snapshot when one IS made (e.g. start-fresh).
+      const binId = binWorkspace(r.path, "acme/proto", "test snapshot");
+      const dest = restoreTrash(basename(binId));
+      assert(
+        readFileSync(join(dest, "app.tsx"), "utf8").includes("mine"),
+        "restore should recover a binned snapshot",
       );
     } finally {
       rmSync(cfg, { recursive: true, force: true });
@@ -955,6 +967,71 @@ async function main() {
       rmSync(verify2, { recursive: true, force: true });
     } finally {
       for (const d of [cfg, bare, seed, verify]) rmSync(d, { recursive: true, force: true });
+      if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
+      else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
+    }
+  });
+
+  await check("PROTOTYPE.md notes land in the workspace (not main) when a checkout exists; publish rebases over a moved main", async () => {
+    const cfg = mkdtempSync(join(tmpdir(), "hemiunu-ppcfg-"));
+    const bare = mkdtempSync(join(tmpdir(), "hemiunu-ppbare-"));
+    const seed = mkdtempSync(join(tmpdir(), "hemiunu-ppseed-"));
+    const side = mkdtempSync(join(tmpdir(), "hemiunu-ppside-"));
+    const prevCfg = process.env.HEMIUNU_CONFIG_DIR;
+    const g = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    const out = (args: string[], cwd: string) =>
+      execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    try {
+      process.env.HEMIUNU_CONFIG_DIR = cfg;
+      g(["init", "--bare", "-b", "main"], bare);
+      g(["clone", bare, seed], tmpdir());
+      writeFileSync(join(seed, "README.md"), "init");
+      g(["config", "user.email", "t@t.co"], seed);
+      g(["config", "user.name", "t"], seed);
+      g(["add", "."], seed);
+      g(["commit", "-qm", "init"], seed);
+      g(["push", "origin", "HEAD:main"], seed);
+
+      // A checkout exists → a note writes to the workspace PROTOTYPE.md, NOT main.
+      await ensureWorkspace("acme/pp", { cloneUrl: bare });
+      const mainBefore = out(["ls-remote", bare, "refs/heads/main"], tmpdir());
+      await addPrototypeNote("decision", "Tabs over a wizard", { repo: "acme/pp" });
+      assert(
+        readFileSync(join(workspacePath("acme/pp"), "PROTOTYPE.md"), "utf8").includes("Tabs over a wizard"),
+        "the note should be written into the workspace PROTOTYPE.md",
+      );
+      assert(
+        out(["ls-remote", bare, "refs/heads/main"], tmpdir()) === mainBefore,
+        "the note must NOT create an out-of-band commit on main when a checkout exists",
+      );
+
+      // Build code in the workspace + checkpoint it (commits note + code).
+      writeFileSync(join(workspacePath("acme/pp"), "index.html"), "<h1>built</h1>");
+      await checkpointWorkspace("acme/pp", { login: "tester" });
+
+      // Meanwhile main moves out-of-band (e.g. a teammate). Publish must rebase
+      // our work on top of it and fast-forward — not fail non-fast-forward.
+      g(["clone", bare, side], tmpdir());
+      writeFileSync(join(side, "NOTES.md"), "from a teammate");
+      g(["config", "user.email", "u@u.co"], side);
+      g(["config", "user.name", "u"], side);
+      g(["add", "."], side);
+      g(["commit", "-qm", "teammate change"], side);
+      g(["push", "origin", "HEAD:main"], side);
+
+      const pub = await publishWorkspace("acme/pp", { login: "tester" });
+      assert(pub.ok, `publish should rebase over the moved main and succeed: ${pub.note}`);
+      const ppver = mkdtempSync(join(tmpdir(), "hemiunu-ppver-"));
+      g(["clone", bare, ppver], tmpdir());
+      assert(
+        readFileSync(join(ppver, "index.html"), "utf8").includes("built") &&
+          existsSync(join(ppver, "NOTES.md")) &&
+          readFileSync(join(ppver, "PROTOTYPE.md"), "utf8").includes("Tabs over a wizard"),
+        "main should end with our code, our note, AND the teammate's change (clean rebase)",
+      );
+      rmSync(ppver, { recursive: true, force: true });
+    } finally {
+      for (const d of [cfg, bare, seed, side]) rmSync(d, { recursive: true, force: true });
       if (prevCfg === undefined) delete process.env.HEMIUNU_CONFIG_DIR;
       else process.env.HEMIUNU_CONFIG_DIR = prevCfg;
     }

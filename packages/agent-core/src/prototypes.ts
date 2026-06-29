@@ -13,7 +13,7 @@ import {
   resolveRepo,
 } from "./github";
 import { slugify } from "./prototype";
-import { localWorkspaceDir } from "./workspace";
+import { localWorkspaceDir, workspacePath } from "./workspace";
 
 /**
  * A 404 from the Contents API is ambiguous: the FILE may be absent, OR the whole
@@ -155,6 +155,24 @@ function readLocal(): string | null {
 const LOCAL_HINT =
   "It isn't saved to a repo yet. If the user is building a real feature (not a quick throwaway), set up a space for it yourself with create_team so the work persists — don't ask them to create one manually.";
 
+// --- Active-workspace backend ------------------------------------------------
+// When a team CHECKOUT exists (active prototyping), PROTOTYPE.md lives IN the
+// workspace and travels with the code through checkpoint → publish. Writing it
+// here (instead of an out-of-band Contents-API commit to main) keeps the local
+// workspace in lock-step with the remote — the separate main commit was what
+// made main diverge from the checkout (blocked publishes, discarded code). We
+// fall back to the Contents API only when there's no checkout yet.
+function workspaceProtoPath(repo: string): string {
+  return join(workspacePath(repo), PROTOTYPE_FILE);
+}
+function hasCheckout(repo: string): boolean {
+  return existsSync(join(workspacePath(repo), ".git"));
+}
+function readWorkspaceProto(repo: string): string | null {
+  const p = workspaceProtoPath(repo);
+  return existsSync(p) ? readFileSync(p, "utf8") : null;
+}
+
 /**
  * Append a note/decision/question/feedback to the current feature's PROTOTYPE.md.
  * With a team selected → commit to the repo root via the GitHub API (no clone);
@@ -172,6 +190,15 @@ export async function addPrototypeNote(
     mkdirSync(localWorkspaceDir(), { recursive: true });
     writeFileSync(localPath(), next, "utf8");
     return `Saved ${kind} locally. ${LOCAL_HINT}`;
+  }
+  // Active prototype checkout → keep the note in the workspace so it publishes
+  // with the build (no out-of-band main commit that would diverge the checkout).
+  if (hasCheckout(repo)) {
+    const tok = opts?.token ?? resolveGithubToken();
+    const author = tok ? ((await githubViewer(tok)) ?? "you") : "you";
+    const next = appendKnowledge(readWorkspaceProto(repo), featureName(repo), kind, text, author, date);
+    writeFileSync(workspaceProtoPath(repo), next, "utf8");
+    return `Saved ${kind} to the prototype's PROTOTYPE.md — it publishes to ${repo} with the build.`;
   }
   const token = opts?.token ?? resolveGithubToken();
   if (!token)
@@ -201,6 +228,14 @@ export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> 
     return (
       readLocal() ??
       `No PROTOTYPE.md here yet — it's created automatically the first time I save a note or decision. ${LOCAL_HINT}`
+    );
+  }
+  // Active checkout → the workspace copy is the source of truth (it carries
+  // un-published notes alongside the code).
+  if (hasCheckout(repo)) {
+    return (
+      readWorkspaceProto(repo) ??
+      `${repo} has no PROTOTYPE.md yet — it's created automatically the first time I save a note or decision.`
     );
   }
   const token = opts?.token ?? resolveGithubToken();
@@ -240,6 +275,17 @@ export async function updatePrototype(content: string, opts?: RemoteOpts): Promi
       "utf8",
     );
     return `Updated the local PROTOTYPE.md. ${LOCAL_HINT}`;
+  }
+  // Active checkout → rewrite the workspace copy (publishes with the build).
+  if (hasCheckout(repo)) {
+    const cur = readWorkspaceProto(repo);
+    const meta = { ...(cur ? parseFrontmatter(cur).meta : {}), ...provided.meta };
+    writeFileSync(
+      workspaceProtoPath(repo),
+      withFrontmatter(meta, featureName(repo), date, provided.body || content.trim()),
+      "utf8",
+    );
+    return `Updated the prototype's PROTOTYPE.md — it publishes to ${repo} with the build.`;
   }
   const token = opts?.token ?? resolveGithubToken();
   if (!token) return "Not signed in to GitHub — run /github, or work locally with no team.";
