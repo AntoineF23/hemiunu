@@ -3,7 +3,7 @@
 // URL is ephemeral (random port, dies with the worker), so we persist the
 // durable thing — the prototype DIRECTORY — keyed by conversation (SDK session)
 // id, and restart a preview from it on demand.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { configDir } from "@hemiunu/agent-core";
 

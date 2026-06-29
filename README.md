@@ -2,6 +2,8 @@
 
 <img src="assets/hemiunu-banner.svg" alt="Hemiunu, product agent for product teams" width="760">
 
+[![CI](https://github.com/AntoineF23/hemiunu/actions/workflows/ci.yml/badge.svg)](https://github.com/AntoineF23/hemiunu/actions/workflows/ci.yml)
+
 </div>
 
 An organization-wide AI **Product Agent** for a product team, built on the

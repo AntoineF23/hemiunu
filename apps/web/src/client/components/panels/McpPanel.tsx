@@ -101,7 +101,7 @@ function ServerLogo({ domain, connected }: { domain: string | null; connected: b
   return <Plug className={cn("size-4", connected ? "text-oasis" : "text-ink-4")} />;
 }
 
-export function McpPanel({ open, onOpenChange }: McpPanelProps) {
+export function McpPanel({ open }: McpPanelProps) {
   const [servers, setServers] = useState<ServerInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,287 +228,282 @@ export function McpPanel({ open, onOpenChange }: McpPanelProps) {
   return (
     <>
       <SheetHeader>
-          <SheetTitle>
-            {mapView
-              ? `${mapView.name} · source map`
-              : adding
-                ? "Add MCP server"
-                : editing
-                  ? `Edit ${editing.name}`
-                  : "MCP servers"}
-          </SheetTitle>
-          <SheetDescription>
-            {mapView
-              ? "What the scanner mapped inside this source."
-              : adding
-                ? "Connect a new MCP server — it applies on your next message, no restart."
-                : editing
-                  ? "Change its configuration and edit its scan map."
-                  : "Connected tools, their permissions (allow / ask / block), and scan maps."}
-          </SheetDescription>
-        </SheetHeader>
+        <SheetTitle>
+          {mapView
+            ? `${mapView.name} · source map`
+            : adding
+              ? "Add MCP server"
+              : editing
+                ? `Edit ${editing.name}`
+                : "MCP servers"}
+        </SheetTitle>
+        <SheetDescription>
+          {mapView
+            ? "What the scanner mapped inside this source."
+            : adding
+              ? "Connect a new MCP server — it applies on your next message, no restart."
+              : editing
+                ? "Change its configuration and edit its scan map."
+                : "Connected tools, their permissions (allow / ask / block), and scan maps."}
+        </SheetDescription>
+      </SheetHeader>
 
-        {error && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        {flash && !adding && !mapView && (
-          <p className="rounded-md border border-oasis/40 bg-oasis/10 px-3 py-2 text-sm text-ink-2">
-            {flash}
-          </p>
-        )}
+      {error && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {flash && !adding && !mapView && (
+        <p className="rounded-md border border-oasis/40 bg-oasis/10 px-3 py-2 text-sm text-ink-2">
+          {flash}
+        </p>
+      )}
 
-        {adding ? (
-          <ServerForm
-            onCancel={() => setAdding(false)}
-            onDone={async (name) => {
-              setAdding(false);
-              setFlash(
-                `Added “${name}” — discovering its tools now. Use “Discover tools” if they don't appear.`,
-              );
-              await load();
-            }}
-            onError={setError}
-          />
-        ) : editing ? (
-          <div className="flex flex-col gap-4">
-            <button
-              onClick={() => setEditing(null)}
-              className="w-fit text-sm text-ink-3 hover:text-ink"
-            >
-              ← Back to servers
-            </button>
+      {adding ? (
+        <ServerForm
+          onCancel={() => setAdding(false)}
+          onDone={async (name) => {
+            setAdding(false);
+            setFlash(
+              `Added “${name}” — discovering its tools now. Use “Discover tools” if they don't appear.`,
+            );
+            await load();
+          }}
+          onError={setError}
+        />
+      ) : editing ? (
+        <div className="flex flex-col gap-4">
+          <button
+            onClick={() => setEditing(null)}
+            className="w-fit text-sm text-ink-3 hover:text-ink"
+          >
+            ← Back to servers
+          </button>
 
-            <h3 className="text-sm font-medium text-ink-2">Configuration</h3>
-            {editing.userAdded ? (
-              <ServerForm
-                initial={{ name: editing.name, config: editing.config }}
-                showBack={false}
-                onCancel={() => setEditing(null)}
-                onDone={async () => {
-                  setFlash(`Saved ${editing.name}.`);
-                  await load();
-                }}
-                onError={setError}
-              />
-            ) : (
-              <p className="rounded-lg border border-border bg-card/50 px-3 py-2.5 text-sm text-ink-3">
-                This server is configured by Hemiunu (mcp.json) and isn't editable here. You can
-                still edit its scan map below.
-              </p>
-            )}
-
-            <h3 className="border-t border-border pt-3 text-sm font-medium text-ink-2">
-              Scan map (.md)
-            </h3>
-            <SourceMapEditor
-              name={editing.name}
-              hasMap={!!editing.sourceMap}
+          <h3 className="text-sm font-medium text-ink-2">Configuration</h3>
+          {editing.userAdded ? (
+            <ServerForm
+              initial={{ name: editing.name, config: editing.config }}
+              showBack={false}
+              onCancel={() => setEditing(null)}
+              onDone={async () => {
+                setFlash(`Saved ${editing.name}.`);
+                await load();
+              }}
               onError={setError}
-              onChanged={load}
             />
-          </div>
-        ) : mapView ? (
-          <div className="flex flex-col gap-3">
-            <Button variant="ghost" size="sm" className="w-fit" onClick={() => setMapView(null)}>
-              ← Back to servers
-            </Button>
-            <div className="rounded-lg border border-border bg-card/50 p-4">
-              <Markdown text={mapView.body} />
-            </div>
-          </div>
-        ) : loading ? (
-          <p className="flex items-center gap-2 text-sm text-ink-3">
-            <Loader2 className="size-4 animate-spin" /> Loading…
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <Button size="sm" className="w-fit" onClick={() => setAdding(true)}>
-              <Plus className="size-4" /> Add MCP server
-            </Button>
-            {servers.map((s) => (
-              <div
-                key={s.name}
-                className="flex flex-col gap-3 rounded-xl border border-border p-3.5"
-              >
-                {/* Header */}
-                <div className="flex items-center gap-2.5">
-                  <ServerLogo domain={s.iconDomain} connected={s.connected} />
-                  <span className="font-medium text-ink">{s.name}</span>
-                  {!s.connected && (
-                    <span
-                      className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-3"
-                      title={s.reason ?? undefined}
-                    >
-                      {s.reason ? `off · ${s.reason}` : "off"}
-                    </span>
-                  )}
-                  {/* Remote-server auth diagnostic */}
-                  {s.needsAuth ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      disabled={authorizing === s.name}
-                      onClick={() => authorize(s.name)}
-                      title="Sign in to this server (OAuth)"
-                    >
-                      {authorizing === s.name ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <KeyRound className="size-3.5" />
-                      )}
-                      Authorize
-                    </Button>
-                  ) : s.oauthAuthorized ? (
-                    <span
-                      className="rounded bg-oasis/15 px-1.5 py-0.5 text-[10px] text-oasis"
-                      title="Signed in via OAuth"
-                    >
-                      ✓ authorized
-                    </span>
-                  ) : s.remote && s.reachable === false ? (
-                    <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-3">
-                      not reachable
-                    </span>
-                  ) : null}
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <button
-                      onClick={() => setEditing(s)}
-                      aria-label={`Edit ${s.name}`}
-                      className="rounded p-1 text-ink-4 hover:text-ink"
-                      title="Edit server & scan map"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    {s.userAdded && (
-                      <button
-                        onClick={() => setConfirmDelete(s.name)}
-                        aria-label={`Remove ${s.name}`}
-                        className="rounded p-1 text-ink-4 hover:text-destructive"
-                        title="Remove this server"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    )}
-                    <PolicyToggle
-                      value={s.serverPolicy}
-                      onChange={(p) => setPolicy("server", s.name, p)}
-                    />
-                  </div>
-                </div>
+          ) : (
+            <p className="rounded-lg border border-border bg-card/50 px-3 py-2.5 text-sm text-ink-3">
+              This server is configured by Hemiunu (mcp.json) and isn't editable here. You can still
+              edit its scan map below.
+            </p>
+          )}
 
-                {/* Per-tool permissions — the server's full tool inventory,
-                    each with allow / ask / block (inherits the server default). */}
-                {s.connected && (
-                  <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-ink-3">
-                        Tools{s.tools.length > 0 ? ` (${s.tools.length})` : ""}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={discovering === s.name}
-                        onClick={() => refreshTools(s.name)}
-                        title="List every tool this server exposes"
-                      >
-                        {discovering === s.name ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="size-3.5" />
-                        )}
-                        {s.tools.length > 0 ? "Refresh tools" : "Discover tools"}
-                      </Button>
-                    </div>
-                    {s.tools.length > 0 ? (
-                      s.tools.map((t) => (
-                        <div key={t.id} className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">
-                            {shortTool(t.id)}
-                          </span>
-                          <PolicyToggle
-                            value={t.policy}
-                            inherited={s.serverPolicy}
-                            onChange={(p) => setPolicy("tool", t.id, p)}
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-xs text-ink-4">
-                        {discovering === s.name
-                          ? "Discovering tools…"
-                          : "No tools listed yet — Discover to load them."}
-                      </span>
-                    )}
-                  </div>
+          <h3 className="border-t border-border pt-3 text-sm font-medium text-ink-2">
+            Scan map (.md)
+          </h3>
+          <SourceMapEditor
+            name={editing.name}
+            hasMap={!!editing.sourceMap}
+            onError={setError}
+            onChanged={load}
+          />
+        </div>
+      ) : mapView ? (
+        <div className="flex flex-col gap-3">
+          <Button variant="ghost" size="sm" className="w-fit" onClick={() => setMapView(null)}>
+            ← Back to servers
+          </Button>
+          <div className="rounded-lg border border-border bg-card/50 p-4">
+            <Markdown text={mapView.body} />
+          </div>
+        </div>
+      ) : loading ? (
+        <p className="flex items-center gap-2 text-sm text-ink-3">
+          <Loader2 className="size-4 animate-spin" /> Loading…
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <Button size="sm" className="w-fit" onClick={() => setAdding(true)}>
+            <Plus className="size-4" /> Add MCP server
+          </Button>
+          {servers.map((s) => (
+            <div key={s.name} className="flex flex-col gap-3 rounded-xl border border-border p-3.5">
+              {/* Header */}
+              <div className="flex items-center gap-2.5">
+                <ServerLogo domain={s.iconDomain} connected={s.connected} />
+                <span className="font-medium text-ink">{s.name}</span>
+                {!s.connected && (
+                  <span
+                    className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-3"
+                    title={s.reason ?? undefined}
+                  >
+                    {s.reason ? `off · ${s.reason}` : "off"}
+                  </span>
                 )}
-
-                {/* Source map (/scan) */}
-                <div className="flex items-center gap-2 border-t border-border pt-2.5 text-xs text-ink-3">
-                  {s.sourceMap ? (
-                    <span className="truncate">
-                      Scanned{s.sourceMap.scanned ? ` ${s.sourceMap.scanned}` : ""} ·{" "}
-                      {s.sourceMap.description || "mapped"}
-                    </span>
-                  ) : (
-                    <span>Not scanned yet</span>
+                {/* Remote-server auth diagnostic */}
+                {s.needsAuth ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    disabled={authorizing === s.name}
+                    onClick={() => authorize(s.name)}
+                    title="Sign in to this server (OAuth)"
+                  >
+                    {authorizing === s.name ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <KeyRound className="size-3.5" />
+                    )}
+                    Authorize
+                  </Button>
+                ) : s.oauthAuthorized ? (
+                  <span
+                    className="rounded bg-oasis/15 px-1.5 py-0.5 text-[10px] text-oasis"
+                    title="Signed in via OAuth"
+                  >
+                    ✓ authorized
+                  </span>
+                ) : s.remote && s.reachable === false ? (
+                  <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-3">
+                    not reachable
+                  </span>
+                ) : null}
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => setEditing(s)}
+                    aria-label={`Edit ${s.name}`}
+                    className="rounded p-1 text-ink-4 hover:text-ink"
+                    title="Edit server & scan map"
+                  >
+                    <Pencil className="size-4" />
+                  </button>
+                  {s.userAdded && (
+                    <button
+                      onClick={() => setConfirmDelete(s.name)}
+                      aria-label={`Remove ${s.name}`}
+                      className="rounded p-1 text-ink-4 hover:text-destructive"
+                      title="Remove this server"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
                   )}
-                  <div className="ml-auto flex shrink-0 gap-1">
-                    {s.sourceMap && (
-                      <Button variant="ghost" size="sm" onClick={() => viewMap(s.name)}>
-                        <FileText className="size-3.5" /> View
-                      </Button>
-                    )}
-                    {s.connected && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={scanning === s.name}
-                        onClick={() => rescan(s.name)}
-                      >
-                        {scanning === s.name ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="size-3.5" />
-                        )}
-                        {s.sourceMap ? "Rescan" : "Scan"}
-                      </Button>
-                    )}
-                  </div>
+                  <PolicyToggle
+                    value={s.serverPolicy}
+                    onChange={(p) => setPolicy("server", s.name, p)}
+                  />
                 </div>
               </div>
-            ))}
-            {servers.length === 0 && (
-              <p className="text-sm text-ink-3">No MCP servers configured.</p>
-            )}
-          </div>
-        )}
 
-        {/* Delete confirmation */}
-        <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>Remove “{confirmDelete}”?</DialogTitle>
-              <DialogDescription>
-                This deletes the server from your config and removes its scan map (.md). This can't
-                be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => confirmDelete && removeServer(confirmDelete)}
-              >
-                <Trash2 className="size-4" /> Remove
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              {/* Per-tool permissions — the server's full tool inventory,
+                    each with allow / ask / block (inherits the server default). */}
+              {s.connected && (
+                <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-ink-3">
+                      Tools{s.tools.length > 0 ? ` (${s.tools.length})` : ""}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={discovering === s.name}
+                      onClick={() => refreshTools(s.name)}
+                      title="List every tool this server exposes"
+                    >
+                      {discovering === s.name ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                      {s.tools.length > 0 ? "Refresh tools" : "Discover tools"}
+                    </Button>
+                  </div>
+                  {s.tools.length > 0 ? (
+                    s.tools.map((t) => (
+                      <div key={t.id} className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">
+                          {shortTool(t.id)}
+                        </span>
+                        <PolicyToggle
+                          value={t.policy}
+                          inherited={s.serverPolicy}
+                          onChange={(p) => setPolicy("tool", t.id, p)}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-xs text-ink-4">
+                      {discovering === s.name
+                        ? "Discovering tools…"
+                        : "No tools listed yet — Discover to load them."}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Source map (/scan) */}
+              <div className="flex items-center gap-2 border-t border-border pt-2.5 text-xs text-ink-3">
+                {s.sourceMap ? (
+                  <span className="truncate">
+                    Scanned{s.sourceMap.scanned ? ` ${s.sourceMap.scanned}` : ""} ·{" "}
+                    {s.sourceMap.description || "mapped"}
+                  </span>
+                ) : (
+                  <span>Not scanned yet</span>
+                )}
+                <div className="ml-auto flex shrink-0 gap-1">
+                  {s.sourceMap && (
+                    <Button variant="ghost" size="sm" onClick={() => viewMap(s.name)}>
+                      <FileText className="size-3.5" /> View
+                    </Button>
+                  )}
+                  {s.connected && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={scanning === s.name}
+                      onClick={() => rescan(s.name)}
+                    >
+                      {scanning === s.name ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                      {s.sourceMap ? "Rescan" : "Scan"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {servers.length === 0 && <p className="text-sm text-ink-3">No MCP servers configured.</p>}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove “{confirmDelete}”?</DialogTitle>
+            <DialogDescription>
+              This deletes the server from your config and removes its scan map (.md). This can't be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmDelete && removeServer(confirmDelete)}
+            >
+              <Trash2 className="size-4" /> Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

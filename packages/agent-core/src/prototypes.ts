@@ -196,7 +196,14 @@ export async function addPrototypeNote(
   if (hasCheckout(repo)) {
     const tok = opts?.token ?? resolveGithubToken();
     const author = tok ? ((await githubViewer(tok)) ?? "you") : "you";
-    const next = appendKnowledge(readWorkspaceProto(repo), featureName(repo), kind, text, author, date);
+    const next = appendKnowledge(
+      readWorkspaceProto(repo),
+      featureName(repo),
+      kind,
+      text,
+      author,
+      date,
+    );
     writeFileSync(workspaceProtoPath(repo), next, "utf8");
     return `Saved ${kind} to the prototype's PROTOTYPE.md — it publishes to ${repo} with the build.`;
   }

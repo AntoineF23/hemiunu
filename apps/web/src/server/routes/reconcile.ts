@@ -21,7 +21,12 @@ reconcileRoute.get("/api/reconcile", async (c) => {
   if (!repo || !token) return c.json({ status: "none" });
   try {
     const rec = await reconcileWorkspace(repo, { token });
-    return c.json({ status: rec.status, summary: rec.summary ?? null, mainMoved: !!rec.mainMoved, repo });
+    return c.json({
+      status: rec.status,
+      summary: rec.summary ?? null,
+      mainMoved: !!rec.mainMoved,
+      repo,
+    });
   } catch {
     return c.json({ status: "none" });
   }
@@ -30,7 +35,8 @@ reconcileRoute.get("/api/reconcile", async (c) => {
 reconcileRoute.post("/api/reconcile", async (c) => {
   const repo = turnRepo();
   const token = resolveGithubToken();
-  if (!repo || !token) return c.json({ error: "No team selected, or not signed in to GitHub." }, 400);
+  if (!repo || !token)
+    return c.json({ error: "No team selected, or not signed in to GitHub." }, 400);
   const { action } = (await c.req.json().catch(() => ({}))) as { action?: string };
   try {
     if (action === "fresh") {
@@ -45,7 +51,10 @@ reconcileRoute.post("/api/reconcile", async (c) => {
     if (action === "publish") {
       const login = (await githubViewer(token)) ?? undefined;
       const r = await publishWorkspace(repo, { token, login });
-      return c.json({ ok: r.ok, note: r.ok ? `Published your previous work to ${repo} (main).` : r.note });
+      return c.json({
+        ok: r.ok,
+        note: r.ok ? `Published your previous work to ${repo} (main).` : r.note,
+      });
     }
     // "keep" (or anything else) is a no-op — continue on the existing workspace.
     return c.json({ ok: true, note: "Keeping your un-published work." });

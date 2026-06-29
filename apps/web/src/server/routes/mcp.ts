@@ -264,7 +264,10 @@ mcpRoute.post("/api/mcp/:name/tools", async (c) => {
   const count = await discoverTools(name);
   if (count === 0) {
     return c.json(
-      { error: "Couldn't list this server's tools — it may be offline, need authorizing, or still starting up. Try again in a moment." },
+      {
+        error:
+          "Couldn't list this server's tools — it may be offline, need authorizing, or still starting up. Try again in a moment.",
+      },
       502,
     );
   }

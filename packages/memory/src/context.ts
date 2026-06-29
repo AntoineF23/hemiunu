@@ -60,7 +60,7 @@ export function loadContext(r: ContextRoots = {}): AgentContext {
 function previewSurfaceNote(): string {
   return process.env.HEMIUNU_NO_OPEN
     ? 'PREVIEW SURFACE — you are in the Hemiunu APP, which embeds the live prototype preview INLINE in the chat. Refer to it as "the preview above"; there is NO separate localhost link to give (the user already sees it), so don\'t surface a URL or tell them to open a browser.'
-    : 'PREVIEW SURFACE — you are in a TERMINAL (CLI) with no inline display: the live prototype preview runs in the user\'s browser at a localhost URL. When they ask to see it or for the link, GIVE them that localhost URL — it\'s in the result of save_prototype / iterate_prototype (shown as "Live preview: http://localhost:PORT"). Never claim there is no link, and never paste an ASCII/text mock as a substitute.';
+    : "PREVIEW SURFACE — you are in a TERMINAL (CLI) with no inline display: the live prototype preview runs in the user's browser at a localhost URL. When they ask to see it or for the link, GIVE them that localhost URL — it's in the result of save_prototype / iterate_prototype (shown as \"Live preview: http://localhost:PORT\"). Never claim there is no link, and never paste an ASCII/text mock as a substitute.";
 }
 
 /** Assemble the system prompt: persona + (global facts about the user) + surface note. */

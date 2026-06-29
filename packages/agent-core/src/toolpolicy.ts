@@ -24,8 +24,6 @@ export interface ToolPolicyFile {
   seen: Record<string, string[]>;
 }
 
-const EMPTY: ToolPolicyFile = { servers: {}, tools: {}, seen: {} };
-
 function policyPath(root: string): string {
   return join(root, "tool-policy.json");
 }
@@ -55,7 +53,11 @@ export function serverOf(toolId: string): string {
 }
 
 /** Set (or clear, when "ask") a server's default policy. */
-export function setServerPolicy(server: string, policy: ToolPolicy, root: string = configDir()): void {
+export function setServerPolicy(
+  server: string,
+  policy: ToolPolicy,
+  root: string = configDir(),
+): void {
   const cfg = loadToolPolicy(root);
   if (policy === "ask") delete cfg.servers[server];
   else cfg.servers[server] = policy;
@@ -71,7 +73,10 @@ export function setToolPolicy(tool: string, policy: ToolPolicy, root: string = c
 }
 
 /** Effective policy for a tool id: per-tool override > per-server default > "ask". */
-export function resolveToolPolicy(toolId: string, cfg: ToolPolicyFile = loadToolPolicy()): ToolPolicy {
+export function resolveToolPolicy(
+  toolId: string,
+  cfg: ToolPolicyFile = loadToolPolicy(),
+): ToolPolicy {
   if (cfg.tools[toolId]) return cfg.tools[toolId];
   const s = serverOf(toolId);
   if (s && cfg.servers[s]) return cfg.servers[s];
@@ -103,7 +108,9 @@ export function recordSeenTool(toolId: string, root: string = configDir()): void
 export function setSeenTools(server: string, toolIds: string[], root: string = configDir()): void {
   if (!server || server.startsWith("hemiunu")) return;
   const prefix = `mcp__${server}__`;
-  const ids = [...new Set(toolIds.map((t) => (t.startsWith("mcp__") ? t : `${prefix}${t}`)))].sort();
+  const ids = [
+    ...new Set(toolIds.map((t) => (t.startsWith("mcp__") ? t : `${prefix}${t}`))),
+  ].sort();
   const cfg = loadToolPolicy(root);
   cfg.seen[server] = ids;
   save(cfg, root);

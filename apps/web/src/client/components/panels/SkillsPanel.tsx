@@ -29,7 +29,7 @@ interface Draft {
 
 const BLANK: Draft = { name: "", description: "", argumentHint: "", body: "", existing: false };
 
-export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }: SkillsPanelProps) {
+export function SkillsPanel({ open, skills, commands, onChanged }: SkillsPanelProps) {
   const [editing, setEditing] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,89 +112,89 @@ export function SkillsPanel({ open, onOpenChange, skills, commands, onChanged }:
   return (
     <>
       <SheetHeader>
-          <SheetTitle>
-            {editing ? (editing.existing ? `/${editing.name}` : "New skill") : "Commands & skills"}
-          </SheetTitle>
-          <SheetDescription>
-            {editing
-              ? "A skill is a saved instruction you run as /command. Use $ARGUMENTS where the input goes."
-              : "Run any of these by typing / in the composer. Skills are editable; built-ins are fixed."}
-          </SheetDescription>
-        </SheetHeader>
+        <SheetTitle>
+          {editing ? (editing.existing ? `/${editing.name}` : "New skill") : "Commands & skills"}
+        </SheetTitle>
+        <SheetDescription>
+          {editing
+            ? "A skill is a saved instruction you run as /command. Use $ARGUMENTS where the input goes."
+            : "Run any of these by typing / in the composer. Skills are editable; built-ins are fixed."}
+        </SheetDescription>
+      </SheetHeader>
 
-        {error && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
-        )}
+      {error && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
-        {editing ? (
-          <EditForm
-            draft={editing}
-            setDraft={setEditing}
-            onSave={save}
-            onCancel={() => setEditing(null)}
-            busy={busy}
-          />
-        ) : (
-          <>
-            {/* Skills */}
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-ink-2">Your skills</h3>
-              <Button size="sm" onClick={openNew}>
-                <Plus className="size-4" /> New skill
-              </Button>
-            </div>
-            <div className="flex flex-col gap-1">
-              {skills.length === 0 && (
-                <p className="px-1 text-sm text-ink-3">
-                  No skills yet — create one to run it as /name.
-                </p>
-              )}
-              {skills.map((s) => (
-                <div
-                  key={s.name}
-                  className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 hover:border-border hover:bg-accent"
+      {editing ? (
+        <EditForm
+          draft={editing}
+          setDraft={setEditing}
+          onSave={save}
+          onCancel={() => setEditing(null)}
+          busy={busy}
+        />
+      ) : (
+        <>
+          {/* Skills */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-ink-2">Your skills</h3>
+            <Button size="sm" onClick={openNew}>
+              <Plus className="size-4" /> New skill
+            </Button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {skills.length === 0 && (
+              <p className="px-1 text-sm text-ink-3">
+                No skills yet — create one to run it as /name.
+              </p>
+            )}
+            {skills.map((s) => (
+              <div
+                key={s.name}
+                className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 hover:border-border hover:bg-accent"
+              >
+                <button
+                  onClick={() => openEdit(s.name)}
+                  className="flex min-w-0 flex-1 flex-col text-left"
                 >
-                  <button
-                    onClick={() => openEdit(s.name)}
-                    className="flex min-w-0 flex-1 flex-col text-left"
-                  >
-                    <span className="font-mono text-sm text-ink">/{s.name}</span>
-                    <span className="truncate text-xs text-ink-3">{s.description || "—"}</span>
-                  </button>
-                  <button
-                    onClick={() => openEdit(s.name)}
-                    className="shrink-0 rounded p-1 text-ink-4 opacity-0 hover:text-ink group-hover:opacity-100"
-                    aria-label={`Edit ${s.name}`}
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => remove(s.name)}
-                    className="shrink-0 rounded p-1 text-ink-4 opacity-0 hover:text-destructive group-hover:opacity-100"
-                    aria-label={`Delete ${s.name}`}
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+                  <span className="font-mono text-sm text-ink">/{s.name}</span>
+                  <span className="truncate text-xs text-ink-3">{s.description || "—"}</span>
+                </button>
+                <button
+                  onClick={() => openEdit(s.name)}
+                  className="shrink-0 rounded p-1 text-ink-4 opacity-0 hover:text-ink group-hover:opacity-100"
+                  aria-label={`Edit ${s.name}`}
+                >
+                  <Pencil className="size-4" />
+                </button>
+                <button
+                  onClick={() => remove(s.name)}
+                  className="shrink-0 rounded p-1 text-ink-4 opacity-0 hover:text-destructive group-hover:opacity-100"
+                  aria-label={`Delete ${s.name}`}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Built-in commands (read-only) */}
+          <div className="mt-2">
+            <h3 className="mb-1.5 text-sm font-medium text-ink-2">Built-in commands</h3>
+            <div className="flex flex-col">
+              {commands.map((c) => (
+                <div key={c.name} className="flex items-center gap-3 px-3 py-1.5">
+                  <span className="font-mono text-sm text-ink-2">/{c.name}</span>
+                  <span className="ml-auto truncate text-xs text-ink-3">{c.desc}</span>
                 </div>
               ))}
             </div>
-
-            {/* Built-in commands (read-only) */}
-            <div className="mt-2">
-              <h3 className="mb-1.5 text-sm font-medium text-ink-2">Built-in commands</h3>
-              <div className="flex flex-col">
-                {commands.map((c) => (
-                  <div key={c.name} className="flex items-center gap-3 px-3 py-1.5">
-                    <span className="font-mono text-sm text-ink-2">/{c.name}</span>
-                    <span className="ml-auto truncate text-xs text-ink-3">{c.desc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
+          </div>
+        </>
+      )}
     </>
   );
 }
