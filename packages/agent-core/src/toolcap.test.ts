@@ -20,10 +20,19 @@ test("toolcap: results within budget pass through untouched", async () => {
 
 test("toolcap: oversized results are capped and carry a truncation notice", async () => {
   const big = "x".repeat(5000);
-  const res = await capHook(10)({ tool_response: big });
+  const res = await capHook(10)({ tool_name: "WebFetch", tool_response: big });
   const out = res.hookSpecificOutput?.updatedToolOutput ?? "";
   assert.ok(out.length < big.length, "output should be shorter than the input");
   assert.match(out, /truncated/i);
+});
+
+test("toolcap: MCP results are never truncated, regardless of size", async () => {
+  const big = "x".repeat(5000);
+  const res = await capHook(10)({
+    tool_name: "mcp__claude_ai_Figma__get_design_context",
+    tool_response: big,
+  });
+  assert.deepEqual(res, {}, "an mcp__ result should pass through untouched");
 });
 
 // --- workspace guard: file writes are confined to the prototype workspace ----

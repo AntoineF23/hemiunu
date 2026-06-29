@@ -14,8 +14,11 @@ import { activeProtoDir } from "./workspace";
  */
 
 const CHARS_PER_TOKEN = 4;
-/** Default per-result budget in TOKENS before a tool result is capped. */
-export const DEFAULT_RESULT_BUDGET_TOKENS = 6000;
+/** Default per-result budget in TOKENS before a tool result is capped. With a
+ *  1M-token context window the old 6k cap was far too aggressive — it truncated
+ *  legitimately useful results. This is now just a backstop against a pathological
+ *  dump; MCP results (the important retrievals) are exempt entirely (see below). */
+export const DEFAULT_RESULT_BUDGET_TOKENS = 60000;
 
 /** Budget from env (HEMIUNU_TOOL_RESULT_BUDGET, in tokens) or the default. */
 export function resultBudgetTokens(): number {
@@ -120,6 +123,13 @@ export function createToolCapHook(
       {
         hooks: [
           async (input) => {
+            // Never truncate MCP results. These are the agent's substantive
+            // retrievals — design-system context (Figma), source data, file
+            // reads — and clipping them is exactly what degrades downstream work
+            // (e.g. the designer building from a half-read design system). The
+            // backstop below only guards built-in tools against a runaway dump.
+            const toolName = (input as { tool_name?: string }).tool_name ?? "";
+            if (toolName.startsWith("mcp__")) return {};
             const resp = (input as { tool_response?: unknown }).tool_response;
             const full = textOf(resp);
             if (full.length <= budgetChars) return {};
