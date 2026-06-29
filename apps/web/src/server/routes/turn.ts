@@ -82,10 +82,16 @@ turnRoute.post("/api/turn", async (c) => {
     const armIdle = () => {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
-        if (!session.ac.signal.aborted) {
-          emit({ type: "note", text: "turn stalled (no activity) — stopping." });
-          session.ac.abort();
+        if (session.ac.signal.aborted) return;
+        // Waiting on the user is NOT a stall: while a permission prompt or an
+        // ask_user question is parked, the turn is blocked on THEM, not hung. Don't
+        // count that time — just re-arm and keep waiting until they respond.
+        if (session.pending.size > 0 || session.askPending.size > 0) {
+          armIdle();
+          return;
         }
+        emit({ type: "note", text: "turn stalled (no activity) — stopping." });
+        session.ac.abort();
       }, idleMs);
     };
     const emit = (e: ServerEvent) => {
