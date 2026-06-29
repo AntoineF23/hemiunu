@@ -237,6 +237,31 @@ Device sign-in needs a one-time **GitHub OAuth App** (its client id is public):
 The device flow grants the classic `repo` scope (covers Contents read/write on
 the user's private repos).
 
+## 🗺️ The Atlas — collect the world as you build
+
+Shipping is the game. **Every time you publish a prototype to a team's `main`
+branch, you discover a famous monument of the world** — drawn at random by
+rarity and pinned to your personal world map, the **Atlas** (the globe panel in
+the web app). The more you build and publish, the more of the planet you collect.
+Become the **ultimate builder**: the one whose Atlas is covered edge to edge.
+
+Each find rolls one of five tiers:
+
+| Tier | Odds | |
+|---|---|---|
+| 🟫 Common | 50% | everyday landmarks |
+| 🟦 Rare | 28% | |
+| 🟪 Epic | 14% | |
+| 🟨 Legendary | 7% | a banner day for the Atlas |
+| 🌟 **Wonder of the World** | **1%** | a once-in-a-blue-moon find |
+
+77 real landmarks span the globe — and at the very top sit the **8 Wonders**:
+the New7Wonders (Taj Mahal, Machu Picchu, Christ the Redeemer, Colosseum, Chichén
+Itzá, Petra, the Great Wall of China) plus the Great Pyramid of Giza. At a 1%
+draw they're the trophies of the collection. **Chase the Wonders** — every push
+to `main` is another roll of the dice. Keep building, keep publishing, and watch
+the world fill in.
+
 ## Coming soon
 
 Active directions on the roadmap:
