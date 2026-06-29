@@ -42,7 +42,7 @@ the world fill in.
 
 ## Install
 
-One line (requires **Node 20+**):
+One line (requires **Node 22+**):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AntoineF23/hemiunu/main/install.sh | bash
@@ -58,7 +58,8 @@ saved to `~/.hemiunu/.env`.
 
 ### From source (for development)
 
-Node 20+ (the conversation store uses `better-sqlite3`). Uses **pnpm**, via
+Node 22+ (the conversation store uses `better-sqlite3`, and the pinned pnpm
+needs the `node:sqlite` builtin). Uses **pnpm**, via
 Corepack (`corepack pnpm …`), an installed `pnpm`, or `npx pnpm …` if you have
 neither.
 

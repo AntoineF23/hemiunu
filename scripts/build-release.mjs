@@ -40,7 +40,7 @@ await esbuild.build({
   bundle: true,
   format: "esm",
   platform: "node",
-  target: "node20",
+  target: "node22",
   jsx: "automatic",
   // Stamp the version into the bundle so `hemiunu --version` reports it.
   define: { "process.env.HEMIUNU_VERSION": JSON.stringify(VERSION) },
@@ -78,8 +78,8 @@ requireNode();
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(root, "dist", "cli.js");
 
-// --disable-warning landed in Node 20.11; guard so we never pass an unknown
-// flag to an older 20.x (which would refuse to start).
+// --disable-warning is present on our Node 22+ floor; still guard so we never
+// pass an unknown flag to a runtime that lacks it (which would refuse to start).
 let nodeOptions = process.env.NODE_OPTIONS ?? "";
 if (process.allowedNodeEnvironmentFlags.has("--disable-warning")) {
   nodeOptions = \`\${nodeOptions} --disable-warning=ExperimentalWarning\`.trim();

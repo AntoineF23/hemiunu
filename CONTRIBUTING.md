@@ -6,7 +6,8 @@ conventions the repo follows. For how the code is organized, read
 
 ## Prerequisites
 
-- **Node 20+** (the conversation store uses `better-sqlite3`, a native module).
+- **Node 22+** (the conversation store uses `better-sqlite3`, a native module,
+  and the pinned pnpm needs the `node:sqlite` builtin).
 - **pnpm** via Corepack — no separate install needed. Every command below uses
   `corepack pnpm …`; if you have `pnpm` on your PATH already, drop the `corepack`
   prefix.

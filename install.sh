@@ -17,12 +17,12 @@ err()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 
 sand "Installing Hemiunu..."
 
-# 1. Prerequisites: git + Node 20+.
+# 1. Prerequisites: git + Node 22+ (the pinned pnpm uses the node:sqlite builtin).
 command -v git >/dev/null 2>&1 || { err "git is required. Install it and re-run."; exit 1; }
-command -v node >/dev/null 2>&1 || { err "Node.js 20+ is required - https://nodejs.org"; exit 1; }
+command -v node >/dev/null 2>&1 || { err "Node.js 22+ is required - https://nodejs.org"; exit 1; }
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  err "Node 20+ is required (found $(node -v)). Upgrade at https://nodejs.org and re-run."
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  err "Node 22+ is required (found $(node -v)). Upgrade at https://nodejs.org and re-run."
   exit 1
 fi
 
