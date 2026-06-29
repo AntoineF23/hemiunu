@@ -1,5 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import type { Tier } from "./atlas";
 import { explainError } from "./explain";
 import {
   addCollaborator,
@@ -75,15 +76,34 @@ export type ControlEvent =
   | { type: "rename-team"; name: string }
   // Ask the user 1–4 multiple-choice questions and block until they answer. The
   // front-end renders a chooser and returns the selection(s) as a string.
-  | { type: "ask-user"; questions: AskQuestion[] };
+  | { type: "ask-user"; questions: AskQuestion[] }
+  // Announce a monument earned by publishing to main. Pushed (not returned as
+  // tool text — that gets filtered out of the chat) so each front-end can render
+  // a proper message with a link into the Atlas.
+  | {
+      type: "discovery";
+      /** The ready-to-show, tier-specific announcement line. */
+      line: string;
+      /** The monument's catalog id — for building the Atlas deep link. */
+      monumentId: string;
+      /** Monument name + tier, for richer rendering. */
+      name: string;
+      tier: Tier;
+    };
 
 type ControlHandler = (e: ControlEvent) => Promise<string>;
 
 let handler: ControlHandler | null = null;
 
-/** The CLI registers (and clears) the handler that performs control requests. */
+/** The front-end registers (and clears) the handler that performs control requests. */
 export function setControlHandler(h: ControlHandler | null): void {
   handler = h;
+}
+
+/** Whether an interactive front-end is listening — lets a tool fall back to its
+ *  text result when there's nobody to push a message to (e.g. headless runs). */
+export function hasControlHandler(): boolean {
+  return handler !== null;
 }
 
 /** Ask the CLI to perform a control action; returns a human-readable result. */

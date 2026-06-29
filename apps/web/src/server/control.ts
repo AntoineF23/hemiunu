@@ -84,8 +84,7 @@ async function switchToTeam(repo: string): Promise<string> {
 // Mirror of the CLI's renameCurrentTeam (apps/cli/src/index.tsx:982).
 async function renameCurrentTeam(name: string): Promise<string> {
   const current = currentTeam();
-  if (!current)
-    return "There's no team to rename — you're working locally. Create one first.";
+  if (!current) return "There's no team to rename — you're working locally. Create one first.";
   const token = resolveGithubToken();
   if (!token) return "Not connected to GitHub — connect an account in the Teams panel first.";
   const r = await renameRepo(token, current, name);
@@ -121,6 +120,20 @@ export function registerControlHandler(): void {
         return renameCurrentTeam(e.name);
       case "ask-user":
         return askUser(e.questions);
+      case "discovery": {
+        // Push the monument announcement onto the live turn's stream as its own
+        // event — the browser renders a card with a link into the Atlas.
+        const s = activeSession();
+        if (!s) return "No interactive session to announce the discovery.";
+        s.emit({
+          type: "atlas",
+          line: e.line,
+          monumentId: e.monumentId,
+          name: e.name,
+          tier: e.tier,
+        });
+        return "Announced the discovery to the user.";
+      }
     }
   });
 }

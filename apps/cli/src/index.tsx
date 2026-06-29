@@ -61,6 +61,7 @@ import {
   vercelLoggedIn,
   vercelLogin,
   setControlHandler,
+  atlasUrl,
   addTeammate,
   removeTeammate,
   listOrgMembers,
@@ -610,7 +611,11 @@ function App({
   const feedActivity = (e: ActivityEvent) => {
     const { group: next, flushed } = reduceActivity(groupRef.current, e);
     if (flushed)
-      push({ kind: "group", text: summarizeGroup(flushed), delegate: flushed.kind === "delegation" });
+      push({
+        kind: "group",
+        text: summarizeGroup(flushed),
+        delegate: flushed.kind === "delegation",
+      });
     groupRef.current = next;
     setGroup(next);
   };
@@ -665,7 +670,10 @@ function App({
       onChoice: (v) => {
         setPicker(null);
         if (!v || v === KEEP) {
-          push({ kind: "note", text: "· keeping your un-published work — picking up where you left off" });
+          push({
+            kind: "note",
+            text: "· keeping your un-published work — picking up where you left off",
+          });
           return;
         }
         void (async () => {
@@ -681,11 +689,16 @@ function App({
               const r = await publishWorkspace(team, { token, login });
               push({
                 kind: "note",
-                text: r.ok ? `⤴ published your previous work to ${team} (main)` : `couldn't publish: ${r.note}`,
+                text: r.ok
+                  ? `⤴ published your previous work to ${team} (main)`
+                  : `couldn't publish: ${r.note}`,
               });
             }
           } catch (e) {
-            push({ kind: "note", text: `reconcile failed: ${e instanceof Error ? e.message : String(e)}` });
+            push({
+              kind: "note",
+              text: `reconcile failed: ${e instanceof Error ? e.message : String(e)}`,
+            });
           }
         })();
       },
@@ -754,6 +767,13 @@ function App({
       }
       if (e.type === "rename-team") {
         return await renameCurrentTeam(e.name);
+      }
+      if (e.type === "discovery") {
+        // A monument earned by publishing to main — announce it and link to the
+        // Atlas (the web app's world map) focused on the new find.
+        push({ kind: "note", text: e.line });
+        push({ kind: "note", text: `🗺️  Open it in your atlas → ${atlasUrl(e.monumentId)}` });
+        return "Announced the discovery to the user.";
       }
       const repo = normalizeRepo(e.repo);
       if (!listTeams().includes(repo)) {
@@ -898,7 +918,9 @@ function App({
                 resolve({
                   behavior: "allow",
                   updatedInput: input,
-                  updatedPermissions: [{ type: "setMode", mode: "default", destination: "session" }],
+                  updatedPermissions: [
+                    { type: "setMode", mode: "default", destination: "session" },
+                  ],
                 });
               },
             });
@@ -1066,13 +1088,18 @@ function App({
                 // A nested tool from an SDK-delegated subagent — fold into the group.
                 feedActivity({
                   type: "subtool",
-                  taskLabel: groupRef.current?.kind === "delegation" ? groupRef.current.agent : "subagent",
+                  taskLabel:
+                    groupRef.current?.kind === "delegation" ? groupRef.current.agent : "subagent",
                   toolLabel: prettyTool(b.name ?? "tool"),
                   preview: toolPreview(b.input),
                 });
                 setStatusLabel("researching");
               } else {
-                feedActivity({ type: "tool", label: prettyTool(b.name ?? "tool"), preview: toolPreview(b.input) });
+                feedActivity({
+                  type: "tool",
+                  label: prettyTool(b.name ?? "tool"),
+                  preview: toolPreview(b.input),
+                });
                 setStatusLabel("running");
               }
             }
@@ -2493,7 +2520,9 @@ function App({
             {"  · /github"}
           </Text>
         </Text>
-        <Text color={SAGE}>{`${model}${planMode ? " · plan-first" : ""}${autoAccept ? " · auto-accept" : ""} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
+        <Text
+          color={SAGE}
+        >{`${model}${planMode ? " · plan-first" : ""}${autoAccept ? " · auto-accept" : ""} · ${ctxStr} · session $${sessionCost.toFixed(2)}`}</Text>
       </Box>
     </Box>
   );

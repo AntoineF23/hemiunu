@@ -32,6 +32,9 @@ export type ServerEvent =
   | { type: "subagent"; label: string; detail: string; sub: true }
   // A live preview (wireframe / prototype) to embed inline in the thread.
   | { type: "artifact"; url: string; title: string }
+  // A monument earned by publishing to main — rendered as a celebratory card
+  // with a button that opens the Atlas focused on it.
+  | { type: "atlas"; line: string; monumentId: string; name: string; tier: string }
   // The active team/workspace changed mid-turn (the agent created/switched one),
   // so the UI can update the workspace indicator without waiting for turn end.
   | { type: "team"; repo: string | null }

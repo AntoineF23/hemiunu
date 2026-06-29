@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { discoveryLine, recordDiscovery } from "./atlas";
+import { hasControlHandler, requestControl } from "./control";
 import { githubViewer, resolveGithubToken, resolveRepo } from "./github";
 import { vercelDeploy } from "./vercel";
 import { commitAndPush, workspacePath } from "./workspace";
@@ -46,12 +47,29 @@ export function createShareServer() {
         // already rebased onto the latest main, so the checkout matches main.)
         // Gamification: publishing a new version to main earns a random famous
         // building, drawn by rarity tier, into the user's global Atlas. The map
-        // itself lives in the web app; here we just announce the find so it
-        // surfaces on every surface (CLI note + web tool result).
-        const discovery = discoveryLine(recordDiscovery(repo));
-        return text(
-          `Published to ${r.branch}. Your workspace stays open — keep iterating and publish again whenever you're ready.\n\n${discovery}`,
-        );
+        // itself lives in the web app. We PUSH the announcement to the front-end
+        // via the control bridge rather than return it as tool text — prose tool
+        // results get filtered out of the chat, so a returned line never reaches
+        // the user. The bridge lets each surface render a real message + an Atlas
+        // link. Fall back to the tool text only when nobody's listening (headless).
+        const result = recordDiscovery(repo);
+        const line = discoveryLine(result);
+        const m = result.monument;
+        const published = `Published to ${r.branch}. Your workspace stays open — keep iterating and publish again whenever you're ready.`;
+        if (hasControlHandler()) {
+          await requestControl({
+            type: "discovery",
+            line,
+            monumentId: m.id,
+            name: m.name,
+            tier: result.tier,
+          });
+          // The discovery was already shown to the user — tell the model not to repeat it.
+          return text(
+            `${published}\n\n(The Atlas discovery has been shown to the user — don't restate it.)`,
+          );
+        }
+        return text(`${published}\n\n${line}`);
       }
       return text(`${r.note}. Open a PR for it, or share a preview with deploy_prototype.`);
     },

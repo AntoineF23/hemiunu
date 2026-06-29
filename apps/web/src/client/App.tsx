@@ -5,6 +5,7 @@ import {
   CircleHelp,
   ClipboardList,
   CornerDownRight,
+  MapPin,
   PencilLine,
   Share2,
   Wrench,
@@ -90,6 +91,15 @@ export function App() {
   // shell's content (the column never closes/reopens), so there's no flash.
   // Opening collapses the rail and it stays collapsed afterwards.
   const [panel, setPanel] = useState<Panel | null>(null);
+  // When set, the Atlas panel opens focused on this monument (from an earned-
+  // monument card, or a ?atlas=<id> deep link the CLI announcement points to).
+  const [focusMonument, setFocusMonument] = useState<string | null>(null);
+  const openAtlas = useCallback((monumentId: string | null) => {
+    setFocusMonument(monumentId);
+    setRailAnimate(false);
+    setPanel("atlas");
+    setCollapsed(true);
+  }, []);
   // Animate the rail's width only on a manual toggle; opening a panel collapses
   // it instantly so the panel content doesn't slide sideways as the rail shrinks.
   const [railAnimate, setRailAnimate] = useState(true);
@@ -103,6 +113,18 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(RAIL_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
+
+  // Deep link: ?atlas=<monument-id> (the CLI's earned-monument announcement
+  // links here) opens the Atlas focused on that monument, then clears the query
+  // so a refresh doesn't keep reopening it.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("atlas");
+    if (!id) return;
+    openAtlas(id);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("atlas");
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }, [openAtlas]);
 
   // Auto-accept is a trust grant for ONE team's repo. When the active team
   // changes (the user switched, or the agent created/switched one mid-turn),
@@ -158,11 +180,13 @@ export function App() {
     wasBusy.current = busy;
   }, [busy, refresh]);
 
-  // Keep the latest content in view as the turn streams.
+  // Keep the latest content in view as the turn streams — including when a
+  // permission prompt or an ask_user question card appears, so the user always
+  // sees the choices they need to act on.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [items, permission, busy]);
+  }, [items, permission, question, busy]);
 
   const runCommand = useCallback(
     (name: string) => {
@@ -383,10 +407,12 @@ export function App() {
               <PrototypePanel open onOpenChange={(o) => !o && setPanel(null)} />
             )}
             {panel === "atlas" && (
-              <Suspense
-                fallback={<p className="text-sm text-ink-3">Loading the globe…</p>}
-              >
-                <GlobePanel open onOpenChange={(o) => !o && setPanel(null)} />
+              <Suspense fallback={<p className="text-sm text-ink-3">Loading the globe…</p>}>
+                <GlobePanel
+                  open
+                  onOpenChange={(o) => !o && setPanel(null)}
+                  focusId={focusMonument}
+                />
               </Suspense>
             )}
             {panel === "skills" && (
@@ -422,7 +448,12 @@ export function App() {
             <div className="scroll" ref={scrollRef}>
               <div className="thread">
                 {items.map((it) => (
-                  <Item key={it.id} item={it} streaming={busy && it.id === lastId} />
+                  <Item
+                    key={it.id}
+                    item={it}
+                    streaming={busy && it.id === lastId}
+                    onOpenAtlas={openAtlas}
+                  />
                 ))}
 
                 {busy && !permission && items[items.length - 1]?.kind !== "agent" && (
@@ -506,22 +537,26 @@ export function App() {
                           key={o.label}
                           size="sm"
                           variant="secondary"
-                          className="justify-start text-left"
+                          className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left leading-snug"
                           onClick={() => answerQuestion(o.label)}
                           title={o.description}
                         >
-                          {o.label}
-                          {o.description ? (
-                            <span className="ml-1.5 text-ink-3">— {o.description}</span>
-                          ) : null}
+                          <span>
+                            <strong className="font-medium">{o.label}</strong>
+                            {o.description ? (
+                              <span className="text-ink-3"> — {o.description}</span>
+                            ) : null}
+                          </span>
                         </Button>
                       ))}
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="justify-start text-left"
+                        className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left leading-snug"
                         onClick={() =>
-                          answerQuestion("(the user wants to specify something else — ask them in plain text)")
+                          answerQuestion(
+                            "(the user wants to specify something else — ask them in plain text)",
+                          )
                         }
                       >
                         Other / something else
@@ -533,9 +568,7 @@ export function App() {
             </div>
 
             <div className="bg-gradient-to-b from-transparent to-ground px-7 pb-4 pt-2.5">
-              <div className="mx-auto max-w-[760px]">
-                {composer}
-              </div>
+              <div className="mx-auto max-w-[760px]">{composer}</div>
             </div>
           </>
         )}
@@ -587,7 +620,15 @@ function GroupItem({ item }: { item: ChatItem }) {
   );
 }
 
-function Item({ item, streaming }: { item: ChatItem; streaming: boolean }) {
+function Item({
+  item,
+  streaming,
+  onOpenAtlas,
+}: {
+  item: ChatItem;
+  streaming: boolean;
+  onOpenAtlas: (monumentId: string | null) => void;
+}) {
   switch (item.kind) {
     case "user":
       return (
@@ -625,6 +666,20 @@ function Item({ item, streaming }: { item: ChatItem; streaming: boolean }) {
       return <div className="subagent">{item.text}</div>;
     case "artifact":
       return item.url ? <ArtifactCard url={item.url} title={item.text} /> : null;
+    case "atlas":
+      return (
+        <div className="atlas-card">
+          <MapPin size={16} className="atlas-card-icon" />
+          <span className="atlas-card-text">{item.text}</span>
+          <button
+            type="button"
+            className="atlas-card-open"
+            onClick={() => onOpenAtlas(item.monumentId ?? null)}
+          >
+            Open in your atlas →
+          </button>
+        </div>
+      );
     case "note":
       return (
         <div className="note">

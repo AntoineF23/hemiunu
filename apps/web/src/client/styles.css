@@ -25,7 +25,6 @@
   border-radius: 0 !important;
 }
 
-
 /* ── Docked side panel ─────────────────────────────────────
    A single inline column (same color as the rail) right of the rail; opening it
    collapses the rail to icons. Slides in gently when it mounts. */
@@ -412,6 +411,44 @@
   gap: 7px;
   font-size: 13px;
   color: var(--sun-strong);
+}
+/* ── Atlas: monument earned by publishing to main ──────── */
+.atlas-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--sun);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  animation: rise 0.28s var(--ease);
+}
+.atlas-card-icon {
+  flex-shrink: 0;
+  color: var(--sun);
+}
+.atlas-card-text {
+  flex: 1;
+  min-width: 12ch;
+}
+.atlas-card-open {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sun-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+.atlas-card-open:hover {
+  text-decoration: underline;
 }
 .error {
   display: flex;

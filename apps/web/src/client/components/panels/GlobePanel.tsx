@@ -42,9 +42,11 @@ interface AtlasData {
 interface GlobePanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When set, select + spin to this monument once the collection has loaded. */
+  focusId?: string | null;
 }
 
-export function GlobePanel({ open }: GlobePanelProps) {
+export function GlobePanel({ open, focusId }: GlobePanelProps) {
   const [data, setData] = useState<AtlasData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +58,7 @@ export function GlobePanel({ open }: GlobePanelProps) {
 
   // A matte dark-gray sphere under the dotted land — unlit so it reads the
   // same regardless of the scene lighting, and sits quietly on the dark theme.
-  const globeMaterial = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: "#393E46" }),
-    [],
-  );
+  const globeMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: "#393E46" }), []);
 
   // Signature of the last-rendered collection, so background polls only re-set
   // state (and re-render the globe) when something actually changed.
@@ -113,7 +112,13 @@ export function GlobePanel({ open }: GlobePanelProps) {
 
   const configureControls = useCallback(() => {
     const c = globeRef.current?.controls() as
-      | { autoRotate: boolean; autoRotateSpeed: number; enableZoom: boolean; minDistance: number; maxDistance: number }
+      | {
+          autoRotate: boolean;
+          autoRotateSpeed: number;
+          enableZoom: boolean;
+          minDistance: number;
+          maxDistance: number;
+        }
       | undefined;
     if (!c) return;
     c.autoRotate = true;
@@ -136,6 +141,17 @@ export function GlobePanel({ open }: GlobePanelProps) {
     globeRef.current?.pointOfView({ lat: d.lat, lng: d.lng, altitude: 1.6 }, 900);
   }, []);
 
+  // Deep-link / earned-monument focus: once the collection has loaded, select
+  // and fly to the requested monument (if the user owns it). A short delay lets
+  // the globe finish mounting so the camera move actually lands.
+  useEffect(() => {
+    if (!focusId || !data) return;
+    const d = data.discoveries.find((x) => x.id === focusId);
+    if (!d) return;
+    const t = window.setTimeout(() => focus(d), 300);
+    return () => window.clearTimeout(t);
+  }, [focusId, data, focus]);
+
   return (
     <>
       <SheetHeader>
@@ -156,7 +172,10 @@ export function GlobePanel({ open }: GlobePanelProps) {
       )}
 
       {/* The globe */}
-      <div ref={wrapRef} className="flex justify-center overflow-hidden rounded-lg border border-border bg-card/30">
+      <div
+        ref={wrapRef}
+        className="flex justify-center overflow-hidden rounded-lg border border-border bg-card/30"
+      >
         <Globe
           ref={globeRef}
           width={size}

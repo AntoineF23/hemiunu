@@ -9,7 +9,17 @@ import type { PermissionDecision, ServerEvent } from "../shared/protocol";
 
 export interface ChatItem {
   id: number;
-  kind: "user" | "agent" | "tool" | "result" | "note" | "subagent" | "error" | "artifact" | "group";
+  kind:
+    | "user"
+    | "agent"
+    | "tool"
+    | "result"
+    | "note"
+    | "subagent"
+    | "error"
+    | "artifact"
+    | "atlas"
+    | "group";
   text: string;
   /** for tool items */
   toolName?: string;
@@ -17,6 +27,10 @@ export interface ChatItem {
   sub?: boolean;
   /** for artifact items: the live preview URL to embed */
   url?: string;
+  /** for atlas items: the earned monument (its id opens the Atlas focused on it). */
+  monumentId?: string;
+  name?: string;
+  tier?: string;
   /** for group items: the coalesced activity run (renders via summarizeGroup). */
   group?: ActivityGroup;
 }
@@ -195,7 +209,10 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
                     preview: e.preview,
                   });
                 } else {
-                  addActivity({ type: "tool", label: friendlyTool(e.name).label, preview: e.preview }, e.name);
+                  addActivity(
+                    { type: "tool", label: friendlyTool(e.name).label, preview: e.preview },
+                    e.name,
+                  );
                 }
                 break;
               case "result":
@@ -205,7 +222,10 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
                   const last = prev[prev.length - 1];
                   if (last?.kind === "group" && last.group) {
                     if (last.group.kind === "tool-run" && !e.sub)
-                      return [...prev.slice(0, -1), { ...last, group: { ...last.group, preview: e.text } }];
+                      return [
+                        ...prev.slice(0, -1),
+                        { ...last, group: { ...last.group, preview: e.text } },
+                      ];
                     return prev;
                   }
                   if (e.sub) return prev;
@@ -224,6 +244,15 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
                 break;
               case "artifact":
                 push({ kind: "artifact", text: e.title, url: e.url });
+                break;
+              case "atlas":
+                push({
+                  kind: "atlas",
+                  text: e.line,
+                  monumentId: e.monumentId,
+                  name: e.name,
+                  tier: e.tier,
+                });
                 break;
               case "team":
                 // The agent created/switched the team mid-turn — let the app

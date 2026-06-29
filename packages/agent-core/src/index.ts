@@ -110,7 +110,13 @@ export {
   localWorkspaceDir,
   activeProtoDir,
 } from "./workspace";
-export type { EnsureOptions, EnsureResult, TrashEntry, ReconcileResult, ReconcileStatus } from "./workspace";
+export type {
+  EnsureOptions,
+  EnsureResult,
+  TrashEntry,
+  ReconcileResult,
+  ReconcileStatus,
+} from "./workspace";
 export { startPreview, stopPreview, previewStatus, hasDevScript } from "./preview";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 export {
@@ -127,7 +133,9 @@ export {
   MONUMENTS,
   TIERS,
   TIER_ORDER,
+  TIER_FLAVOR,
   atlasPath,
+  atlasUrl,
   loadAtlas,
   recordDiscovery,
   discoveryLine,

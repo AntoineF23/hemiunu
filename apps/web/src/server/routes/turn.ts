@@ -145,7 +145,10 @@ turnRoute.post("/api/turn", async (c) => {
               return;
             }
             if (toolName === "EnterPlanMode") {
-              emit({ type: "note", text: "◷ planning — researching before proposing an approach…" });
+              emit({
+                type: "note",
+                text: "◷ planning — researching before proposing an approach…",
+              });
               resolve({ behavior: "allow", updatedInput: input });
               return;
             }
@@ -278,6 +281,9 @@ turnRoute.post("/api/turn", async (c) => {
                 const who = String(b.input?.subagent_type ?? "subagent");
                 const desc = clip(String(b.input?.description ?? ""), 56);
                 emit({ type: "tool", name: who, preview: desc, delegate: true });
+              } else if (b.name === ASK_USER_TOOL_ID) {
+                // Asking IS the action — the question card renders it directly, so
+                // don't also show a redundant "ask_user" activity line.
               } else {
                 emit({ type: "tool", name: b.name ?? "tool", preview: toolPreview(b.input), sub });
               }
@@ -360,7 +366,8 @@ turnRoute.post("/api/turn", async (c) => {
             login,
             message: title(prompt),
           });
-          if (cp.pushed) await emit({ type: "note", text: `⤴ progress saved (not yet published to main)` });
+          if (cp.pushed)
+            await emit({ type: "note", text: `⤴ progress saved (not yet published to main)` });
         }
       }
     } catch (e) {
