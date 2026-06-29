@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
@@ -42,6 +42,29 @@ function listFiles(dir: string, max = 500): { files: string[]; total: number } {
   };
   if (existsSync(dir)) walk(dir);
   return { files, total };
+}
+
+/** Build the case-insensitive search regex, falling back to a literal match when
+ *  the query isn't valid regex (so a stray `(` never throws). Exported for tests. */
+export function searchRegex(query: string): RegExp {
+  try {
+    return new RegExp(query, "i");
+  } catch {
+    return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  }
+}
+
+/** Render a numbered line window of `raw` (1-based `offset`, up to `limit` lines)
+ *  with a footer that says how to page on — so a big file can be read in slices
+ *  instead of swallowed whole. Exported for tests. */
+export function readWindow(raw: string, offset?: number, limit?: number): string {
+  const lines = raw.split("\n");
+  const start = Math.max(1, offset ?? 1);
+  const slice = lines.slice(start - 1, start - 1 + (limit ?? 2000));
+  const end = start - 1 + slice.length;
+  const numbered = slice.map((l, i) => `${start + i}\t${l}`).join("\n");
+  const more = end < lines.length ? `; read on with offset=${end + 1}` : "";
+  return `${numbered}\n\n[lines ${start}–${end} of ${lines.length}${more}]`;
 }
 
 // How to describe the running preview to the agent. In the web app
@@ -128,20 +151,87 @@ export function createWorkspaceServer() {
 
   const readTool = tool(
     "read_workspace_file",
-    "Read a file from the current prototype's workspace, to build on top of the existing code.",
+    "Read a file from the current prototype's workspace, to build on top of the existing code. For a big file (a template bundle, a large tokens/CSS file), read it in windows with offset/limit instead of all at once — search_workspace first to find the line you want, then read around it.",
     {
       path: z
         .string()
         .describe("Path relative to the workspace root, e.g. 'index.html' or 'app/page.tsx'."),
+      offset: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("1-based line number to start at. Omit to read from the top."),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          "Max lines to return from `offset`. Omit (with no offset) to read the whole file.",
+        ),
     },
-    async ({ path }) => {
+    async ({ path, offset, limit }) => {
       const dir = await ensureProtoReady();
       const file = confined(dir, path);
       if (!file) return text(`Refused: '${path}' is outside the workspace.`);
       if (!existsSync(file)) return text(`No such file: ${path}`);
-      return text(readFileSync(file, "utf8"));
+      const raw = readFileSync(file, "utf8");
+      // No window requested → whole file (back-compat); otherwise a numbered slice.
+      if (offset == null && limit == null) return text(raw);
+      return text(readWindow(raw, offset, limit));
     },
     { annotations: { title: "Read workspace file", readOnlyHint: true } },
+  );
+
+  const searchTool = tool(
+    "search_workspace",
+    "Search the current prototype's workspace for a pattern (like grep) and get back matching `path:line: text` hits — without reading whole files. Use this to locate a component, token, or @font-face in a large file, then read_workspace_file around that line.",
+    {
+      query: z
+        .string()
+        .describe(
+          "A regular expression (case-insensitive). Falls back to a literal match if invalid.",
+        ),
+    },
+    async ({ query }) => {
+      const dir = await ensureProtoReady();
+      if (!existsSync(dir))
+        return text("Nothing yet — run iterate_prototype or save a prototype first.");
+      const re = searchRegex(query);
+      const MAX_HITS = 200;
+      const MAX_FILE_BYTES = 2 * 1024 * 1024; // skip anything bigger (likely binary/minified)
+      const { files } = listFiles(dir, 5000);
+      const hits: string[] = [];
+      let truncated = false;
+      for (const rel of files) {
+        if (hits.length >= MAX_HITS) {
+          truncated = true;
+          break;
+        }
+        const full = join(dir, rel);
+        let content: string;
+        try {
+          if (statSync(full).size > MAX_FILE_BYTES) continue;
+          content = readFileSync(full, "utf8");
+        } catch {
+          continue; // unreadable / binary
+        }
+        const lines = content.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          if (!re.test(lines[i])) continue;
+          hits.push(`${rel}:${i + 1}: ${lines[i].trim().slice(0, 200)}`);
+          if (hits.length >= MAX_HITS) {
+            truncated = true;
+            break;
+          }
+        }
+      }
+      if (!hits.length) return text(`No matches for /${query}/.`);
+      const note = truncated ? `\n\n(showing the first ${MAX_HITS} matches)` : "";
+      return text(hits.join("\n") + note);
+    },
+    { annotations: { title: "Search workspace", readOnlyHint: true } },
   );
 
   const writeTool = tool(
@@ -171,7 +261,7 @@ export function createWorkspaceServer() {
   return createSdkMcpServer({
     name: "hemiunu-workspace",
     version: "0.0.0",
-    tools: [iterateTool, listTool, readTool, writeTool],
+    tools: [iterateTool, listTool, readTool, searchTool, writeTool],
   });
 }
 
