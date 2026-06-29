@@ -14,6 +14,7 @@ import {
   MessageSquare,
   NotebookPen,
   PencilLine,
+  Search,
   Settings2,
   Share2,
   Users,
@@ -28,7 +29,11 @@ interface Rule {
 const RULES: Rule[] = [
   { test: /web.*search|search.*web/i, label: "Searching the web", icon: Globe },
   { test: /web.*fetch|fetch.*url|read.*url/i, label: "Reading a web page", icon: Link2 },
-  { test: /enter.?plan.?mode|exit.?plan.?mode|plan.?mode/i, label: "Planning the work", icon: ClipboardList },
+  {
+    test: /enter.?plan.?mode|exit.?plan.?mode|plan.?mode/i,
+    label: "Planning the work",
+    icon: ClipboardList,
+  },
   { test: /todo.?write|todo.?list/i, label: "Updating the plan", icon: ListTodo },
   {
     test: /server-filesystem|read_file|list_directory|read_text/i,
@@ -38,6 +43,7 @@ const RULES: Rule[] = [
   { test: /save_prototype/i, label: "Building the prototype", icon: Layers },
   { test: /commit_prototype/i, label: "Saving to the repo", icon: GitBranch },
   { test: /deploy_prototype/i, label: "Publishing a shareable link", icon: Link2 },
+  { test: /search_workspace/i, label: "Searching the prototype files", icon: Search },
   {
     test: /iterate_prototype|write_workspace|read_workspace|list_workspace/i,
     label: "Working on the prototype",
