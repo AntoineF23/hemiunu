@@ -19,6 +19,7 @@ import {
   PARALLEL_TOOL_ID,
   previewStatus,
   recordSeenTool,
+  ASK_USER_TOOL_ID,
   REMEMBER_TOOL_ID,
   resolveGithubToken,
   resolveToolPolicy,
@@ -37,8 +38,14 @@ import {
   type PermissionResult,
   resetAlwaysAllow,
   resolvePermission,
+  resolveQuestion,
 } from "../session";
-import type { PermissionReply, ServerEvent, TurnRequest } from "../../shared/protocol";
+import type {
+  PermissionReply,
+  QuestionReply,
+  ServerEvent,
+  TurnRequest,
+} from "../../shared/protocol";
 
 export const turnRoute = new Hono();
 
@@ -97,6 +104,12 @@ turnRoute.post("/api/turn", async (c) => {
             if (toolName === SAVE_SOURCE_MAP_TOOL_ID) {
               const mcp = typeof input.mcp === "string" ? input.mcp : "";
               emit({ type: "note", text: `✎ source map updated${mcp ? `: ${mcp}` : ""}` });
+              resolve({ behavior: "allow", updatedInput: input });
+              return;
+            }
+            // Asking the user IS the action — auto-approve so the question shows
+            // directly instead of behind a "may I ask?" permission prompt.
+            if (toolName === ASK_USER_TOOL_ID) {
               resolve({ behavior: "allow", updatedInput: input });
               return;
             }
@@ -389,6 +402,17 @@ turnRoute.post("/api/turn/:turnId/permission", async (c) => {
   };
   const s = getSession(turnId);
   s?.emit({ type: "note", text: DECISION_NOTE[decision] ?? "denied" });
+  return c.json({ ok: true });
+});
+
+turnRoute.post("/api/turn/:turnId/question", async (c) => {
+  const turnId = c.req.param("turnId");
+  const { requestId, answer } = (await c.req.json().catch(() => ({}))) as QuestionReply;
+  if (!requestId || typeof answer !== "string") return c.json({ error: "bad reply" }, 400);
+  const ok = resolveQuestion(turnId, requestId, answer);
+  if (!ok) return c.json({ error: "no such pending question" }, 404);
+  const s = getSession(turnId);
+  s?.emit({ type: "note", text: `· you chose: ${answer}` });
   return c.json({ ok: true });
 });
 

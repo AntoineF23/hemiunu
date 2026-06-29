@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import {
   ChevronDown,
   CircleAlert,
+  CircleHelp,
   ClipboardList,
   CornerDownRight,
   PencilLine,
@@ -57,9 +58,11 @@ export function App() {
     items,
     busy,
     permission,
+    question,
     lastCost,
     send,
     respond,
+    answerQuestion,
     stop,
     reset,
     loadConversation,
@@ -286,7 +289,7 @@ export function App() {
         onSubmit={submit}
         busy={busy}
         onStop={stop}
-        disabled={!!permission}
+        disabled={!!permission || !!question}
         model={model}
         onModelChange={setModel}
         autoFocus
@@ -483,6 +486,45 @@ export function App() {
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => respond("no")}>
                         Not now
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {question && (
+                  <div className="perm">
+                    <div className="perm-head">
+                      <CircleHelp size={16} className="perm-icon" />
+                      <span>
+                        {question.header ? <strong>{question.header} — </strong> : null}
+                        {question.question}
+                      </span>
+                    </div>
+                    <div className="perm-actions flex-col items-stretch">
+                      {question.options.map((o) => (
+                        <Button
+                          key={o.label}
+                          size="sm"
+                          variant="secondary"
+                          className="justify-start text-left"
+                          onClick={() => answerQuestion(o.label)}
+                          title={o.description}
+                        >
+                          {o.label}
+                          {o.description ? (
+                            <span className="ml-1.5 text-ink-3">— {o.description}</span>
+                          ) : null}
+                        </Button>
+                      ))}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="justify-start text-left"
+                        onClick={() =>
+                          answerQuestion("(the user wants to specify something else — ask them in plain text)")
+                        }
+                      >
+                        Other / something else
                       </Button>
                     </div>
                   </div>

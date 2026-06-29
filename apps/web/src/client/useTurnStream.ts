@@ -36,15 +36,25 @@ export interface PermissionPrompt {
   preview: string;
 }
 
+export interface QuestionPrompt {
+  requestId: string;
+  header: string;
+  question: string;
+  options: { label: string; description?: string }[];
+}
+
 export interface TurnState {
   items: ChatItem[];
   busy: boolean;
   permission: PermissionPrompt | null;
+  question: QuestionPrompt | null;
   lastCost: { costUsd: number | null; outTokens: number; ctxTokens: number } | null;
   /** Send a turn. `display` overrides the user-bubble text (e.g. show `/skill`
    *  while sending its expanded body). */
   send: (prompt: string, display?: string, planMode?: boolean, autoAccept?: boolean) => void;
   respond: (decision: PermissionDecision) => void;
+  /** Answer the agent's ask_user question with the chosen option label. */
+  answerQuestion: (answer: string) => void;
   stop: () => void;
   /** Clear the conversation and start fresh (new chat). */
   reset: () => void;
@@ -82,6 +92,7 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
   const [items, setItems] = useState<ChatItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [permission, setPermission] = useState<PermissionPrompt | null>(null);
+  const [question, setQuestion] = useState<QuestionPrompt | null>(null);
   const [lastCost, setLastCost] = useState<TurnState["lastCost"]>(null);
 
   // Kept in a ref so the long-lived turn stream closure always calls the latest
@@ -215,6 +226,14 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
               case "permission":
                 setPermission({ requestId: e.requestId, name: e.name, preview: e.preview });
                 break;
+              case "question":
+                setQuestion({
+                  requestId: e.requestId,
+                  header: e.header,
+                  question: e.question,
+                  options: e.options,
+                });
+                break;
               case "cost":
                 setLastCost({ costUsd: e.costUsd, outTokens: e.outTokens, ctxTokens: e.ctxTokens });
                 break;
@@ -233,11 +252,27 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
         } finally {
           setBusy(false);
           setPermission(null);
+          setQuestion(null);
           turnIdRef.current = null;
         }
       })();
     },
     [busy, push, appendAgentText, addActivity],
+  );
+
+  const answerQuestion = useCallback(
+    (answer: string) => {
+      const turnId = turnIdRef.current;
+      const q = question;
+      if (!turnId || !q) return;
+      setQuestion(null);
+      void fetch(`/api/turn/${turnId}/question`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId: q.requestId, answer }),
+      });
+    },
+    [question],
   );
 
   const respond = useCallback(
@@ -265,6 +300,7 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
     if (busy) return;
     setItems([]);
     setPermission(null);
+    setQuestion(null);
     setLastCost(null);
     sessionRef.current = undefined;
     turnIdRef.current = null;
@@ -310,9 +346,11 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
     items,
     busy,
     permission,
+    question,
     lastCost,
     send,
     respond,
+    answerQuestion,
     stop,
     reset,
     loadConversation,

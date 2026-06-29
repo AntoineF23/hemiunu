@@ -168,7 +168,8 @@ export type { McpToolInfo } from "./mcp-tools";
 export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
 export type { DeployResult } from "./vercel";
 export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";
-export type { ControlEvent } from "./control";
+export type { ControlEvent, AskQuestion } from "./control";
+export { createAskServer, ASK_TOOLS, ASK_USER_TOOL_ID } from "./ask";
 export { runSubagent, subagentPrompt, SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
 export type { SubagentName, SubagentSpec, SubagentRunContext, SubagentEvent } from "./subagents";
 export {

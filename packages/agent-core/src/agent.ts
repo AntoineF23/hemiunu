@@ -11,6 +11,7 @@ import { createShareServer, SHARE_TOOLS } from "./share";
 import { createSourcesServer, SOURCE_TOOLS } from "./sources";
 import { createAgentHooks } from "./toolcap";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
+import { createAskServer, ASK_TOOLS } from "./ask";
 import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
   SUBAGENTS,
@@ -100,6 +101,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     SHARE_TOOLS,
     SOURCE_TOOLS,
     TEAM_CONTROL_TOOLS,
+    ASK_TOOLS,
     ...sourceTools,
     ...WEB_TOOLS,
     ...PLANNING_TOOLS,
@@ -172,6 +174,8 @@ export async function* runTurn(opts: RunTurnOptions) {
         "hemiunu-orchestrator": createOrchestratorServer(subagentCtx),
         // Main-loop only: lets the agent create/switch teams via the CLI.
         "hemiunu-team-control": createTeamControlServer(),
+        // Main-loop only: ask the user a multiple-choice question (control bridge).
+        "hemiunu-ask": createAskServer(),
       } as Options["mcpServers"],
       agents,
       // Restrict the available toolset (default loads ~29 built-ins, whose

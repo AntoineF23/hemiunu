@@ -21,6 +21,14 @@ export type ServerEvent =
   | { type: "result"; text: string; sub?: boolean }
   | { type: "note"; text: string }
   | { type: "permission"; requestId: string; name: string; preview: string }
+  // The agent's `ask_user` tool: one multiple-choice question awaiting an answer.
+  | {
+      type: "question";
+      requestId: string;
+      header: string;
+      question: string;
+      options: { label: string; description?: string }[];
+    }
   | { type: "subagent"; label: string; detail: string; sub: true }
   // A live preview (wireframe / prototype) to embed inline in the thread.
   | { type: "artifact"; url: string; title: string }
@@ -48,4 +56,11 @@ export interface TurnRequest {
 export interface PermissionReply {
   requestId: string;
   decision: PermissionDecision;
+}
+
+/** Body of POST /api/turn/:turnId/question — answer an ask_user question. */
+export interface QuestionReply {
+  requestId: string;
+  /** The chosen option's label (or the user's free text for "Other"). */
+  answer: string;
 }

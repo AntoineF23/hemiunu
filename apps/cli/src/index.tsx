@@ -9,6 +9,7 @@ import {
   probeMcpServer,
   mcpOAuthStatus,
   REMEMBER_TOOL_ID,
+  ASK_USER_TOOL_ID,
   PARALLEL_TOOL_ID,
   configDir,
   hasApiKey,
@@ -721,6 +722,30 @@ function App({
   // bridge, so the footer + conversation + workspace stay consistent.
   useEffect(() => {
     setControlHandler(async (e) => {
+      if (e.type === "ask-user") {
+        // Ask each question in turn via the picker; collect the chosen labels.
+        const answers: string[] = [];
+        for (const q of e.questions) {
+          const OTHER = "Other / let me type it";
+          const choice = await new Promise<string>((resolve) => {
+            setSel(0);
+            setPicker({
+              title: `${q.header ? `${q.header} — ` : ""}${q.question}`,
+              options: [...q.options.map((o) => o.label), OTHER],
+              onChoice: (v) => {
+                setPicker(null);
+                resolve(v ?? "(no answer)");
+              },
+            });
+          });
+          answers.push(
+            choice === OTHER
+              ? `${q.header}: (the user wants to specify something else — ask them in plain text)`
+              : `${q.header}: ${choice}`,
+          );
+        }
+        return answers.join("\n");
+      }
       if (e.type === "create-team") {
         return await createAndAdoptTeam(e.name);
       }
@@ -800,6 +825,12 @@ function App({
           if (toolName === SAVE_SOURCE_MAP_TOOL_ID) {
             const mcp = typeof input.mcp === "string" ? input.mcp : "";
             push({ kind: "note", text: `✎ source map updated${mcp ? `: ${mcp}` : ""}` });
+            resolve({ behavior: "allow", updatedInput: input });
+            return;
+          }
+          // Asking the user IS the action — never gate it behind a "may I ask?"
+          // prompt. Auto-approve; the question itself is the interaction.
+          if (toolName === ASK_USER_TOOL_ID) {
             resolve({ behavior: "allow", updatedInput: input });
             return;
           }
@@ -2323,14 +2354,22 @@ function App({
 
       {picker ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text color={SAGE} bold>
+          <Text color={SAGE} bold wrap="wrap">
             {picker.title}
           </Text>
+          {/* Each option: a fixed marker column + a flexible, wrapping label, so a
+              long choice wraps with a hanging indent instead of overflowing. */}
           {picker.options.map((opt, i) => (
-            <Text key={opt} color={i === sel ? SAGE : undefined} dimColor={i !== sel}>
-              {i === sel ? "❯ " : "  "}
-              {opt}
-            </Text>
+            <Box key={opt}>
+              <Text color={i === sel ? SAGE : undefined} dimColor={i !== sel}>
+                {i === sel ? "❯ " : "  "}
+              </Text>
+              <Box flexGrow={1}>
+                <Text color={i === sel ? SAGE : undefined} dimColor={i !== sel} wrap="wrap">
+                  {opt}
+                </Text>
+              </Box>
+            </Box>
           ))}
         </Box>
       ) : null}

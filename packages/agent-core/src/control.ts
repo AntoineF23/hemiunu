@@ -59,10 +59,23 @@ export async function removeTeammate(username: string): Promise<string> {
  * mirrors the CLI ← agent direction we already have via onSubagentEvent.
  */
 
+/** One multiple-choice question the agent asks the user via the `ask_user` tool. */
+export interface AskQuestion {
+  /** The full question, ending in a question mark. */
+  question: string;
+  /** A short chip/tag label for the question (e.g. "Approach", "Scope"). */
+  header: string;
+  /** 2–4 mutually-exclusive choices (label + a one-line trade-off description). */
+  options: { label: string; description?: string }[];
+}
+
 export type ControlEvent =
   | { type: "create-team"; name: string }
   | { type: "switch-team"; repo: string }
-  | { type: "rename-team"; name: string };
+  | { type: "rename-team"; name: string }
+  // Ask the user 1–4 multiple-choice questions and block until they answer. The
+  // front-end renders a chooser and returns the selection(s) as a string.
+  | { type: "ask-user"; questions: AskQuestion[] };
 
 type ControlHandler = (e: ControlEvent) => Promise<string>;
 

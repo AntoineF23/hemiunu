@@ -23,6 +23,8 @@ export interface TurnSession {
   ac: AbortController;
   /** Parked canUseTool promises, keyed by requestId, awaiting a /permission POST. */
   pending: Map<string, PendingPermission>;
+  /** Parked ask_user questions, keyed by requestId, awaiting a /question POST. */
+  askPending: Map<string, (answer: string) => void>;
   /** Serializes permission prompts so two tool calls never race the one UI. */
   permChain: Promise<unknown>;
   /** Push an event onto this turn's SSE stream (set by the turn handler). */
@@ -49,6 +51,7 @@ export function createSession(turnId: string): TurnSession {
   const s: TurnSession = {
     ac: new AbortController(),
     pending: new Map(),
+    askPending: new Map(),
     permChain: Promise.resolve(),
     emit: () => {},
     autoAccept: false,
@@ -59,6 +62,24 @@ export function createSession(turnId: string): TurnSession {
 
 export function getSession(turnId: string): TurnSession | undefined {
   return sessions.get(turnId);
+}
+
+/** The currently-streaming turn (single-user / local-first → at most one). Used
+ *  by the boot-time control handler to reach the live stream for `ask_user`. */
+export function activeSession(): TurnSession | undefined {
+  let last: TurnSession | undefined;
+  for (const s of sessions.values()) last = s;
+  return last;
+}
+
+/** Resolve a parked ask_user question from a /question POST. False if unknown. */
+export function resolveQuestion(turnId: string, requestId: string, answer: string): boolean {
+  const s = sessions.get(turnId);
+  const resolve = s?.askPending.get(requestId);
+  if (!s || !resolve) return false;
+  s.askPending.delete(requestId);
+  resolve(answer);
+  return true;
 }
 
 /** Resolve a parked permission from a /permission POST. Returns false if unknown. */
@@ -111,5 +132,8 @@ export function endSession(turnId: string): void {
     p.resolve({ behavior: "deny", message: "Turn ended." });
   }
   s.pending.clear();
+  // Unblock any parked ask_user question so its tool call returns instead of hanging.
+  for (const resolve of s.askPending.values()) resolve("(no answer — the turn ended)");
+  s.askPending.clear();
   sessions.delete(turnId);
 }

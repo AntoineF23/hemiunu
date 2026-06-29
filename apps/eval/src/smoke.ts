@@ -965,6 +965,7 @@ async function main() {
       setControlHandler(async (e) => {
         if (e.type === "create-team") return `made ${e.name}`;
         if (e.type === "rename-team") return `renamed ${e.name}`;
+        if (e.type === "ask-user") return e.questions.map((q) => `${q.header}: ${q.options[0].label}`).join("\n");
         return `switched ${e.repo}`;
       });
       assert(
@@ -979,6 +980,12 @@ async function main() {
         (await requestControl({ type: "rename-team", name: "bar" })) === "renamed bar",
         "should route rename",
       );
+      // ask_user routes its questions through the same bridge and returns the answer.
+      const answer = await requestControl({
+        type: "ask-user",
+        questions: [{ header: "Approach", question: "Which way?", options: [{ label: "A" }, { label: "B" }] }],
+      });
+      assert(answer === "Approach: A", `should route ask-user, got: ${answer}`);
     } finally {
       setControlHandler(null);
     }

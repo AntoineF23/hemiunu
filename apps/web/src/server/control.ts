@@ -7,8 +7,10 @@
 // CLI's handler (apps/cli/src/index.tsx:569-590), minus the React UI updates:
 // the web has no footer to mutate — each turn re-reads the active team via
 // turnRepo() -> currentTeam(), so updating persisted state is all that's needed.
+import { randomUUID } from "node:crypto";
 import {
   addTeam,
+  type AskQuestion,
   createRepo,
   currentTeam,
   githubViewer,
@@ -22,6 +24,31 @@ import {
   setCurrentTeam,
   switchTeam,
 } from "@hemiunu/agent-core";
+import { activeSession } from "./session";
+
+// Ask the user each question over the live turn's SSE stream and wait for the
+// browser's /question POST to resolve it. One question at a time so the client
+// UI stays a simple single-select card. Returns the chosen labels, joined.
+async function askUser(questions: AskQuestion[]): Promise<string> {
+  const answers: string[] = [];
+  for (const q of questions) {
+    const s = activeSession();
+    if (!s) return "No interactive session is available to ask the user.";
+    const requestId = randomUUID();
+    const answer = await new Promise<string>((resolve) => {
+      s.askPending.set(requestId, resolve);
+      s.emit({
+        type: "question",
+        requestId,
+        header: q.header,
+        question: q.question,
+        options: q.options,
+      });
+    });
+    answers.push(`${q.header}: ${answer}`);
+  }
+  return answers.join("\n");
+}
 
 // Mirror of the CLI's createAndAdoptTeam (apps/cli/src/index.tsx:954).
 async function createTeam(name: string): Promise<string> {
@@ -92,6 +119,8 @@ export function registerControlHandler(): void {
         return switchToTeam(e.repo);
       case "rename-team":
         return renameCurrentTeam(e.name);
+      case "ask-user":
+        return askUser(e.questions);
     }
   });
 }
