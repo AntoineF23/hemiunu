@@ -7,7 +7,7 @@ export interface Settings {
   githubAccounts: string[];
   hasApiKey: boolean;
   github: boolean;
-  vercel: boolean;
+  cloudflare: boolean;
   team: string | null;
   teams: string[];
   mcpServers: string[];

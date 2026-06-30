@@ -292,10 +292,11 @@ the user's private repos).
 Active directions on the roadmap:
 
 - **Automatic deployment.** Today `deploy_prototype` publishes a prototype to a
-  shareable **Vercel** URL on demand (`/vercel` to connect once, no token). Next:
-  **auto-deploy on every change**, a live preview link that updates itself as
-  the agent builds, plus a choice of targets beyond Vercel (Netlify, Cloudflare
-  Pages, or your own host) picked per team.
+  shareable **Cloudflare Pages** URL on demand (`/cloudflare` to connect once
+  with your own free account's API token — your whole team can share one
+  dashboard). Next: **auto-deploy on every change**, a live preview link that
+  updates itself as the agent builds, plus a choice of targets beyond Cloudflare
+  (Vercel, Netlify, or your own host) picked per team.
 - **Synthesized feature memory.** Automatically assemble each feature's
   `PROTOTYPE.md` by pulling and de-duplicating substance across all connected
   sources (Slack, Linear, docs, …), with provenance and timestamps, so a

@@ -173,8 +173,14 @@ export {
 export type { ToolPolicy, ToolPolicyFile } from "./toolpolicy";
 export { enumerateServerTools } from "./mcp-tools";
 export type { McpToolInfo } from "./mcp-tools";
-export { resolveVercelToken, vercelLoggedIn, vercelLogin, vercelDeploy } from "./vercel";
-export type { DeployResult } from "./vercel";
+export {
+  resolveCloudflareCreds,
+  cloudflareConfigured,
+  cloudflareDeploy,
+  fetchCloudflareAccountId,
+  projectNameFor,
+} from "./cloudflare";
+export type { DeployResult, CloudflareCreds } from "./cloudflare";
 export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";
 export type { ControlEvent, AskQuestion } from "./control";
 export { createAskServer, ASK_TOOLS, ASK_USER_TOOL_ID } from "./ask";
