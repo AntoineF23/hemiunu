@@ -5,13 +5,7 @@ import { Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getJSON, sendJSON } from "@/lib/api";
 import { Markdown } from "@/Markdown";
@@ -128,7 +122,8 @@ export function MemoryView() {
             s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
             s.fontFace = "Ubuntu, sans-serif";
             s.fontWeight = agent ? "600" : "400";
-            s.position.set(0, main ? 14 : agent ? 9 : 6, 0);
+            // Sit the label well clear of the sphere so it stays readable.
+            s.position.set(0, main ? 22 : agent ? 15 : 10, 0);
             return s;
           }}
           // Edges: cyan = main delegates to a subagent, gold = the agent can edit
@@ -151,22 +146,23 @@ export function MemoryView() {
       )}
 
       {/* Title + hint */}
-      <div className="pointer-events-none absolute left-5 top-4">
+      <div className="pointer-events-none absolute left-5 top-4 z-10">
         <h2 className="font-serif text-xl text-ink">Memory</h2>
         <p className="text-xs text-ink-3">Drag to rotate · scroll to zoom · click a node</p>
       </div>
 
-      {/* New context file */}
+      {/* Add a context file (extra knowledge attached to agents). z-10 keeps it
+          clickable above the WebGL canvas. */}
       <Button
         size="sm"
-        className="absolute right-5 top-4 gap-1.5"
+        className="absolute right-5 top-4 z-10 gap-1.5"
         onClick={() => setDrawer({ mode: "create" })}
       >
-        <Plus className="size-4" /> Context file
+        <Plus className="size-4" /> Add to memory
       </Button>
 
       {/* Legend */}
-      <div className="absolute bottom-4 left-5 flex flex-col gap-1 text-xs text-ink-3">
+      <div className="pointer-events-none absolute bottom-4 left-5 z-10 flex flex-col gap-1 text-xs text-ink-3">
         {(
           [
             ["Main agent", GOLD],
@@ -194,29 +190,42 @@ export function MemoryView() {
         ))}
       </div>
 
-      <Sheet open={drawer !== null} onOpenChange={(o) => !o && closeDrawer()}>
-        <SheetContent>
-          {drawer?.mode === "node" && (
-            <NodeDetailPanel
-              id={drawer.id}
-              onClose={closeDrawer}
-              onChanged={() => {
-                void refresh();
-              }}
-            />
-          )}
-          {drawer?.mode === "create" && (
-            <CreateContextPanel
-              agents={agentNames}
-              onClose={closeDrawer}
-              onCreated={() => {
-                void refresh();
-                closeDrawer();
-              }}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Detail drawer — a fixed overlay (NOT the docked rail Sheet, which only
+          works as a top-level sibling). Transparent backdrop closes on click. */}
+      {drawer && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={closeDrawer} />
+          <aside className="fixed inset-y-0 right-0 z-50 flex w-[440px] max-w-[92vw] flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={closeDrawer}
+              className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
+            >
+              <X className="size-4" />
+            </button>
+            {drawer.mode === "node" && (
+              <NodeDetailPanel
+                id={drawer.id}
+                onClose={closeDrawer}
+                onChanged={() => {
+                  void refresh();
+                }}
+              />
+            )}
+            {drawer.mode === "create" && (
+              <CreateContextPanel
+                agents={agentNames}
+                onClose={closeDrawer}
+                onCreated={() => {
+                  void refresh();
+                  closeDrawer();
+                }}
+              />
+            )}
+          </aside>
+        </>
+      )}
     </div>
   );
 }
@@ -307,6 +316,13 @@ function NodeDetailPanel({
       {error && (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </p>
+      )}
+
+      {detail.kind === "agent" && (
+        <p className="text-xs text-ink-3">
+          This is the agent's live system prompt (view-only). To add to it, create a context file
+          attached to this agent.
         </p>
       )}
 
@@ -419,9 +435,9 @@ function CreateContextPanel({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>New context file</SheetTitle>
+        <SheetTitle>Add to memory</SheetTitle>
         <SheetDescription>
-          Extra context injected into the agents you attach it to, every turn.
+          A context file — extra knowledge injected into the agents you attach it to, every turn.
         </SheetDescription>
       </SheetHeader>
 
