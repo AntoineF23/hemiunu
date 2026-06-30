@@ -5,13 +5,7 @@ import { Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { getJSON, sendJSON } from "@/lib/api";
 import { Markdown } from "@/Markdown";
@@ -128,7 +122,8 @@ export function MemoryView() {
             s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
             s.fontFace = "Ubuntu, sans-serif";
             s.fontWeight = agent ? "600" : "400";
-            s.position.set(0, main ? 14 : agent ? 9 : 6, 0);
+            // Sit the label well clear of the sphere so it stays readable.
+            s.position.set(0, main ? 22 : agent ? 15 : 10, 0);
             return s;
           }}
           // Edges: cyan = main delegates to a subagent, gold = the agent can edit
@@ -195,29 +190,42 @@ export function MemoryView() {
         ))}
       </div>
 
-      <Sheet open={drawer !== null} onOpenChange={(o) => !o && closeDrawer()}>
-        <SheetContent>
-          {drawer?.mode === "node" && (
-            <NodeDetailPanel
-              id={drawer.id}
-              onClose={closeDrawer}
-              onChanged={() => {
-                void refresh();
-              }}
-            />
-          )}
-          {drawer?.mode === "create" && (
-            <CreateContextPanel
-              agents={agentNames}
-              onClose={closeDrawer}
-              onCreated={() => {
-                void refresh();
-                closeDrawer();
-              }}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Detail drawer — a fixed overlay (NOT the docked rail Sheet, which only
+          works as a top-level sibling). Transparent backdrop closes on click. */}
+      {drawer && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={closeDrawer} />
+          <aside className="fixed inset-y-0 right-0 z-50 flex w-[440px] max-w-[92vw] flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={closeDrawer}
+              className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
+            >
+              <X className="size-4" />
+            </button>
+            {drawer.mode === "node" && (
+              <NodeDetailPanel
+                id={drawer.id}
+                onClose={closeDrawer}
+                onChanged={() => {
+                  void refresh();
+                }}
+              />
+            )}
+            {drawer.mode === "create" && (
+              <CreateContextPanel
+                agents={agentNames}
+                onClose={closeDrawer}
+                onCreated={() => {
+                  void refresh();
+                  closeDrawer();
+                }}
+              />
+            )}
+          </aside>
+        </>
+      )}
     </div>
   );
 }
