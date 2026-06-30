@@ -51,6 +51,36 @@ function linkSolid(a: Access): string {
   return a === "delegate" ? CYAN : a === "write" ? GOLD : "rgba(238,238,238,0.6)";
 }
 
+// Stable (module-scope) accessors — passing the SAME function identity every
+// render stops react-force-graph from rebuilding node sprites on each resize
+// (e.g. every frame of the panel slide), keeping interaction fluid.
+const nodeColorAcc = (n: object) => colorOf(n as MemoryNode);
+const nodeValAcc = (n: object) => {
+  const m = n as MemoryNode;
+  return m.kind !== "agent" ? 5 : isMain(m) ? 22 : 9;
+};
+const nodeLabelObj = (n: object) => {
+  const m = n as MemoryNode;
+  const main = isMain(m);
+  const agent = m.kind === "agent";
+  const s = new SpriteText(m.label + (m.customized ? " ✎" : ""));
+  s.color = agent ? colorOf(m) : m.kind === "context" ? LAVENDER : "#EEEEEE";
+  s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
+  s.fontFace = "Ubuntu, sans-serif";
+  s.fontWeight = agent ? "600" : "400";
+  s.position.set(0, main ? 22 : agent ? 15 : 10, 0); // clear of the sphere
+  return s;
+};
+const linkColorAcc = (l: object) => linkStroke(accOf(l));
+const linkWidthAcc = (l: object) => {
+  const a = accOf(l);
+  return a === "delegate" ? 2.2 : a === "write" ? 1.4 : 1.0;
+};
+const linkSolidAcc = (l: object) => linkSolid(accOf(l));
+
+/** The drawer/graph split width (also the slide target). */
+const PANEL_W = "min(600px, 50vw)";
+
 interface NodeDetail {
   kind: MemoryNodeKind;
   title: string;
@@ -88,6 +118,23 @@ export function MemoryView() {
   );
 
   const closeDrawer = useCallback(() => setDrawer(null), []);
+  const openNode = useCallback(
+    (n: object) => setDrawer({ mode: "node", id: (n as MemoryNode).id }),
+    [],
+  );
+
+  // Slide the panel in/out by animating the slot width, and keep the last
+  // content mounted through the close animation (`render`), like the rail panels.
+  const [render, setRender] = useState<Drawer>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (drawer) {
+      setRender(drawer);
+      const id = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(id);
+    }
+    setShown(false); // width → 0; onTransitionEnd clears `render`
+  }, [drawer]);
 
   return (
     <div className="relative flex h-full w-full overflow-hidden">
@@ -103,48 +150,30 @@ export function MemoryView() {
             graphData={graph}
             backgroundColor="rgba(0,0,0,0)"
             showNavInfo={false}
-            nodeColor={(n) => colorOf(n as MemoryNode)}
-            // Main agent is the biggest hub; subagents medium; files small.
-            nodeVal={(n) => {
-              const m = n as MemoryNode;
-              return m.kind !== "agent" ? 5 : isMain(m) ? 22 : 9;
-            }}
+            nodeColor={nodeColorAcc}
+            nodeVal={nodeValAcc}
+            // Bigger spheres = a forgiving click target, so a single click lands
+            // on the node instead of just missing into empty space.
+            nodeRelSize={6}
             nodeOpacity={1}
             nodeResolution={16}
             // Always-on text labels so the graph reads at a glance (no hover needed).
             nodeThreeObjectExtend
-            nodeThreeObject={(n) => {
-              const m = n as MemoryNode;
-              const main = isMain(m);
-              const agent = m.kind === "agent";
-              const s = new SpriteText(m.label + (m.customized ? " ✎" : ""));
-              s.color = colorOf(m);
-              if (!agent && m.kind !== "context") s.color = "#EEEEEE"; // keep file labels readable
-              s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
-              s.fontFace = "Ubuntu, sans-serif";
-              s.fontWeight = agent ? "600" : "400";
-              // Sit the label well clear of the sphere so it stays readable.
-              s.position.set(0, main ? 22 : agent ? 15 : 10, 0);
-              return s;
-            }}
+            nodeThreeObject={nodeLabelObj}
             // Edges: cyan = main delegates to a subagent, gold = the agent can edit
             // the file, grey = read-only. Flow particles travel source → target.
-            linkColor={(l) => linkStroke(accOf(l))}
-            linkWidth={(l) => {
-              const a = accOf(l);
-              return a === "delegate" ? 2.2 : a === "write" ? 1.4 : 1.0;
-            }}
+            linkColor={linkColorAcc}
+            linkWidth={linkWidthAcc}
             linkDirectionalParticles={2}
             linkDirectionalParticleWidth={2}
-            linkDirectionalParticleColor={(l) => linkSolid(accOf(l))}
+            linkDirectionalParticleColor={linkSolidAcc}
             linkDirectionalArrowLength={3.5}
             linkDirectionalArrowRelPos={0.9}
-            linkDirectionalArrowColor={(l) => linkSolid(accOf(l))}
+            linkDirectionalArrowColor={linkSolidAcc}
             enableNodeDrag={false}
-            onNodeClick={(n) => setDrawer({ mode: "node", id: (n as MemoryNode).id })}
-            // Click empty space to close (no DOM backdrop over the canvas, so a
-            // node click opens in one go instead of being eaten by an overlay).
-            onBackgroundClick={() => closeDrawer()}
+            onNodeClick={openNode}
+            // Click empty space to close (no DOM backdrop over the canvas).
+            onBackgroundClick={closeDrawer}
             cooldownTicks={120}
           />
         )}
@@ -195,40 +224,56 @@ export function MemoryView() {
         </div>
       </div>
 
-      {/* Detail drawer — in the layout flow (a flex sibling), so opening it
-          shrinks the graph container instead of covering it: the graph's
-          ResizeObserver refits and the camera keeps it centered. Click empty
-          graph space to close. */}
-      {drawer && (
-        <aside className="relative flex h-full w-[600px] max-w-[50vw] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={closeDrawer}
-            className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
+      {/* Detail drawer — a flex sibling (so opening it shrinks the graph, which
+          its ResizeObserver refits and the camera keeps centered) that slides in
+          by animating its width, like the rail panels. `render` keeps the last
+          content mounted through the close animation. */}
+      {render && (
+        <div
+          className="shrink-0 overflow-hidden"
+          style={{
+            width: shown ? PANEL_W : 0,
+            transition: "width 0.4s cubic-bezier(0.22, 1, 0.36, 1)",
+          }}
+          onTransitionEnd={(e) => {
+            if (!shown && e.propertyName === "width" && e.target === e.currentTarget) {
+              setRender(null);
+            }
+          }}
+        >
+          <aside
+            style={{ width: PANEL_W }}
+            className="relative flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop"
           >
-            <X className="size-4" />
-          </button>
-          {drawer.mode === "node" && (
-            <NodeDetailPanel
-              id={drawer.id}
-              onClose={closeDrawer}
-              onChanged={() => {
-                void refresh();
-              }}
-            />
-          )}
-          {drawer.mode === "create" && (
-            <CreateContextPanel
-              agents={agentNames}
-              onClose={closeDrawer}
-              onCreated={() => {
-                void refresh();
-                closeDrawer();
-              }}
-            />
-          )}
-        </aside>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={closeDrawer}
+              className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
+            >
+              <X className="size-4" />
+            </button>
+            {render.mode === "node" && (
+              <NodeDetailPanel
+                id={render.id}
+                onClose={closeDrawer}
+                onChanged={() => {
+                  void refresh();
+                }}
+              />
+            )}
+            {render.mode === "create" && (
+              <CreateContextPanel
+                agents={agentNames}
+                onClose={closeDrawer}
+                onCreated={() => {
+                  void refresh();
+                  closeDrawer();
+                }}
+              />
+            )}
+          </aside>
+        </div>
       )}
     </div>
   );
