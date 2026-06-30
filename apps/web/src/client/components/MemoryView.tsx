@@ -171,6 +171,12 @@ export function MemoryView() {
             linkDirectionalArrowRelPos={0.9}
             linkDirectionalArrowColor={linkSolidAcc}
             enableNodeDrag={false}
+            // THE fix for "need to click twice": the underlying graph suppresses
+            // a click whenever the pointer micro-moved between down and up
+            // (treated as a drag), and clickAfterDrag defaults to false. Trackpad
+            // jitter trips that on the first click. Forwarded to three-render-
+            // objects though react-force-graph-3d doesn't type it, hence the cast.
+            {...({ clickAfterDrag: true } as object)}
             onNodeClick={openNode}
             // Click empty space to close (no DOM backdrop over the canvas).
             onBackgroundClick={closeDrawer}
