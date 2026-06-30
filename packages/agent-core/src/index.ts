@@ -193,3 +193,23 @@ export {
   parseWwwAuthenticate,
 } from "./mcp-oauth";
 export type { McpOAuthRecord, DiscoveredAuth, McpProbe } from "./mcp-oauth";
+export {
+  listAttachments,
+  loadAttachment,
+  attachmentsFor,
+  attachmentsBlock,
+  saveAttachment,
+  deleteAttachment,
+  knowledgeDoc,
+  hasKnowledgeOverride,
+  shippedKnowledge,
+  saveKnowledgeOverride,
+  deleteKnowledgeOverride,
+  listShippedKnowledge,
+  readSoul,
+  readUserMemory,
+  writeUserMemory,
+} from "./overlay";
+export type { Attachment, AttachmentMeta, SaveAttachmentOptions } from "./overlay";
+export { buildMemoryGraph } from "./memorygraph";
+export type { MemoryGraph, MemoryNode, MemoryLink, MemoryNodeKind } from "./memorygraph";

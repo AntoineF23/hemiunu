@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Brain,
   Check,
   type LucideIcon,
   MapPin,
@@ -27,6 +28,7 @@ export type Panel =
   | "teams"
   | "prototypes"
   | "atlas"
+  | "memory"
   | "skills"
   | "mcp"
   | "settings";
@@ -62,6 +64,7 @@ const WORKSPACE: NavItem[] = [
   { key: "teams", label: "Teams", icon: Users },
   { key: "prototypes", label: "Prototypes", icon: Boxes },
   { key: "atlas", label: "Atlas", icon: MapPin },
+  { key: "memory", label: "Memory", icon: Brain },
   { key: "skills", label: "Commands & skills", icon: SquareSlash },
   { key: "mcp", label: "MCP servers", icon: Plug },
   { key: "settings", label: "Settings", icon: Settings },

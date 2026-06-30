@@ -4,6 +4,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { sdkConfigDir } from "./config";
 import { asStream } from "./messages";
+import { attachmentsBlock, knowledgeDoc } from "./overlay";
 import { SOURCE_TOOLS, loadSourceMaps } from "./sources";
 import { createAgentHooks } from "./toolcap";
 
@@ -21,6 +22,10 @@ const WORKSPACE_TOOLS = "mcp__hemiunu-workspace__*";
  * any other directory silently drops them (e.g. the prototyper's design guide).
  */
 function knowledge(name: string, root: string = process.env.HEMIUNU_HOME ?? process.cwd()): string {
+  // A user override (~/.hemiunu/context/knowledge/<name>.md) wins over the
+  // shipped pack; deleting the override restores the original automatically.
+  const override = knowledgeDoc(name);
+  if (override) return override;
   const path = join(root, "context", "knowledge", `${name}.md`);
   return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
 }
@@ -59,6 +64,9 @@ ${list}`;
       prompt += `\n\n# ${spec.knowledge.header}${intro}\n\n${doc}`;
     }
   }
+
+  // User context files the user has attached to this subagent (overlay layer).
+  prompt += attachmentsBlock(name);
   return prompt;
 }
 
