@@ -151,22 +151,23 @@ export function MemoryView() {
       )}
 
       {/* Title + hint */}
-      <div className="pointer-events-none absolute left-5 top-4">
+      <div className="pointer-events-none absolute left-5 top-4 z-10">
         <h2 className="font-serif text-xl text-ink">Memory</h2>
         <p className="text-xs text-ink-3">Drag to rotate · scroll to zoom · click a node</p>
       </div>
 
-      {/* New context file */}
+      {/* Add a context file (extra knowledge attached to agents). z-10 keeps it
+          clickable above the WebGL canvas. */}
       <Button
         size="sm"
-        className="absolute right-5 top-4 gap-1.5"
+        className="absolute right-5 top-4 z-10 gap-1.5"
         onClick={() => setDrawer({ mode: "create" })}
       >
-        <Plus className="size-4" /> Context file
+        <Plus className="size-4" /> Add to memory
       </Button>
 
       {/* Legend */}
-      <div className="absolute bottom-4 left-5 flex flex-col gap-1 text-xs text-ink-3">
+      <div className="pointer-events-none absolute bottom-4 left-5 z-10 flex flex-col gap-1 text-xs text-ink-3">
         {(
           [
             ["Main agent", GOLD],
@@ -310,6 +311,13 @@ function NodeDetailPanel({
         </p>
       )}
 
+      {detail.kind === "agent" && (
+        <p className="text-xs text-ink-3">
+          This is the agent's live system prompt (view-only). To add to it, create a context file
+          attached to this agent.
+        </p>
+      )}
+
       {detail.kind === "persona" && (
         <p className="text-xs text-ink-3">
           The persona ships with the app and is view-only. To add to the main agent, create a
@@ -419,9 +427,9 @@ function CreateContextPanel({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>New context file</SheetTitle>
+        <SheetTitle>Add to memory</SheetTitle>
         <SheetDescription>
-          Extra context injected into the agents you attach it to, every turn.
+          A context file — extra knowledge injected into the agents you attach it to, every turn.
         </SheetDescription>
       </SheetHeader>
 

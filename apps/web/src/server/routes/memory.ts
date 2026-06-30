@@ -2,8 +2,15 @@
 // reader/writer are backed by the same agent-core functions the CLI and agent use,
 // so what the panel shows and edits is exactly the agent's real memory.
 import { Hono } from "hono";
+import { buildSystemPrompt, loadContext } from "@hemiunu/memory";
 import {
+  attachmentsBlock,
   buildMemoryGraph,
+  configDir,
+  SUBAGENTS,
+  SUBAGENT_NAMES,
+  subagentPrompt,
+  type SubagentName,
   deleteAttachment,
   deleteKnowledgeOverride,
   deleteSkill,
@@ -59,6 +66,33 @@ memoryRoute.get("/api/memory/node/:id", async (c) => {
   const { kind, rest } = splitId(c.req.param("id"));
   try {
     switch (kind) {
+      case "agent": {
+        // View the agent's actual system prompt (read-only). To add to it, the
+        // user attaches a context file — surfaced as a hint in the UI.
+        if (rest === "main") {
+          const base = buildSystemPrompt(
+            loadContext({ appRoot: process.env.HEMIUNU_HOME, userRoot: configDir() }),
+          );
+          return c.json({
+            kind,
+            title: "main",
+            content: base + attachmentsBlock("main"),
+            editable: false,
+            description: "The coordinator — talks to you and delegates to subagents.",
+          });
+        }
+        if ((SUBAGENT_NAMES as string[]).includes(rest)) {
+          const name = rest as SubagentName;
+          return c.json({
+            kind,
+            title: name,
+            content: subagentPrompt(name),
+            editable: false,
+            description: SUBAGENTS[name].description,
+          });
+        }
+        return c.json({ error: "Unknown agent." }, 404);
+      }
       case "persona":
         return c.json({ kind, title: "soul.md", content: readSoul(), editable: false });
       case "user":
