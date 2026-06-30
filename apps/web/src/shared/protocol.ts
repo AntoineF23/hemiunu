@@ -19,6 +19,10 @@ export type ServerEvent =
   | { type: "text"; delta: string }
   | { type: "tool"; name: string; preview: string; sub?: boolean; delegate?: boolean }
   | { type: "result"; text: string; sub?: boolean }
+  // A subagent's full final answer — the handoff it returned to the coordinator.
+  // Surfaced as an expandable block under the delegation so you can see exactly
+  // what each specialist produced, not just the main agent's summary of it.
+  | { type: "answer"; agent: string; text: string }
   | { type: "note"; text: string }
   | { type: "permission"; requestId: string; name: string; preview: string }
   // The agent's `ask_user` tool: one multiple-choice question awaiting an answer.

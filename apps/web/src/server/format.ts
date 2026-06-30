@@ -7,6 +7,7 @@ export {
   title,
   prettyTool,
   resultText,
+  resultTextRaw,
   toolPreview,
   summarizeResult,
   cleanResultPreview,
