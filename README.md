@@ -15,6 +15,28 @@ MCP servers you add), builds **wireframe → hi-fi prototypes** for a feature,
 remembers what it learns per-feature in a `PROTOTYPE.md` committed to that
 feature's repo, and keeps full conversations on disk.
 
+## See and shape its memory: the Memory graph
+
+Open the **Memory** panel in the web app and the agent's memory unfolds as an
+**interactive 3D graph** — every memory file and every agent is a node, and the
+edges show **who can read or write what**: the main agent at the gold hub, its
+cyan specialist subagents, your violet context files, and the rest of memory in
+slate. Click any node to read it; the ones that are *yours* you edit in place —
+`user.md`, the feature's `PROTOTYPE.md`, skills, and source maps.
+
+It's not just a view — it's how you **shape** what the agent knows:
+
+- **Add context files** and attach them to any agent (main or a subagent); each
+  is injected into that agent's prompt every turn. A file attached to `main` is
+  your parallel to `soul.md` (which stays read-only).
+- **Customise the knowledge packs** — edit a pack and your version overrides the
+  shipped one and persists across updates; delete the override to restore the
+  original.
+- **Define your own subagents** — give one a name, a *when-to-summon* description,
+  a model, and a system prompt, and the main agent **summons it on its own**
+  whenever a request matches, right alongside the built-in researcher,
+  prototyper, designer, strategist, and analyst.
+
 ## Collect the world as you build: the Atlas
 
 Shipping is the game. **Every time you publish a prototype to a team's `main`
