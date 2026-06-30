@@ -42,6 +42,27 @@ export function resultText(content: unknown): string {
   return "";
 }
 
+/**
+ * Like `resultText`, but preserves the original line breaks and spacing instead
+ * of collapsing whitespace. Use this when the result is meant to be READ in full
+ * (e.g. a subagent's final answer surfaced as an expandable block), where the
+ * markdown structure — headings, lists, paragraphs — is the point.
+ */
+export function resultTextRaw(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((b) =>
+        b && typeof b === "object" && (b as { type?: string }).type === "text"
+          ? (b as { text: string }).text
+          : "",
+      )
+      .join("\n")
+      .trim();
+  }
+  return "";
+}
+
 /** Render a tool call's input as the one argument that matters, not raw JSON. */
 export function toolPreview(input: unknown): string {
   if (!input || typeof input !== "object") return "";

@@ -28,7 +28,15 @@ import {
   startPreview,
 } from "@hemiunu/agent-core";
 import { recordArtifact } from "../artifacts";
-import { clip, prettyTool, resultText, cleanResultPreview, title, toolPreview } from "../format";
+import {
+  clip,
+  prettyTool,
+  resultText,
+  resultTextRaw,
+  cleanResultPreview,
+  title,
+  toolPreview,
+} from "../format";
 import { activeMcp, bootRuntime, effectiveSystem, turnRepo } from "../runtime";
 import {
   abortSession,
@@ -204,9 +212,10 @@ turnRoute.post("/api/turn", async (c) => {
     let usage: Record<string, number> | undefined;
     let fullText = "";
     let sessionId: string | undefined = body.resume;
-    // Tool ids of delegations (Task/parallel); their results are internal
-    // handoffs we don't surface as raw blobs.
-    const delegateIds = new Set<string>();
+    // Tool ids of delegations (Task/parallel) → the subagent that ran them. We
+    // don't surface their results as raw inline blobs; instead we emit the full
+    // answer as a dedicated, expandable `answer` event keyed to the subagent.
+    const delegateIds = new Map<string, string>();
     // When the agent starts (or switches) a localhost preview during the turn,
     // surface it as an inline artifact card. previewStatus() is in-process, so
     // we just watch it change as iterate_prototype / edits run.
@@ -269,7 +278,7 @@ turnRoute.post("/api/turn", async (c) => {
                 touchedPrototype = true;
               }
               if (b.name === PARALLEL_TOOL_ID) {
-                if (b.id) delegateIds.add(b.id);
+                if (b.id) delegateIds.set(b.id, "parallel");
                 const tasks = Array.isArray(b.input?.tasks) ? b.input.tasks : [];
                 const summary = tasks
                   .map((t: Record<string, unknown>) => String(t.label ?? t.agent ?? "task"))
@@ -283,8 +292,8 @@ turnRoute.post("/api/turn", async (c) => {
                   delegate: true,
                 });
               } else if (b.name === "Agent" || b.name === "Task") {
-                if (b.id) delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
+                if (b.id) delegateIds.set(b.id, who);
                 const desc = clip(String(b.input?.description ?? ""), 56);
                 emit({ type: "tool", name: who, preview: desc, delegate: true });
               } else if (b.name === ASK_USER_TOOL_ID) {
@@ -299,7 +308,15 @@ turnRoute.post("/api/turn", async (c) => {
           const sub = !!msg.parent_tool_use_id;
           for (const b of msg.message?.content ?? []) {
             if (b.type === "tool_result") {
-              if (b.tool_use_id && delegateIds.has(b.tool_use_id)) continue;
+              // A delegation's result is the subagent's final answer. Surface it
+              // in full as its own expandable `answer` block (keyed to the
+              // subagent) rather than dropping it or dumping it as a raw line.
+              if (b.tool_use_id && delegateIds.has(b.tool_use_id)) {
+                const agent = delegateIds.get(b.tool_use_id) ?? "subagent";
+                const answer = resultTextRaw(b.content);
+                if (answer) emit({ type: "answer", agent, text: answer });
+                continue;
+              }
               const t = resultText(b.content);
               // Only emit a CLEAN structured summary; raw dumps, oversized output
               // and errors are dropped so they never leak into the activity feed.

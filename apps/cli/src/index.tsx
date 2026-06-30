@@ -75,6 +75,7 @@ import {
   title,
   prettyTool,
   resultText,
+  resultTextRaw,
   toolPreview,
   cleanResultPreview,
   reduceActivity,
@@ -337,6 +338,9 @@ type Item =
   // group closes. `delegate` styles it like a delegation (the ⌂ glyph).
   | { kind: "group"; text: string; delegate?: boolean }
   | { kind: "result"; text: string; sub?: boolean }
+  // A subagent's full final answer (the handoff it returned to the coordinator),
+  // printed under the delegation so you can see what the specialist produced.
+  | { kind: "answer"; agent: string; text: string }
   | { kind: "perm"; text: string; ok: boolean }
   | { kind: "cost"; text: string }
   | { kind: "note"; text: string }
@@ -435,6 +439,27 @@ function ItemView({ item }: { item: Item }) {
       );
     case "result":
       return <Text dimColor>{`${item.sub ? "      " : "  "}⎿ ${item.text}`}</Text>;
+    case "answer": {
+      // The subagent's full answer, printed under its delegation. A sand header
+      // names the specialist; the body is indented and markdown-rendered so the
+      // findings read cleanly, set apart from the main agent's own reply.
+      const who = `${item.agent.charAt(0).toUpperCase()}${item.agent.slice(1)}`;
+      return (
+        <Box marginTop={1} marginLeft={2} flexDirection="column">
+          <Text>
+            <Text color={SAND} bold>
+              {"⌂ "}
+            </Text>
+            <Text color={SAND} bold>
+              {`${who}'s answer`}
+            </Text>
+          </Text>
+          <Box marginLeft={2}>
+            <Text wrap="wrap">{md(item.text)}</Text>
+          </Box>
+        </Box>
+      );
+    }
     case "perm":
       return (
         <Text>
@@ -1004,10 +1029,10 @@ function App({
     let cost: number | null = null;
     let usage: Record<string, number> | undefined;
     let fullText = "";
-    // Tool-call ids of delegations (Task/parallel). Their results are internal
-    // handoffs — the subagent's narration and the main answer already cover the
-    // findings, so we skip dumping the raw brief blob.
-    const delegateIds = new Set<string>();
+    // Tool-call ids of delegations (Task/parallel) → the subagent that ran them.
+    // Their results are the subagent's final answer; we print it in full as an
+    // `answer` block under the delegation rather than dumping a raw brief line.
+    const delegateIds = new Map<string, string>();
 
     try {
       for await (const m of runTurn({
@@ -1066,12 +1091,12 @@ function App({
               liveRef.current = "";
               setLive("");
               if (b.name === PARALLEL_TOOL_ID) {
-                if (b.id) delegateIds.add(b.id);
+                if (b.id) delegateIds.set(b.id, "parallel");
                 feedActivity({ type: "delegate", agent: "parallel", label: "Working in parallel" });
                 setStatusLabel("parallel");
               } else if (b.name === "Agent" || b.name === "Task") {
-                if (b.id) delegateIds.add(b.id);
                 const who = String(b.input?.subagent_type ?? "subagent");
+                if (b.id) delegateIds.set(b.id, who);
                 const LABELS: Record<string, string> = {
                   researcher: "Researcher",
                   prototyper: "Prototyper",
@@ -1108,8 +1133,18 @@ function App({
           const sub = !!msg.parent_tool_use_id;
           for (const b of msg.message?.content ?? []) {
             if (b.type === "tool_result") {
-              // A delegation's result is an internal handoff — skip the raw brief.
-              if (b.tool_use_id && delegateIds.has(b.tool_use_id)) continue;
+              // A delegation's result is the subagent's final answer — print it in
+              // full as an `answer` block (keyed to the subagent) rather than
+              // dropping it or flattening it into a one-line summary.
+              if (b.tool_use_id && delegateIds.has(b.tool_use_id)) {
+                const agent = delegateIds.get(b.tool_use_id) ?? "subagent";
+                const answer = resultTextRaw(b.content);
+                if (answer) {
+                  flushGroup();
+                  push({ kind: "answer", agent, text: answer });
+                }
+                continue;
+              }
               const t = resultText(b.content);
               if (!t) continue;
               // Only a CLEAN structured summary (count / title / file tally) is

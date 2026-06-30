@@ -438,6 +438,29 @@
   color: var(--ink-3);
   font-style: italic;
 }
+/* A subagent's full answer, expandable under the delegation. The body sits in a
+   quiet inset card so it reads as the specialist's output, distinct from the
+   main agent's reply. */
+.answer-block .activity-icon,
+.answer-block .activity-label {
+  color: var(--sun-strong);
+}
+.answer-body {
+  margin: 4px 0 2px 22px;
+  padding: 10px 14px;
+  border-left: 2px solid var(--sun-strong);
+  background: var(--raised);
+  border-radius: 0 8px 8px 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  overflow-x: auto;
+}
+.answer-body > :first-child {
+  margin-top: 0;
+}
+.answer-body > :last-child {
+  margin-bottom: 0;
+}
 .note {
   display: flex;
   align-items: center;

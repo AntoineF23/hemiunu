@@ -14,6 +14,7 @@ export interface ChatItem {
     | "agent"
     | "tool"
     | "result"
+    | "answer"
     | "note"
     | "subagent"
     | "error"
@@ -231,6 +232,12 @@ export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState
                   if (e.sub) return prev;
                   return [...prev, { id: idRef.current++, kind: "result", text: e.text }];
                 });
+                break;
+              case "answer":
+                // A subagent's full final answer — rendered as an expandable
+                // block under the delegation (collapsed by default so the thread
+                // stays scannable; click to read what the specialist returned).
+                push({ kind: "answer", name: e.agent, text: e.text });
                 break;
               case "subagent":
                 // Labelled events feed the delegation group; an empty label is

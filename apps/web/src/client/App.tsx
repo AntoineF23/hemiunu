@@ -5,6 +5,7 @@ import {
   CircleHelp,
   ClipboardList,
   CornerDownRight,
+  FileText,
   MapPin,
   PencilLine,
   Share2,
@@ -594,6 +595,35 @@ export function App() {
   );
 }
 
+// A subagent's full final answer — the handoff it returned to the coordinator.
+// Collapsed by default (the main agent's reply usually summarizes it); click to
+// expand and read exactly what the specialist produced, rendered as markdown.
+function AnswerItem({ item }: { item: ChatItem }) {
+  const [open, setOpen] = useState(false);
+  const agent = item.name ?? "subagent";
+  const label = `${agent.charAt(0).toUpperCase()}${agent.slice(1)}'s answer`;
+  return (
+    <div className="activity-group answer-block">
+      <button
+        type="button"
+        className="activity activity-summary expandable"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <ChevronDown size={14} className={`activity-chevron${open ? " open" : ""}`} />
+        <FileText size={15} className="activity-icon" />
+        <span className="activity-label">{label}</span>
+        <span className="activity-hint">{open ? "hide" : "read"}</span>
+      </button>
+      {open && (
+        <div className="answer-body">
+          <Markdown text={item.text} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // A coalesced activity run: one summary row (icon + "Reading your files · 9 —
 // 'title'"), expandable to reveal the individual steps when there's detail.
 function GroupItem({ item }: { item: ChatItem }) {
@@ -679,6 +709,8 @@ function Item({
       );
     case "group":
       return <GroupItem item={item} />;
+    case "answer":
+      return <AnswerItem item={item} />;
     case "subagent":
       return <div className="subagent">{item.text}</div>;
     case "artifact":

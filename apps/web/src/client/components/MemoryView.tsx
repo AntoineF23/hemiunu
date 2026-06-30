@@ -273,6 +273,7 @@ export function MemoryView() {
                 onChanged={() => {
                   void refresh();
                 }}
+                onRenamed={(nid) => setDrawer({ mode: "node", id: nid })}
               />
             )}
             {render.mode === "create" && (
@@ -305,14 +306,21 @@ function NodeDetailPanel({
   id,
   onClose,
   onChanged,
+  onRenamed,
 }: {
   id: string;
   onClose: () => void;
   onChanged: () => void;
+  /** Re-point the drawer when an edit changes a node's id (subagent rename). */
+  onRenamed: (id: string) => void;
 }) {
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  // Subagent metadata drafts — editable alongside the prompt, mirroring creation.
+  const [nameDraft, setNameDraft] = useState("");
+  const [descDraft, setDescDraft] = useState("");
+  const [modelDraft, setModelDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -322,6 +330,9 @@ function NodeDetailPanel({
       const d = await getJSON<NodeDetail>(`/api/memory/node/${encodeURIComponent(id)}`);
       setDetail(d);
       setDraft(d.content);
+      setNameDraft(d.title);
+      setDescDraft(d.description ?? "");
+      setModelDraft(d.model ?? "");
       setEditing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -332,13 +343,28 @@ function NodeDetailPanel({
     void load();
   }, [load]);
 
+  const isAgent = detail?.kind === "agent" && detail.editable;
+
   const save = async () => {
+    if (isAgent && !nameDraft.trim()) return setError("A name is required.");
+    if (isAgent && !descDraft.trim())
+      return setError("Add a description so the main agent knows when to summon it.");
     setBusy(true);
     setError(null);
     try {
-      await sendJSON(`/api/memory/node/${encodeURIComponent(id)}`, { content: draft }, "PUT");
+      const body = isAgent
+        ? { title: nameDraft, description: descDraft, model: modelDraft, content: draft }
+        : { content: draft };
+      const res = await sendJSON<{ ok: boolean; id?: string }>(
+        `/api/memory/node/${encodeURIComponent(id)}`,
+        body,
+        "PUT",
+      );
       onChanged();
-      await load();
+      // A subagent rename changes the node id — follow it so the panel keeps
+      // showing the same agent instead of failing to reload the stale id.
+      if (res?.id && res.id !== id) onRenamed(res.id);
+      else await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -396,8 +422,8 @@ function NodeDetailPanel({
       {detail.kind === "agent" &&
         (detail.editable ? (
           <p className="text-xs text-ink-3">
-            A subagent you defined — the main agent can summon it. Its system prompt is below;
-            <strong> Edit</strong> it or <strong>Delete</strong> the agent.
+            A subagent you defined — the main agent can summon it. <strong>Edit</strong> its name,
+            when to summon it, model, and system prompt, or <strong>Delete</strong> the agent.
           </p>
         ) : (
           <p className="text-xs text-ink-3">
@@ -422,11 +448,53 @@ function NodeDetailPanel({
       )}
 
       {editing ? (
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          className="min-h-80 flex-1 font-mono text-[13px]"
-        />
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto">
+          {isAgent && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-agent-name">Name</Label>
+                <Input
+                  id="edit-agent-name"
+                  placeholder="e.g. legal-reviewer"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-agent-desc">When to summon it</Label>
+                <Input
+                  id="edit-agent-desc"
+                  placeholder="e.g. Review copy for legal / compliance risk"
+                  value={descDraft}
+                  onChange={(e) => setDescDraft(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-agent-model">Model</Label>
+                <select
+                  id="edit-agent-model"
+                  value={modelDraft}
+                  onChange={(e) => setModelDraft(e.target.value)}
+                  className="h-9 border border-border bg-transparent px-2 text-sm text-ink outline-none"
+                >
+                  <option value="">Default (main model)</option>
+                  {MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Label htmlFor="edit-agent-prompt">System prompt</Label>
+            </>
+          )}
+          <Textarea
+            id={isAgent ? "edit-agent-prompt" : undefined}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="min-h-80 flex-1 font-mono text-[13px]"
+          />
+        </div>
       ) : (
         <div className="memory-md flex-1 overflow-y-auto rounded-lg border border-border bg-card/40 p-3.5">
           {detail.content.trim() ? (
@@ -453,6 +521,10 @@ function NodeDetailPanel({
               variant="secondary"
               onClick={() => {
                 setDraft(detail.content);
+                setNameDraft(detail.title);
+                setDescDraft(detail.description ?? "");
+                setModelDraft(detail.model ?? "");
+                setError(null);
                 setEditing(false);
               }}
             >
