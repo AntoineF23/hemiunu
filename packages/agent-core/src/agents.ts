@@ -107,3 +107,23 @@ export function deleteCustomAgent(name: string, root: string = configDir()): boo
   rmSync(path);
   return true;
 }
+
+/**
+ * A system-prompt section that makes the main agent AWARE of the user's custom
+ * subagents so it actually summons them — registering them in the SDK `agents`
+ * record makes them callable, but the model only delegates to specialists the
+ * prompt tells it about (that's how the built-ins in soul.md get used). Empty
+ * string when there are none. Injected into the main prompt in agent.ts.
+ */
+export function customAgentsBlock(root: string = configDir()): string {
+  const list = listCustomAgents(root);
+  if (!list.length) return "";
+  const lines = list
+    .map((a) => `- \`${a.name}\` — ${a.description || "(no description)"}`)
+    .join("\n");
+  return `
+
+# Your custom specialist subagents
+The user has defined these specialist subagents. When a request matches one, PREFER delegating to it (via the Task tool, using its name) over answering yourself: first gather the relevant context (read the prototype/sources, or delegate to the \`researcher\`), then hand the specialist a clear, specific request. Weigh its expert response and synthesize your answer — don't relay it verbatim.
+${lines}`;
+}
