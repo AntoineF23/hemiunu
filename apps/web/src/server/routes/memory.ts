@@ -32,6 +32,7 @@ import {
   saveSkill,
   saveSourceMap,
   shippedKnowledge,
+  slugify,
   updatePrototype,
   writeUserMemory,
 } from "@hemiunu/agent-core";
@@ -187,13 +188,23 @@ memoryRoute.put("/api/memory/node/:id", async (c) => {
         }
         const cur = loadCustomAgent(rest);
         if (!cur) return c.json({ error: "No such agent." }, 404);
-        saveCustomAgent({
-          name: rest,
+        // All four fields are editable, like creation. Renaming writes a new
+        // <slug>.md and removes the old file; refuse a rename that would clobber
+        // a different existing agent (or a built-in name).
+        const nextSlug = slugify(title?.trim() || rest);
+        if (!nextSlug) return c.json({ error: "A name is required." }, 400);
+        if (nextSlug !== rest && (isBuiltinAgent(nextSlug) || loadCustomAgent(nextSlug)))
+          return c.json({ error: `An agent named '${nextSlug}' already exists.` }, 400);
+        const saved = saveCustomAgent({
+          name: nextSlug,
           description: description ?? cur.description,
-          model: model ?? cur.model,
-          prompt: text,
+          // An explicit "" clears the model (back to the main model); omitting
+          // it leaves the current one untouched.
+          model: model === undefined ? cur.model : model || undefined,
+          prompt: content ?? cur.prompt,
         });
-        return c.json({ ok: true });
+        if (nextSlug !== rest) deleteCustomAgent(rest);
+        return c.json({ ok: true, id: `agent:${saved.name}` });
       }
       case "user":
         writeUserMemory(text);
