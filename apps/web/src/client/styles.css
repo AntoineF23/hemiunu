@@ -250,6 +250,12 @@
   color: var(--ink-2);
 }
 
+/* Prototype brief — match the context-file font size used in the memory graph. */
+.brief-md .prose {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
 /* Inline code — terracotta on a faint light wash */
 .prose :not(pre) > code {
   font-family: var(--font-mono);

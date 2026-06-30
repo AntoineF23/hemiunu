@@ -196,7 +196,7 @@ export function PrototypePanel({ open }: PrototypePanelProps) {
           </Button>
         </div>
       ) : (
-        <div className="rounded-lg border border-border bg-card/50 p-4">
+        <div className="brief-md rounded-lg border border-border bg-card/50 p-4">
           {data?.body?.trim() ? (
             <Markdown text={data.body} />
           ) : (
