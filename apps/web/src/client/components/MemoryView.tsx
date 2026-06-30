@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import SpriteText from "three-spritetext";
-import { Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Bot, Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getJSON, sendJSON } from "@/lib/api";
 import { Markdown } from "@/Markdown";
 import { type MemoryNode, type MemoryNodeKind, useMemoryGraph } from "@/useMemoryGraph";
+import { MODELS } from "@/useSettings";
 
 // Distinct roles read at a glance: the main agent is the gold hub, subagents
 // are cyan, the files you author (context) are violet, the rest of memory slate.
@@ -90,9 +91,10 @@ interface NodeDetail {
   original?: string;
   description?: string;
   agents?: string[];
+  model?: string;
 }
 
-type Drawer = { mode: "node"; id: string } | { mode: "create" } | null;
+type Drawer = { mode: "node"; id: string } | { mode: "create" } | { mode: "createAgent" } | null;
 
 export function MemoryView() {
   const { graph, refresh } = useMemoryGraph();
@@ -190,15 +192,20 @@ export function MemoryView() {
           <p className="text-xs text-ink-3">Drag to rotate · scroll to zoom · click a node</p>
         </div>
 
-        {/* Add a context file (extra knowledge attached to agents). z-10 keeps it
-          clickable above the WebGL canvas. */}
-        <Button
-          size="sm"
-          className="absolute right-5 top-4 z-10 gap-1.5"
-          onClick={() => setDrawer({ mode: "create" })}
-        >
-          <Plus className="size-4" /> Add to memory
-        </Button>
+        {/* Create actions (z-10 keeps them clickable above the WebGL canvas). */}
+        <div className="absolute right-5 top-4 z-10 flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="gap-1.5"
+            onClick={() => setDrawer({ mode: "createAgent" })}
+          >
+            <Bot className="size-4" /> Agent
+          </Button>
+          <Button size="sm" className="gap-1.5" onClick={() => setDrawer({ mode: "create" })}>
+            <Plus className="size-4" /> Add to memory
+          </Button>
+        </div>
 
         {/* Legend */}
         <div className="pointer-events-none absolute bottom-4 left-5 z-10 flex flex-col gap-1 text-xs text-ink-3">
@@ -271,6 +278,15 @@ export function MemoryView() {
             {render.mode === "create" && (
               <CreateContextPanel
                 agents={agentNames}
+                onClose={closeDrawer}
+                onCreated={() => {
+                  void refresh();
+                  closeDrawer();
+                }}
+              />
+            )}
+            {render.mode === "createAgent" && (
+              <CreateAgentPanel
                 onClose={closeDrawer}
                 onCreated={() => {
                   void refresh();
@@ -362,8 +378,11 @@ function NodeDetailPanel({
       <SheetHeader>
         <SheetTitle>{detail.title}</SheetTitle>
         <SheetDescription>
-          {KIND_LABEL[detail.kind]}
+          {detail.kind === "agent" && detail.editable
+            ? "Subagent (yours)"
+            : KIND_LABEL[detail.kind]}
           {detail.customized ? " · customized (overrides the shipped pack)" : ""}
+          {detail.model ? ` · ${detail.model}` : ""}
           {detail.description ? ` · ${detail.description}` : ""}
         </SheetDescription>
       </SheetHeader>
@@ -374,12 +393,18 @@ function NodeDetailPanel({
         </p>
       )}
 
-      {detail.kind === "agent" && (
-        <p className="text-xs text-ink-3">
-          This is the agent's live system prompt (view-only). To add to it, create a context file
-          attached to this agent.
-        </p>
-      )}
+      {detail.kind === "agent" &&
+        (detail.editable ? (
+          <p className="text-xs text-ink-3">
+            A subagent you defined — the main agent can summon it. Its system prompt is below;
+            <strong> Edit</strong> it or <strong>Delete</strong> the agent.
+          </p>
+        ) : (
+          <p className="text-xs text-ink-3">
+            This is the agent's live system prompt (view-only). To add to it, create a context file
+            attached to this agent.
+          </p>
+        ))}
 
       {detail.kind === "persona" && (
         <p className="text-xs text-ink-3">
@@ -440,11 +465,15 @@ function NodeDetailPanel({
             <RotateCcw className="size-4" /> Revert to original
           </Button>
         )}
-        {(isContext || detail.kind === "skill" || detail.kind === "source") && !editing && (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => remove(false)}>
-            <Trash2 className="size-4" /> Delete
-          </Button>
-        )}
+        {(isContext ||
+          detail.kind === "skill" ||
+          detail.kind === "source" ||
+          (detail.kind === "agent" && detail.editable)) &&
+          !editing && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => remove(false)}>
+              <Trash2 className="size-4" /> Delete
+            </Button>
+          )}
         <Button size="sm" variant="ghost" className="ml-auto" onClick={onClose}>
           <X className="size-4" /> Close
         </Button>
@@ -553,6 +582,107 @@ function CreateContextPanel({
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={busy} onClick={create}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : "Create"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function CreateAgentPanel({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [model, setModel] = useState(""); // "" = use the main model
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    if (!name.trim()) return setError("A name is required.");
+    if (!description.trim())
+      return setError("Add a description so the main agent knows when to summon it.");
+    if (!content.trim()) return setError("Add a system prompt.");
+    setBusy(true);
+    setError(null);
+    try {
+      await sendJSON("/api/memory/agents", {
+        title: name,
+        description,
+        model: model || undefined,
+        content,
+      });
+      onCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <SheetHeader>
+        <SheetTitle>New subagent</SheetTitle>
+        <SheetDescription>
+          A specialist the main agent can summon on its own. You set its system prompt and model.
+        </SheetDescription>
+      </SheetHeader>
+
+      {error && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="agent-name">Name</Label>
+        <Input
+          id="agent-name"
+          placeholder="e.g. legal-reviewer"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="agent-desc">When to summon it</Label>
+        <Input
+          id="agent-desc"
+          placeholder="e.g. Review copy for legal / compliance risk"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="agent-model">Model</Label>
+        <select
+          id="agent-model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className="h-9 border border-border bg-transparent px-2 text-sm text-ink outline-none"
+        >
+          <option value="">Default (main model)</option>
+          {MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="agent-prompt">System prompt</Label>
+        <Textarea
+          id="agent-prompt"
+          placeholder={"You are a … Your job is to …\nReturn …"}
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="min-h-56 font-mono text-[13px]"
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={busy} onClick={create}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : "Create agent"}
         </Button>
         <Button size="sm" variant="ghost" onClick={onClose}>
           Cancel
