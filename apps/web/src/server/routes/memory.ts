@@ -24,6 +24,7 @@ import {
   updatePrototype,
   writeUserMemory,
 } from "@hemiunu/agent-core";
+import { bootRuntime } from "../runtime";
 
 export const memoryRoute = new Hono();
 
@@ -42,7 +43,12 @@ interface NodeBody {
 
 memoryRoute.get("/api/memory/graph", (c) => {
   try {
-    return c.json(buildMemoryGraph());
+    // Only show source maps for servers that are actually connected right now —
+    // the agent surfaces maps the same way, and it avoids confusing stale scan
+    // files for servers the user has since disconnected.
+    const rt = bootRuntime();
+    const connectedServers = Object.keys(rt.registry.mcpServers).filter((n) => n !== rt.fsName);
+    return c.json(buildMemoryGraph(undefined, { connectedServers }));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }

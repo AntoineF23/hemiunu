@@ -46,7 +46,17 @@ export interface MemoryGraph {
   links: MemoryLink[];
 }
 
-export function buildMemoryGraph(root: string = configDir()): MemoryGraph {
+export interface MemoryGraphOptions {
+  /** Currently-connected MCP server names. When provided, only source maps for
+   *  a connected server are shown (matching what the agent actually surfaces) —
+   *  stale scan files for disconnected servers are hidden. Omit to show all. */
+  connectedServers?: string[];
+}
+
+export function buildMemoryGraph(
+  root: string = configDir(),
+  opts: MemoryGraphOptions = {},
+): MemoryGraph {
   const nodes: MemoryNode[] = [];
   const links: MemoryLink[] = [];
   const has = (id: string) => nodes.some((n) => n.id === id);
@@ -127,7 +137,9 @@ export function buildMemoryGraph(root: string = configDir()): MemoryGraph {
 
   // --- Source maps (main + researcher). ---
   const hasResearcher = (SUBAGENT_NAMES as string[]).includes("researcher");
+  const connected = opts.connectedServers;
   for (const m of loadSourceMaps(root)) {
+    if (connected && !connected.includes(m.mcp)) continue; // hide stale/disconnected maps
     const id = `source:${m.mcp}`;
     add({ id, kind: "source", label: m.mcp, editable: true, description: m.description });
     link("main", id, "write");
