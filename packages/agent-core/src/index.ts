@@ -219,5 +219,6 @@ export {
   saveCustomAgent,
   deleteCustomAgent,
   isBuiltinAgent,
+  customAgentsBlock,
 } from "./agents";
 export type { CustomAgent, CustomAgentMeta, SaveCustomAgentOptions } from "./agents";

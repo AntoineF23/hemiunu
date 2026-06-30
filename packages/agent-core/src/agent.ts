@@ -13,7 +13,7 @@ import { createAgentHooks } from "./toolcap";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
 import { createAskServer, ASK_TOOLS } from "./ask";
 import { attachmentsBlock } from "./overlay";
-import { listCustomAgents, loadCustomAgent } from "./agents";
+import { customAgentsBlock, listCustomAgents, loadCustomAgent } from "./agents";
 import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
   SUBAGENTS,
@@ -175,9 +175,11 @@ export async function* runTurn(opts: RunTurnOptions) {
     options: {
       model,
       thinking: cfg.thinking,
-      // The caller (CLI/web) builds the base prompt; append any context files
-      // the user attached to the main agent (overlay layer). See overlay.ts.
-      systemPrompt: (opts.systemPrompt ?? DEFAULT_SOUL) + attachmentsBlock("main"),
+      // The caller (CLI/web) builds the base prompt; append the user's overlay:
+      // context files attached to main, and the list of custom subagents so the
+      // agent knows to summon them (see overlay.ts / agents.ts).
+      systemPrompt:
+        (opts.systemPrompt ?? DEFAULT_SOUL) + attachmentsBlock("main") + customAgentsBlock(),
       // Cap oversized tool results before they enter context (covers the main
       // loop AND SDK-delegated subagents). See toolcap.ts.
       hooks: createAgentHooks(),
