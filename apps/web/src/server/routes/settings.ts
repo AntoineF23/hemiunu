@@ -17,7 +17,8 @@ import {
   repoExists,
   resolveGithubToken,
   upsertUserEnv,
-  vercelLoggedIn,
+  cloudflareConfigured,
+  fetchCloudflareAccountId,
 } from "@hemiunu/agent-core";
 import { bootRuntime, setRuntimeModel } from "../runtime";
 
@@ -73,7 +74,7 @@ settingsRoute.get("/api/settings", async (c) => {
     githubAccounts: status.accounts,
     hasApiKey: hasApiKey(),
     github: !!token,
-    vercel: vercelLoggedIn(),
+    cloudflare: cloudflareConfigured(),
     team: team ?? null,
     teams: listTeams(),
     mcpServers: Object.keys(rt.registry.mcpServers),
@@ -94,4 +95,29 @@ settingsRoute.post("/api/settings/anthropic-key", async (c) => {
   if (!key?.trim()) return c.json({ error: "Missing key." }, 400);
   upsertUserEnv("ANTHROPIC_API_KEY", key.trim());
   return c.json({ ok: true, hasApiKey: hasApiKey() });
+});
+
+// Connect Cloudflare (BYO account) for sharing prototypes. Takes a "Pages: Edit"
+// API token; resolves the account ID from it (or accepts an explicit one if the
+// token is too narrowly scoped to list accounts), then persists both.
+settingsRoute.post("/api/settings/cloudflare", async (c) => {
+  const { token, accountId } = (await c.req.json().catch(() => ({}))) as {
+    token?: string;
+    accountId?: string;
+  };
+  if (!token?.trim()) return c.json({ error: "Missing token." }, 400);
+  let acct = accountId?.trim();
+  if (!acct) {
+    const res = await fetchCloudflareAccountId(token.trim());
+    if ("error" in res) {
+      return c.json(
+        { error: `${res.error}. Add your account ID (dash.cloudflare.com/<account-id>).` },
+        400,
+      );
+    }
+    acct = res.accountId;
+  }
+  upsertUserEnv("CLOUDFLARE_API_TOKEN", token.trim());
+  upsertUserEnv("CLOUDFLARE_ACCOUNT_ID", acct);
+  return c.json({ ok: true, cloudflare: cloudflareConfigured() });
 });

@@ -74,7 +74,8 @@ import {
   publishWorkspace,
   CHECKPOINT_BRANCH,
   workspacePath,
-  resolveVercelToken,
+  cloudflareConfigured,
+  projectNameFor,
   setControlHandler,
   requestControl,
 } from "@hemiunu/agent-core";
@@ -873,15 +874,34 @@ async function main() {
     }
   });
 
-  await check("vercel: token resolves from env (login bypass)", () => {
-    const prev = process.env.VERCEL_TOKEN;
+  await check("cloudflare: configured only when token + account ID are both set", () => {
+    const prevTok = process.env.CLOUDFLARE_API_TOKEN;
+    const prevAcct = process.env.CLOUDFLARE_ACCOUNT_ID;
     try {
-      process.env.VERCEL_TOKEN = "vt_test";
-      assert(resolveVercelToken() === "vt_test", "VERCEL_TOKEN should resolve");
+      delete process.env.CLOUDFLARE_API_TOKEN;
+      delete process.env.CLOUDFLARE_ACCOUNT_ID;
+      assert(!cloudflareConfigured(), "should be unconfigured with neither var");
+      process.env.CLOUDFLARE_API_TOKEN = "cf_test";
+      assert(!cloudflareConfigured(), "should be unconfigured with only a token");
+      process.env.CLOUDFLARE_ACCOUNT_ID = "acct_test";
+      assert(cloudflareConfigured(), "should be configured with both vars");
     } finally {
-      if (prev === undefined) delete process.env.VERCEL_TOKEN;
-      else process.env.VERCEL_TOKEN = prev;
+      if (prevTok === undefined) delete process.env.CLOUDFLARE_API_TOKEN;
+      else process.env.CLOUDFLARE_API_TOKEN = prevTok;
+      if (prevAcct === undefined) delete process.env.CLOUDFLARE_ACCOUNT_ID;
+      else process.env.CLOUDFLARE_ACCOUNT_ID = prevAcct;
     }
+  });
+
+  await check("cloudflare: project name is a valid Pages slug derived from the repo", () => {
+    assert(
+      projectNameFor("Acme/Checkout_Redesign") === "acme-checkout-redesign",
+      "should slugify owner/repo",
+    );
+    assert(projectNameFor("a/b") === "a-b", "should join owner and repo");
+    const long = projectNameFor(`org/${"x".repeat(80)}`);
+    assert(long.length <= 58, "should cap at 58 chars");
+    assert(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(long), "should be a valid lowercase slug");
   });
 
   await check("migrate: local prototype work is pushed into a new team repo", async () => {

@@ -43,7 +43,7 @@ function openUrl(url: string): void {
   }
 }
 
-function detectPM(dir: string): "pnpm" | "yarn" | "npm" {
+export function detectPM(dir: string): "pnpm" | "yarn" | "npm" {
   if (existsSync(join(dir, "pnpm-lock.yaml"))) return "pnpm";
   if (existsSync(join(dir, "yarn.lock"))) return "yarn";
   return "npm";
@@ -158,7 +158,7 @@ async function startDevServer(dir: string): Promise<Running> {
  * localhost URL (e.g. Vite's stdout line, or a freshly-listening static server)
  * is up before it's ready to answer requests; this is the readiness gate.
  */
-async function waitForReady(url: string, timeoutMs = 15_000): Promise<boolean> {
+export async function waitForReady(url: string, timeoutMs = 15_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {

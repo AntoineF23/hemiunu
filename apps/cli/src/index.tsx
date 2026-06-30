@@ -57,9 +57,8 @@ import {
   restoreTrash,
   setLocalSession,
   stopPreview,
-  resolveVercelToken,
-  vercelLoggedIn,
-  vercelLogin,
+  cloudflareConfigured,
+  fetchCloudflareAccountId,
   setControlHandler,
   atlasUrl,
   addTeammate,
@@ -139,7 +138,7 @@ const HELP = [
   "Modes       /plan  /auto",
   "Setup       /models  /settings  /setup  /trust",
   "Sources     /mcp  /mcp-auth  /scan  /skills",
-  "Connect     /github  /vercel",
+  "Connect     /github  /cloudflare",
   "Teams       /team  /team-new  /team-rename  /team-add  /team-remove",
   "Misc        /restore  /exit",
   "",
@@ -164,7 +163,7 @@ const BUILTIN_COMMANDS: { name: string; desc: string }[] = [
   { name: "scan", desc: "map connected sources (/scan or /scan <name>)" },
   { name: "skills", desc: "list saved skills" },
   { name: "github", desc: "connect / switch / disconnect GitHub accounts" },
-  { name: "vercel", desc: "connect Vercel (for sharing)" },
+  { name: "cloudflare", desc: "connect Cloudflare (for sharing): /cloudflare <api-token>" },
   { name: "team", desc: "switch team (feature/repo)" },
   { name: "team-new", desc: "new feature (name → create) or add a repo by URL" },
   { name: "team-rename", desc: "rename the current team's repo" },
@@ -552,7 +551,6 @@ function App({
   const [device, setDevice] = useState<{ userCode: string; url: string } | null>(null);
   const githubLoginCancel = useRef(false);
   const [githubLogin, setGithubLogin] = useState<string | null>(null); // active GitHub account (footer)
-  const [paused, setPaused] = useState(false); // hand the terminal to an interactive child (vercel login)
 
   // Keep the footer's GitHub account label current after any auth change.
   const refreshGithubLogin = () => {
@@ -1703,25 +1701,26 @@ function App({
     }, 5 * 60_000).unref();
   }
 
-  // Connect Vercel with its own browser login (no token) — needs the real
-  // terminal, so pause the TUI (render nothing) while `vercel login` runs, then
-  // resume with all state intact. Remembered machine-wide, so it's a one-time step.
-  async function connectVercel() {
-    setPaused(true);
-    await sleep(80); // let Ink render an empty frame and drop raw mode
-    try {
-      (process.stdin as NodeJS.ReadStream & { setRawMode?: (m: boolean) => void }).setRawMode?.(
-        false,
-      );
-    } catch {
-      // ignore — Ink manages raw mode; this is best-effort
+  // Connect Cloudflare (BYO account) by pasting a "Pages: Edit" API token. We
+  // resolve the account ID from the token via the Cloudflare API, then persist
+  // both to ~/.hemiunu/.env so every prototype deploys into that account's one
+  // dashboard — whoever runs the deploy. One-time, machine-wide.
+  async function connectCloudflare(apiToken: string, accountId?: string) {
+    let acct = accountId?.trim();
+    if (!acct) {
+      push({ kind: "note", text: "· verifying Cloudflare token…" });
+      const res = await fetchCloudflareAccountId(apiToken);
+      if ("error" in res) {
+        return push({
+          kind: "note",
+          text: `· Cloudflare: ${res.error}. You can also pass the account ID explicitly: /cloudflare <token> <account-id> (find it in the dashboard URL, dash.cloudflare.com/<account-id>).`,
+        });
+      }
+      acct = res.accountId;
     }
-    const ok = await vercelLogin();
-    setPaused(false);
-    push({
-      kind: "note",
-      text: ok ? "· connected to Vercel" : "· Vercel sign-in was cancelled or didn't complete",
-    });
+    upsertUserEnv("CLOUDFLARE_API_TOKEN", apiToken);
+    const path = upsertUserEnv("CLOUDFLARE_ACCOUNT_ID", acct);
+    push({ kind: "note", text: `· connected to Cloudflare (saved to ${path})` });
   }
 
   // `# <note>` — quick-save a line to the CURRENT team's PROTOTYPE.md (or the
@@ -1853,7 +1852,7 @@ function App({
       const yn = (v: boolean) => (v ? "✓" : "✗");
       const teamNow = currentTeam() ?? "none (local)";
       const ghOn = !!resolveGithubToken();
-      const vcOn = !!resolveVercelToken() || vercelLoggedIn();
+      const cfOn = cloudflareConfigured();
       const trust = fsTrust === true ? "allowed" : fsTrust === false ? "disabled" : "not set";
       const servers =
         Object.keys(registry.mcpServers)
@@ -1867,7 +1866,7 @@ function App({
           `  research model   ${RESEARCH_MODEL}   → HEMIUNU_MODEL_RESEARCH in .env\n` +
           `  team             ${teamNow}          → /team · shift+tab (saved)\n` +
           `  GitHub           ${ghOn ? "connected" : "not connected"}   → /github\n` +
-          `  Vercel           ${vcOn ? "connected" : "not connected"}   → /vercel\n` +
+          `  Cloudflare       ${cfOn ? "connected" : "not connected"}   → /cloudflare\n` +
           `  file access      ${trust} (this folder)   → /trust\n` +
           `  MCP servers      ${servers}   → /mcp\n` +
           `  keys             ANTHROPIC ${yn(hasApiKey())}   → /setup\n` +
@@ -1994,18 +1993,25 @@ function App({
       })();
       return;
     }
-    if (cmd === "vercel") {
-      const arg = rest.join(" ").trim();
-      // A pasted token is still supported as a power-user/CI fallback.
-      if (arg && arg !== "login") {
-        const path = upsertUserEnv("VERCEL_TOKEN", arg);
-        return push({ kind: "note", text: `· Vercel token saved to ${path}` });
+    if (cmd === "cloudflare") {
+      const parts = rest.join(" ").trim().split(/\s+/).filter(Boolean);
+      if (parts.length) {
+        void connectCloudflare(parts[0], parts[1]); // token, optional explicit account ID
+        return;
       }
-      if (arg !== "login" && (resolveVercelToken() || vercelLoggedIn())) {
-        return push({ kind: "note", text: "· Vercel: connected" });
+      if (cloudflareConfigured()) {
+        return push({ kind: "note", text: "· Cloudflare: connected" });
       }
-      void connectVercel(); // browser login, no token, remembered machine-wide
-      return;
+      return push({
+        kind: "note",
+        text:
+          "Connect Cloudflare to share prototypes (free):\n" +
+          "  1. https://dash.cloudflare.com/profile/api-tokens → Create Token\n" +
+          "     → Create Custom Token, add permission: Account · Cloudflare Pages · Edit\n" +
+          "     (or use the “Edit Cloudflare Workers” template — it covers Pages too)\n" +
+          "  2. Run  /cloudflare <api-token>   (add the account ID if the lookup fails)\n" +
+          "Everyone on your team can paste the same token to share one dashboard.",
+      });
     }
     if (cmd === "restore") {
       const id = rest.join(" ").trim();
@@ -2145,7 +2151,7 @@ function App({
   }
 
   // --- slash-command menu: a live list of commands + skills while typing "/" ---
-  const inputActive = !busy && !permission && !picker && !device && !paused;
+  const inputActive = !busy && !permission && !picker && !device;
   // The line is a `#` PROTOTYPE.md note (drives the lapis prompt + the hint).
   const isNote = value.startsWith("#");
   const slashToken =
@@ -2273,7 +2279,7 @@ function App({
       }
       if (busy && key.escape) abortRef.current?.abort();
     },
-    { isActive: !paused && (busy || !!permission || !!picker || !!device) },
+    { isActive: busy || !!permission || !!picker || !!device },
   );
 
   // While the slash menu is open: ↑/↓ move the highlight, Tab completes it.
@@ -2358,10 +2364,6 @@ function App({
             : statusLabel === "scanning"
               ? "Scanning"
               : WORDS[Math.floor(elapsed / 4000) % WORDS.length];
-
-  // While paused, render nothing so an interactive child (vercel login) owns the
-  // terminal; state is preserved and the full UI returns on resume.
-  if (paused) return null;
 
   return (
     <Box flexDirection="column">

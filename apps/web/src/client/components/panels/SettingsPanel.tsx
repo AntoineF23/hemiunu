@@ -28,6 +28,11 @@ export function SettingsPanel({ settings, onChanged, onModelChange }: SettingsPa
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
+  const [cfToken, setCfToken] = useState("");
+  const [cfAccount, setCfAccount] = useState("");
+  const [cfBusy, setCfBusy] = useState(false);
+  const [cfFlash, setCfFlash] = useState<string | null>(null);
+
   const saveKey = async () => {
     if (!key.trim()) return;
     setBusy(true);
@@ -40,6 +45,26 @@ export function SettingsPanel({ settings, onChanged, onModelChange }: SettingsPa
       setFlash("Could not save the key.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const saveCloudflare = async () => {
+    if (!cfToken.trim()) return;
+    setCfBusy(true);
+    setCfFlash(null);
+    try {
+      await sendJSON("/api/settings/cloudflare", {
+        token: cfToken.trim(),
+        ...(cfAccount.trim() ? { accountId: cfAccount.trim() } : {}),
+      });
+      setCfToken("");
+      setCfAccount("");
+      setCfFlash("Cloudflare connected.");
+      onChanged();
+    } catch (e) {
+      setCfFlash(e instanceof Error ? e.message : "Could not connect Cloudflare.");
+    } finally {
+      setCfBusy(false);
     }
   };
 
@@ -88,12 +113,50 @@ export function SettingsPanel({ settings, onChanged, onModelChange }: SettingsPa
           {flash && <p className="text-xs text-ink-3">{flash}</p>}
         </div>
 
+        {/* Cloudflare (prototype sharing) */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="cf-token">
+            Cloudflare token {settings?.cloudflare && <Badge>connected</Badge>}
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id="cf-token"
+              type="password"
+              placeholder={settings?.cloudflare ? "•••• replace token" : "Pages: Edit API token"}
+              value={cfToken}
+              onChange={(e) => setCfToken(e.target.value)}
+            />
+            <Button onClick={saveCloudflare} disabled={cfBusy || !cfToken.trim()}>
+              {cfBusy ? <Loader2 className="size-4 animate-spin" /> : "Connect"}
+            </Button>
+          </div>
+          <Input
+            id="cf-account"
+            placeholder="Account ID (optional — only if the token lookup fails)"
+            value={cfAccount}
+            onChange={(e) => setCfAccount(e.target.value)}
+          />
+          <p className="text-xs text-ink-3">
+            Lets the agent deploy prototypes to a shareable URL.{" "}
+            <a
+              href="https://dash.cloudflare.com/profile/api-tokens"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Create a token
+            </a>{" "}
+            with “Cloudflare Pages: Edit” (or the “Edit Cloudflare Workers” template).
+          </p>
+          {cfFlash && <p className="text-xs text-ink-3">{cfFlash}</p>}
+        </div>
+
         {/* Status */}
         <div className="flex flex-col gap-2">
           <Label>Connections</Label>
           <div className="flex flex-wrap gap-2">
             <StatusChip label="GitHub" on={!!settings?.github} />
-            <StatusChip label="Vercel" on={!!settings?.vercel} />
+            <StatusChip label="Cloudflare" on={!!settings?.cloudflare} />
           </div>
           {settings?.mcpServers?.length ? (
             <div className="mt-1">

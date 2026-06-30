@@ -4,13 +4,13 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { discoveryLine, recordDiscovery } from "./atlas";
 import { hasControlHandler, requestControl } from "./control";
+import { cloudflareDeploy, projectNameFor } from "./cloudflare";
 import { githubViewer, resolveGithubToken, resolveRepo } from "./github";
-import { vercelDeploy } from "./vercel";
 import { commitAndPush, workspacePath } from "./workspace";
 
 /**
  * Sharing a prototype: commit + push the local workspace to its repo, and
- * (on demand) deploy it to a shareable Vercel URL. The agent should reach for
+ * (on demand) deploy it to a shareable Cloudflare Pages URL. The agent should reach for
  * these only when the user wants to save/share — see the persona.
  */
 
@@ -78,19 +78,30 @@ export function createShareServer() {
 
   const deployTool = tool(
     "deploy_prototype",
-    "Deploy the current prototype to a shareable Vercel URL. Use ONLY when the user wants to share it (ask first). prod=true for the production URL, else a preview. If Vercel isn't connected, the result explains how — relay it to the user rather than retrying.",
+    "Deploy the current prototype to a shareable Cloudflare Pages URL. Use ONLY when the user wants to share it (ask first). prod=true for the production URL, else a preview. If Cloudflare isn't connected, the result explains how — relay it to the user rather than retrying.",
     { prod: z.boolean().optional().describe("Deploy to production (default: a preview URL).") },
     async ({ prod }) => {
       const repo = resolveRepo();
       if (!repo) return text("No team selected — pick one (/team) first.");
       const dir = workspacePath(repo);
       if (!existsSync(dir)) return text("No local workspace — run iterate_prototype first.");
-      const r = await vercelDeploy(dir, { prod });
-      if ("url" in r) return text(`Deployed${prod ? " to production" : ""}: ${r.url}`);
+      const r = await cloudflareDeploy(dir, { prod, projectName: projectNameFor(repo) });
+      if ("url" in r) {
+        // The URL is live & serving over HTTPS by the time we return — unless it
+        // was still provisioning (DNS + TLS cert) after the wait, in which case
+        // warn the user so a "can't provide a secure connection" error is expected
+        // rather than alarming.
+        if (r.pending)
+          return text(
+            `Deployed${prod ? " to production" : ""}: ${r.url}\n\n` +
+              "Heads up: the URL is still finishing setup (DNS + its SSL certificate). For the first minute or two it may show “can't provide a secure connection” — that's expected; wait ~1–2 min and reload (an incognito window avoids cached redirects). Tell the user this before they open it.",
+          );
+        return text(`Deployed${prod ? " to production" : ""} (live & verified): ${r.url}`);
+      }
       if (r.notInstalled) return text(r.error);
       if (r.needsLogin)
         return text(
-          "Not connected to Vercel. Ask the user to run /vercel — it signs in through the browser once (no token) and is remembered. Then try again.",
+          "Not connected to Cloudflare. Ask the user to run /cloudflare and paste a Cloudflare API token (Pages: Edit). Then try again.",
         );
       return text(`Deploy failed: ${r.error}`);
     },

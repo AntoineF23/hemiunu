@@ -77,7 +77,7 @@ const RESERVED = new Set([
   "skills",
   "skill",
   "github",
-  "vercel",
+  "cloudflare",
   "team",
   "team-new",
   "team-rename",
