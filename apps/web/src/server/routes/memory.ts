@@ -7,6 +7,10 @@ import {
   attachmentsBlock,
   buildMemoryGraph,
   configDir,
+  deleteCustomAgent,
+  isBuiltinAgent,
+  loadCustomAgent,
+  saveCustomAgent,
   SUBAGENTS,
   SUBAGENT_NAMES,
   subagentPrompt,
@@ -46,6 +50,7 @@ interface NodeBody {
   title?: string;
   description?: string;
   agents?: string[];
+  model?: string;
 }
 
 memoryRoute.get("/api/memory/graph", (c) => {
@@ -89,6 +94,18 @@ memoryRoute.get("/api/memory/node/:id", async (c) => {
             content: subagentPrompt(name),
             editable: false,
             description: SUBAGENTS[name].description,
+          });
+        }
+        // A user-defined subagent — its system prompt is editable.
+        const ca = loadCustomAgent(rest);
+        if (ca) {
+          return c.json({
+            kind,
+            title: ca.name,
+            content: ca.prompt,
+            editable: true,
+            description: ca.description,
+            model: ca.model,
           });
         }
         return c.json({ error: "Unknown agent." }, 404);
@@ -158,12 +175,26 @@ memoryRoute.get("/api/memory/node/:id", async (c) => {
 // Save a node's content (metadata preserved for the structured kinds).
 memoryRoute.put("/api/memory/node/:id", async (c) => {
   const { kind, rest } = splitId(c.req.param("id"));
-  const { content, title, description, agents } = (await c.req
+  const { content, title, description, agents, model } = (await c.req
     .json()
     .catch(() => ({}))) as NodeBody;
   const text = content ?? "";
   try {
     switch (kind) {
+      case "agent": {
+        if (isBuiltinAgent(rest)) {
+          return c.json({ error: "Built-in agents are view-only." }, 400);
+        }
+        const cur = loadCustomAgent(rest);
+        if (!cur) return c.json({ error: "No such agent." }, 404);
+        saveCustomAgent({
+          name: rest,
+          description: description ?? cur.description,
+          model: model ?? cur.model,
+          prompt: text,
+        });
+        return c.json({ ok: true });
+      }
       case "user":
         writeUserMemory(text);
         return c.json({ ok: true });
@@ -221,6 +252,10 @@ memoryRoute.delete("/api/memory/node/:id", (c) => {
   const { kind, rest } = splitId(c.req.param("id"));
   try {
     switch (kind) {
+      case "agent":
+        if (isBuiltinAgent(rest))
+          return c.json({ error: "Built-in agents can't be deleted." }, 400);
+        return c.json({ ok: deleteCustomAgent(rest) });
       case "knowledge":
         return c.json({ ok: deleteKnowledgeOverride(rest), reverted: true });
       case "skill":
@@ -247,6 +282,21 @@ memoryRoute.post("/api/memory/attachments", async (c) => {
   if (!content?.trim()) return c.json({ error: "Content is required." }, 400);
   try {
     const saved = saveAttachment({ title, description: description ?? "", agents, body: content });
+    return c.json(saved);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+// Create a new user-defined subagent the main agent can summon.
+memoryRoute.post("/api/memory/agents", async (c) => {
+  const { title, description, model, content } = (await c.req.json().catch(() => ({}))) as NodeBody;
+  if (!title?.trim()) return c.json({ error: "A name is required." }, 400);
+  if (!description?.trim())
+    return c.json({ error: "A description (when to summon it) is required." }, 400);
+  if (!content?.trim()) return c.json({ error: "A system prompt is required." }, 400);
+  try {
+    const saved = saveCustomAgent({ name: title, description, model, prompt: content });
     return c.json(saved);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

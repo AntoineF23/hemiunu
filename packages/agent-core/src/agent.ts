@@ -13,6 +13,7 @@ import { createAgentHooks } from "./toolcap";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
 import { createAskServer, ASK_TOOLS } from "./ask";
 import { attachmentsBlock } from "./overlay";
+import { listCustomAgents, loadCustomAgent } from "./agents";
 import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
   SUBAGENTS,
@@ -124,6 +125,20 @@ export async function* runTurn(opts: RunTurnOptions) {
       prompt: subagentPrompt(name),
       model: spec.tier === "research" ? researchModel : model,
       tools: agentTools,
+    };
+  }
+
+  // User-defined subagents (~/.hemiunu/agents/*.md). Registered the same way, so
+  // the main agent discovers them by description and can summon them via Task.
+  // Reasoning-only (no tools) for now; the user owns the prompt and the model.
+  for (const a of listCustomAgents()) {
+    const full = loadCustomAgent(a.name);
+    if (!full || agents[a.name]) continue; // a built-in name never gets overridden
+    agents[a.name] = {
+      description: full.description,
+      prompt: full.prompt + attachmentsBlock(a.name),
+      model: full.model || model,
+      tools: [],
     };
   }
 
