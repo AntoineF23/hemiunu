@@ -141,6 +141,9 @@ export function MemoryView() {
           linkDirectionalArrowColor={(l) => linkSolid(accOf(l))}
           enableNodeDrag={false}
           onNodeClick={(n) => setDrawer({ mode: "node", id: (n as MemoryNode).id })}
+          // Click empty space to close (no DOM backdrop over the canvas, so a
+          // node click opens in one go instead of being eaten by an overlay).
+          onBackgroundClick={() => closeDrawer()}
           cooldownTicks={120}
         />
       )}
@@ -191,40 +194,37 @@ export function MemoryView() {
       </div>
 
       {/* Detail drawer — a fixed overlay (NOT the docked rail Sheet, which only
-          works as a top-level sibling). Transparent backdrop closes on click. */}
+          works as a top-level sibling). Click empty graph space to close. */}
       {drawer && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={closeDrawer} />
-          <aside className="fixed inset-y-0 right-0 z-50 flex w-[440px] max-w-[92vw] flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={closeDrawer}
-              className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
-            >
-              <X className="size-4" />
-            </button>
-            {drawer.mode === "node" && (
-              <NodeDetailPanel
-                id={drawer.id}
-                onClose={closeDrawer}
-                onChanged={() => {
-                  void refresh();
-                }}
-              />
-            )}
-            {drawer.mode === "create" && (
-              <CreateContextPanel
-                agents={agentNames}
-                onClose={closeDrawer}
-                onCreated={() => {
-                  void refresh();
-                  closeDrawer();
-                }}
-              />
-            )}
-          </aside>
-        </>
+        <aside className="fixed inset-y-0 right-0 z-50 flex w-[600px] max-w-[94vw] flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={closeDrawer}
+            className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
+          >
+            <X className="size-4" />
+          </button>
+          {drawer.mode === "node" && (
+            <NodeDetailPanel
+              id={drawer.id}
+              onClose={closeDrawer}
+              onChanged={() => {
+                void refresh();
+              }}
+            />
+          )}
+          {drawer.mode === "create" && (
+            <CreateContextPanel
+              agents={agentNames}
+              onClose={closeDrawer}
+              onCreated={() => {
+                void refresh();
+                closeDrawer();
+              }}
+            />
+          )}
+        </aside>
       )}
     </div>
   );
@@ -348,7 +348,7 @@ function NodeDetailPanel({
           className="min-h-80 flex-1 font-mono text-[13px]"
         />
       ) : (
-        <div className="flex-1 overflow-y-auto rounded-lg border border-border bg-card/40 p-3">
+        <div className="memory-md flex-1 overflow-y-auto rounded-lg border border-border bg-card/40 p-3.5">
           {detail.content.trim() ? (
             <Markdown text={detail.content} />
           ) : (
