@@ -38,6 +38,12 @@ const GlobePanel = lazy(() =>
   import("@/components/panels/GlobePanel").then((m) => ({ default: m.GlobePanel })),
 );
 
+// The memory graph pulls in three.js + the force-graph lib — code-split it so
+// the initial bundle stays lean; it renders full-canvas in the main area.
+const MemoryView = lazy(() =>
+  import("@/components/MemoryView").then((m) => ({ default: m.MemoryView })),
+);
+
 const RAIL_KEY = "hemiunu.rail.collapsed";
 
 // Built-in slash commands — they map to UI actions (a panel or new chat), run
@@ -48,6 +54,7 @@ const COMMANDS: { name: string; desc: string; panel: Panel | null }[] = [
   { name: "teams", desc: "switch / manage teams", panel: "teams" },
   { name: "prototypes", desc: "view the prototype brief", panel: "prototypes" },
   { name: "atlas", desc: "your world map of discovered monuments", panel: "atlas" },
+  { name: "memory", desc: "explore & edit the agent's memory", panel: "memory" },
   { name: "skills", desc: "manage commands & skills", panel: "skills" },
   { name: "mcp", desc: "MCP servers & tool permissions", panel: "mcp" },
   { name: "settings", desc: "model, key, connections", panel: "settings" },
@@ -382,7 +389,7 @@ export function App() {
       {/* One persistent docked shell right of the rail; main reduces beside it.
           Switching panels swaps the content inside (keyed fade), so the column
           itself never closes/reopens. */}
-      <Sheet open={panel !== null} onOpenChange={(o) => !o && setPanel(null)}>
+      <Sheet open={panel !== null && panel !== "memory"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent>
           <div key={panel ?? "none"} className="panel-content flex min-h-full flex-col gap-4">
             {panel === "conversations" && (
@@ -439,7 +446,17 @@ export function App() {
       </Sheet>
 
       <main className="paper-main relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {empty ? (
+        {panel === "memory" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-ink-3">
+                Loading memory…
+              </div>
+            }
+          >
+            <MemoryView />
+          </Suspense>
+        ) : empty ? (
           <Home name={settings?.user ?? null} team={settings?.team ?? null} onPick={setDraft}>
             {composer}
           </Home>
