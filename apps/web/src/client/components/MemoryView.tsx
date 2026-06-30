@@ -90,141 +90,145 @@ export function MemoryView() {
   const closeDrawer = useCallback(() => setDrawer(null), []);
 
   return (
-    <div ref={wrapRef} className="relative h-full w-full overflow-hidden">
-      {graph.nodes.length === 0 ? (
-        <div className="flex h-full items-center justify-center text-sm text-ink-3">
-          <Loader2 className="mr-2 size-4 animate-spin" /> Loading your memory…
+    <div className="relative flex h-full w-full overflow-hidden">
+      <div ref={wrapRef} className="relative min-w-0 flex-1">
+        {graph.nodes.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-sm text-ink-3">
+            <Loader2 className="mr-2 size-4 animate-spin" /> Loading your memory…
+          </div>
+        ) : (
+          <ForceGraph3D
+            width={size.w}
+            height={size.h}
+            graphData={graph}
+            backgroundColor="rgba(0,0,0,0)"
+            showNavInfo={false}
+            nodeColor={(n) => colorOf(n as MemoryNode)}
+            // Main agent is the biggest hub; subagents medium; files small.
+            nodeVal={(n) => {
+              const m = n as MemoryNode;
+              return m.kind !== "agent" ? 5 : isMain(m) ? 22 : 9;
+            }}
+            nodeOpacity={1}
+            nodeResolution={16}
+            // Always-on text labels so the graph reads at a glance (no hover needed).
+            nodeThreeObjectExtend
+            nodeThreeObject={(n) => {
+              const m = n as MemoryNode;
+              const main = isMain(m);
+              const agent = m.kind === "agent";
+              const s = new SpriteText(m.label + (m.customized ? " ✎" : ""));
+              s.color = colorOf(m);
+              if (!agent && m.kind !== "context") s.color = "#EEEEEE"; // keep file labels readable
+              s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
+              s.fontFace = "Ubuntu, sans-serif";
+              s.fontWeight = agent ? "600" : "400";
+              // Sit the label well clear of the sphere so it stays readable.
+              s.position.set(0, main ? 22 : agent ? 15 : 10, 0);
+              return s;
+            }}
+            // Edges: cyan = main delegates to a subagent, gold = the agent can edit
+            // the file, grey = read-only. Flow particles travel source → target.
+            linkColor={(l) => linkStroke(accOf(l))}
+            linkWidth={(l) => {
+              const a = accOf(l);
+              return a === "delegate" ? 2.2 : a === "write" ? 1.4 : 1.0;
+            }}
+            linkDirectionalParticles={2}
+            linkDirectionalParticleWidth={2}
+            linkDirectionalParticleColor={(l) => linkSolid(accOf(l))}
+            linkDirectionalArrowLength={3.5}
+            linkDirectionalArrowRelPos={0.9}
+            linkDirectionalArrowColor={(l) => linkSolid(accOf(l))}
+            enableNodeDrag={false}
+            onNodeClick={(n) => setDrawer({ mode: "node", id: (n as MemoryNode).id })}
+            // Click empty space to close (no DOM backdrop over the canvas, so a
+            // node click opens in one go instead of being eaten by an overlay).
+            onBackgroundClick={() => closeDrawer()}
+            cooldownTicks={120}
+          />
+        )}
+
+        {/* Title + hint */}
+        <div className="pointer-events-none absolute left-5 top-4 z-10">
+          <h2 className="font-serif text-xl text-ink">Memory</h2>
+          <p className="text-xs text-ink-3">Drag to rotate · scroll to zoom · click a node</p>
         </div>
-      ) : (
-        <ForceGraph3D
-          width={size.w}
-          height={size.h}
-          graphData={graph}
-          backgroundColor="rgba(0,0,0,0)"
-          showNavInfo={false}
-          nodeColor={(n) => colorOf(n as MemoryNode)}
-          // Main agent is the biggest hub; subagents medium; files small.
-          nodeVal={(n) => {
-            const m = n as MemoryNode;
-            return m.kind !== "agent" ? 5 : isMain(m) ? 22 : 9;
-          }}
-          nodeOpacity={1}
-          nodeResolution={16}
-          // Always-on text labels so the graph reads at a glance (no hover needed).
-          nodeThreeObjectExtend
-          nodeThreeObject={(n) => {
-            const m = n as MemoryNode;
-            const main = isMain(m);
-            const agent = m.kind === "agent";
-            const s = new SpriteText(m.label + (m.customized ? " ✎" : ""));
-            s.color = colorOf(m);
-            if (!agent && m.kind !== "context") s.color = "#EEEEEE"; // keep file labels readable
-            s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
-            s.fontFace = "Ubuntu, sans-serif";
-            s.fontWeight = agent ? "600" : "400";
-            // Sit the label well clear of the sphere so it stays readable.
-            s.position.set(0, main ? 22 : agent ? 15 : 10, 0);
-            return s;
-          }}
-          // Edges: cyan = main delegates to a subagent, gold = the agent can edit
-          // the file, grey = read-only. Flow particles travel source → target.
-          linkColor={(l) => linkStroke(accOf(l))}
-          linkWidth={(l) => {
-            const a = accOf(l);
-            return a === "delegate" ? 2.2 : a === "write" ? 1.4 : 1.0;
-          }}
-          linkDirectionalParticles={2}
-          linkDirectionalParticleWidth={2}
-          linkDirectionalParticleColor={(l) => linkSolid(accOf(l))}
-          linkDirectionalArrowLength={3.5}
-          linkDirectionalArrowRelPos={0.9}
-          linkDirectionalArrowColor={(l) => linkSolid(accOf(l))}
-          enableNodeDrag={false}
-          onNodeClick={(n) => setDrawer({ mode: "node", id: (n as MemoryNode).id })}
-          cooldownTicks={120}
-        />
-      )}
 
-      {/* Title + hint */}
-      <div className="pointer-events-none absolute left-5 top-4 z-10">
-        <h2 className="font-serif text-xl text-ink">Memory</h2>
-        <p className="text-xs text-ink-3">Drag to rotate · scroll to zoom · click a node</p>
-      </div>
-
-      {/* Add a context file (extra knowledge attached to agents). z-10 keeps it
+        {/* Add a context file (extra knowledge attached to agents). z-10 keeps it
           clickable above the WebGL canvas. */}
-      <Button
-        size="sm"
-        className="absolute right-5 top-4 z-10 gap-1.5"
-        onClick={() => setDrawer({ mode: "create" })}
-      >
-        <Plus className="size-4" /> Add to memory
-      </Button>
+        <Button
+          size="sm"
+          className="absolute right-5 top-4 z-10 gap-1.5"
+          onClick={() => setDrawer({ mode: "create" })}
+        >
+          <Plus className="size-4" /> Add to memory
+        </Button>
 
-      {/* Legend */}
-      <div className="pointer-events-none absolute bottom-4 left-5 z-10 flex flex-col gap-1 text-xs text-ink-3">
-        {(
-          [
-            ["Main agent", GOLD],
-            ["Subagent", CYAN],
-            ["Context file (yours)", LAVENDER],
-            ["Memory file", SLATE],
-          ] as const
-        ).map(([label, color]) => (
-          <span key={label} className="flex items-center gap-2">
-            <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
-            {label}
-          </span>
-        ))}
-        {(
-          [
-            ["delegates", CYAN],
-            ["can edit", GOLD],
-            ["reads", "rgba(238,238,238,0.55)"],
-          ] as const
-        ).map(([label, color], i) => (
-          <span key={label} className={`flex items-center gap-2 ${i === 0 ? "mt-1.5" : ""}`}>
-            <span className="inline-block h-0.5 w-4" style={{ background: color }} />
-            edge → {label}
-          </span>
-        ))}
+        {/* Legend */}
+        <div className="pointer-events-none absolute bottom-4 left-5 z-10 flex flex-col gap-1 text-xs text-ink-3">
+          {(
+            [
+              ["Main agent", GOLD],
+              ["Subagent", CYAN],
+              ["Context file (yours)", LAVENDER],
+              ["Memory file", SLATE],
+            ] as const
+          ).map(([label, color]) => (
+            <span key={label} className="flex items-center gap-2">
+              <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+          {(
+            [
+              ["delegates", CYAN],
+              ["can edit", GOLD],
+              ["reads", "rgba(238,238,238,0.55)"],
+            ] as const
+          ).map(([label, color], i) => (
+            <span key={label} className={`flex items-center gap-2 ${i === 0 ? "mt-1.5" : ""}`}>
+              <span className="inline-block h-0.5 w-4" style={{ background: color }} />
+              edge → {label}
+            </span>
+          ))}
+        </div>
       </div>
 
-      {/* Detail drawer — a fixed overlay (NOT the docked rail Sheet, which only
-          works as a top-level sibling). Transparent backdrop closes on click. */}
+      {/* Detail drawer — in the layout flow (a flex sibling), so opening it
+          shrinks the graph container instead of covering it: the graph's
+          ResizeObserver refits and the camera keeps it centered. Click empty
+          graph space to close. */}
       {drawer && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={closeDrawer} />
-          <aside className="fixed inset-y-0 right-0 z-50 flex w-[440px] max-w-[92vw] flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={closeDrawer}
-              className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
-            >
-              <X className="size-4" />
-            </button>
-            {drawer.mode === "node" && (
-              <NodeDetailPanel
-                id={drawer.id}
-                onClose={closeDrawer}
-                onChanged={() => {
-                  void refresh();
-                }}
-              />
-            )}
-            {drawer.mode === "create" && (
-              <CreateContextPanel
-                agents={agentNames}
-                onClose={closeDrawer}
-                onCreated={() => {
-                  void refresh();
-                  closeDrawer();
-                }}
-              />
-            )}
-          </aside>
-        </>
+        <aside className="relative flex h-full w-[600px] max-w-[50vw] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-rail p-6 shadow-pop">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={closeDrawer}
+            className="absolute right-4 top-4 text-ink-3 opacity-70 transition-opacity hover:opacity-100"
+          >
+            <X className="size-4" />
+          </button>
+          {drawer.mode === "node" && (
+            <NodeDetailPanel
+              id={drawer.id}
+              onClose={closeDrawer}
+              onChanged={() => {
+                void refresh();
+              }}
+            />
+          )}
+          {drawer.mode === "create" && (
+            <CreateContextPanel
+              agents={agentNames}
+              onClose={closeDrawer}
+              onCreated={() => {
+                void refresh();
+                closeDrawer();
+              }}
+            />
+          )}
+        </aside>
       )}
     </div>
   );
@@ -348,7 +352,7 @@ function NodeDetailPanel({
           className="min-h-80 flex-1 font-mono text-[13px]"
         />
       ) : (
-        <div className="flex-1 overflow-y-auto rounded-lg border border-border bg-card/40 p-3">
+        <div className="memory-md flex-1 overflow-y-auto rounded-lg border border-border bg-card/40 p-3.5">
           {detail.content.trim() ? (
             <Markdown text={detail.content} />
           ) : (
