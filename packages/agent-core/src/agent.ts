@@ -13,6 +13,7 @@ import { createAgentHooks } from "./toolcap";
 import { createTeamControlServer, TEAM_CONTROL_TOOLS } from "./control";
 import { createAskServer, ASK_TOOLS } from "./ask";
 import { attachmentsBlock } from "./overlay";
+import { customAgentsBlock, listCustomAgents, loadCustomAgent } from "./agents";
 import { withWorkspace, type WorkspaceContext } from "./workspace-context";
 import {
   SUBAGENTS,
@@ -127,6 +128,20 @@ export async function* runTurn(opts: RunTurnOptions) {
     };
   }
 
+  // User-defined subagents (~/.hemiunu/agents/*.md). Registered the same way, so
+  // the main agent discovers them by description and can summon them via Task.
+  // Reasoning-only (no tools) for now; the user owns the prompt and the model.
+  for (const a of listCustomAgents()) {
+    const full = loadCustomAgent(a.name);
+    if (!full || agents[a.name]) continue; // a built-in name never gets overridden
+    agents[a.name] = {
+      description: full.description,
+      prompt: full.prompt + attachmentsBlock(a.name),
+      model: full.model || model,
+      tools: [],
+    };
+  }
+
   // Base servers the main loop AND parallel sub-runs share. The orchestrator is
   // added only to the main loop (below) so sub-runs can't recursively fan out.
   const baseServers = {
@@ -160,9 +175,11 @@ export async function* runTurn(opts: RunTurnOptions) {
     options: {
       model,
       thinking: cfg.thinking,
-      // The caller (CLI/web) builds the base prompt; append any context files
-      // the user attached to the main agent (overlay layer). See overlay.ts.
-      systemPrompt: (opts.systemPrompt ?? DEFAULT_SOUL) + attachmentsBlock("main"),
+      // The caller (CLI/web) builds the base prompt; append the user's overlay:
+      // context files attached to main, and the list of custom subagents so the
+      // agent knows to summon them (see overlay.ts / agents.ts).
+      systemPrompt:
+        (opts.systemPrompt ?? DEFAULT_SOUL) + attachmentsBlock("main") + customAgentsBlock(),
       // Cap oversized tool results before they enter context (covers the main
       // loop AND SDK-delegated subagents). See toolcap.ts.
       hooks: createAgentHooks(),

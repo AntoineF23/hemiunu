@@ -213,3 +213,12 @@ export {
 export type { Attachment, AttachmentMeta, SaveAttachmentOptions } from "./overlay";
 export { buildMemoryGraph } from "./memorygraph";
 export type { MemoryGraph, MemoryNode, MemoryLink, MemoryNodeKind } from "./memorygraph";
+export {
+  listCustomAgents,
+  loadCustomAgent,
+  saveCustomAgent,
+  deleteCustomAgent,
+  isBuiltinAgent,
+  customAgentsBlock,
+} from "./agents";
+export type { CustomAgent, CustomAgentMeta, SaveCustomAgentOptions } from "./agents";

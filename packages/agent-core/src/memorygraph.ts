@@ -1,3 +1,4 @@
+import { listCustomAgents } from "./agents";
 import { configDir } from "./config";
 import { listAttachments, hasKnowledgeOverride } from "./overlay";
 import { loadSkills } from "./skills";
@@ -87,6 +88,18 @@ export function buildMemoryGraph(
     link("main", `agent:${name}`, "delegate");
   }
 
+  // User-defined subagents — editable nodes the coordinator can also summon.
+  for (const a of listCustomAgents(root)) {
+    add({
+      id: `agent:${a.name}`,
+      kind: "agent",
+      label: a.name,
+      editable: true,
+      description: a.description,
+    });
+    link("main", `agent:${a.name}`, "delegate");
+  }
+
   // --- Persona + global user memory (main only; subagents don't inherit them). ---
   add({
     id: "persona:soul",
@@ -150,7 +163,7 @@ export function buildMemoryGraph(
   }
 
   // --- User context attachments → each agent they're attached to. ---
-  const allAgents = ["main", ...SUBAGENT_NAMES];
+  const allAgents = nodes.filter((n) => n.kind === "agent").map((n) => n.id.slice("agent:".length));
   for (const a of listAttachments(root)) {
     const id = `context:${a.slug}`;
     add({ id, kind: "context", label: a.title, editable: true, description: a.description });
