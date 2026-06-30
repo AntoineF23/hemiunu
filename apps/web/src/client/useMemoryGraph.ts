@@ -28,7 +28,7 @@ export interface MemoryLink {
   // Strings on the wire; the force sim swaps in node refs after first render.
   source: string | MemoryNode;
   target: string | MemoryNode;
-  access: "read" | "write";
+  access: "read" | "write" | "delegate";
 }
 
 export interface MemoryGraph {

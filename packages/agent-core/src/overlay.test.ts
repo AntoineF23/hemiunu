@@ -102,6 +102,13 @@ test("buildMemoryGraph: emits the real agent→file access edges", () => {
   assert.ok(hasLink("agent:main", "persona:soul"));
   assert.ok(hasLink("agent:main", "user:user"));
   assert.ok(hasLink("agent:prototyper", "knowledge:design"));
+  // The coordinator delegates to each subagent (main → subagent edge).
+  assert.ok(
+    links.some(
+      (l) =>
+        l.source === "agent:main" && l.target === "agent:researcher" && l.access === "delegate",
+    ),
+  );
   // Subagents do NOT read soul/user.
   assert.ok(!hasLink("agent:researcher", "persona:soul"));
   // The attachment links to its target agent only.

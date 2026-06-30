@@ -38,7 +38,8 @@ export interface MemoryNode {
 export interface MemoryLink {
   source: string;
   target: string;
-  access: "read" | "write";
+  /** read/write = file access; delegate = the main agent hands off to a subagent. */
+  access: "read" | "write" | "delegate";
 }
 
 export interface MemoryGraph {
@@ -63,7 +64,7 @@ export function buildMemoryGraph(
   const add = (n: MemoryNode) => {
     if (!has(n.id)) nodes.push(n);
   };
-  const link = (agent: string, target: string, access: "read" | "write") =>
+  const link = (agent: string, target: string, access: "read" | "write" | "delegate") =>
     links.push({ source: `agent:${agent}`, target, access });
 
   // --- Agents (data-driven): the coordinator + each built-in subagent. ---
@@ -82,6 +83,8 @@ export function buildMemoryGraph(
       editable: false,
       description: SUBAGENTS[name].description,
     });
+    // The coordinator delegates to each subagent — show that hub relationship.
+    link("main", `agent:${name}`, "delegate");
   }
 
   // --- Persona + global user memory (main only; subagents don't inherit them). ---

@@ -17,21 +17,13 @@ import { getJSON, sendJSON } from "@/lib/api";
 import { Markdown } from "@/Markdown";
 import { type MemoryNode, type MemoryNodeKind, useMemoryGraph } from "@/useMemoryGraph";
 
-// Restrained palette: agents are the gold hubs; files muted; anything the user
-// authored/customized takes a warm gold tint so "yours" reads at a glance.
-const GOLD = "#FFD369";
-const WARM = "#E6B964";
-const MUTED = "#B9BDC4";
-const COLORS: Record<MemoryNodeKind, string> = {
-  agent: GOLD,
-  persona: MUTED,
-  user: WARM,
-  knowledge: MUTED,
-  skill: MUTED,
-  source: MUTED,
-  prototype: WARM,
-  context: WARM,
-};
+// Distinct roles read at a glance: the main agent is the gold hub, subagents
+// are cyan, the files you author (context) are violet, the rest of memory slate.
+const GOLD = "#FFD369"; // main agent + "can edit" edges
+const CYAN = "#5FBEDB"; // subagents + delegation edges
+const LAVENDER = "#C3A6F2"; // context files (yours)
+const SLATE = "#AEB6C2"; // other memory files
+
 const KIND_LABEL: Record<MemoryNodeKind, string> = {
   agent: "Agent",
   persona: "Persona",
@@ -43,9 +35,26 @@ const KIND_LABEL: Record<MemoryNodeKind, string> = {
   context: "Context file",
 };
 
+const isMain = (n: MemoryNode) => n.id === "agent:main";
+
 function colorOf(n: MemoryNode): string {
-  if (n.kind === "knowledge" && n.customized) return WARM;
-  return COLORS[n.kind] ?? MUTED;
+  if (n.kind === "agent") return isMain(n) ? GOLD : CYAN;
+  if (n.kind === "context") return LAVENDER;
+  return SLATE;
+}
+
+type Access = "read" | "write" | "delegate";
+const accOf = (l: unknown): Access => (l as { access?: Access }).access ?? "read";
+// Translucent stroke for the line; solid for arrows/particles.
+function linkStroke(a: Access): string {
+  return a === "delegate"
+    ? "rgba(95,190,219,0.6)"
+    : a === "write"
+      ? "rgba(255,211,105,0.55)"
+      : "rgba(238,238,238,0.28)";
+}
+function linkSolid(a: Access): string {
+  return a === "delegate" ? CYAN : a === "write" ? GOLD : "rgba(238,238,238,0.6)";
 }
 
 interface NodeDetail {
@@ -100,40 +109,41 @@ export function MemoryView() {
           backgroundColor="rgba(0,0,0,0)"
           showNavInfo={false}
           nodeColor={(n) => colorOf(n as MemoryNode)}
-          nodeVal={(n) => ((n as MemoryNode).kind === "agent" ? 14 : 5)}
+          // Main agent is the biggest hub; subagents medium; files small.
+          nodeVal={(n) => {
+            const m = n as MemoryNode;
+            return m.kind !== "agent" ? 5 : isMain(m) ? 22 : 9;
+          }}
           nodeOpacity={1}
           nodeResolution={16}
           // Always-on text labels so the graph reads at a glance (no hover needed).
           nodeThreeObjectExtend
           nodeThreeObject={(n) => {
             const m = n as MemoryNode;
-            const isAgent = m.kind === "agent";
+            const main = isMain(m);
+            const agent = m.kind === "agent";
             const s = new SpriteText(m.label + (m.customized ? " ✎" : ""));
-            s.color = isAgent ? GOLD : "#EEEEEE";
-            s.textHeight = isAgent ? 6 : 3.5;
+            s.color = colorOf(m);
+            if (!agent && m.kind !== "context") s.color = "#EEEEEE"; // keep file labels readable
+            s.textHeight = main ? 7.5 : agent ? 5 : 3.4;
             s.fontFace = "Ubuntu, sans-serif";
-            s.fontWeight = isAgent ? "600" : "400";
-            s.position.set(0, isAgent ? 11 : 6, 0);
+            s.fontWeight = agent ? "600" : "400";
+            s.position.set(0, main ? 14 : agent ? 9 : 6, 0);
             return s;
           }}
-          // Edges: gold = the agent can WRITE the file, grey = read-only. Flow
-          // particles travel agent → file so direction is obvious.
-          linkColor={(l) =>
-            (l as { access?: string }).access === "write"
-              ? "rgba(255,211,105,0.55)"
-              : "rgba(238,238,238,0.32)"
-          }
-          linkWidth={(l) => ((l as { access?: string }).access === "write" ? 1.4 : 1.0)}
+          // Edges: cyan = main delegates to a subagent, gold = the agent can edit
+          // the file, grey = read-only. Flow particles travel source → target.
+          linkColor={(l) => linkStroke(accOf(l))}
+          linkWidth={(l) => {
+            const a = accOf(l);
+            return a === "delegate" ? 2.2 : a === "write" ? 1.4 : 1.0;
+          }}
           linkDirectionalParticles={2}
           linkDirectionalParticleWidth={2}
-          linkDirectionalParticleColor={(l) =>
-            (l as { access?: string }).access === "write" ? GOLD : "rgba(238,238,238,0.7)"
-          }
+          linkDirectionalParticleColor={(l) => linkSolid(accOf(l))}
           linkDirectionalArrowLength={3.5}
           linkDirectionalArrowRelPos={0.9}
-          linkDirectionalArrowColor={(l) =>
-            (l as { access?: string }).access === "write" ? GOLD : "rgba(238,238,238,0.5)"
-          }
+          linkDirectionalArrowColor={(l) => linkSolid(accOf(l))}
           enableNodeDrag={false}
           onNodeClick={(n) => setDrawer({ mode: "node", id: (n as MemoryNode).id })}
           cooldownTicks={120}
@@ -157,26 +167,31 @@ export function MemoryView() {
 
       {/* Legend */}
       <div className="absolute bottom-4 left-5 flex flex-col gap-1 text-xs text-ink-3">
-        {(["agent", "context", "knowledge", "skill", "source"] as MemoryNodeKind[]).map((k) => (
-          <span key={k} className="flex items-center gap-2">
-            <span
-              className="inline-block size-2.5 rounded-full"
-              style={{ background: k === "agent" ? GOLD : k === "context" ? WARM : MUTED }}
-            />
-            {KIND_LABEL[k]}
+        {(
+          [
+            ["Main agent", GOLD],
+            ["Subagent", CYAN],
+            ["Context file (yours)", LAVENDER],
+            ["Memory file", SLATE],
+          ] as const
+        ).map(([label, color]) => (
+          <span key={label} className="flex items-center gap-2">
+            <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
+            {label}
           </span>
         ))}
-        <span className="mt-1.5 flex items-center gap-2">
-          <span className="inline-block h-0.5 w-4" style={{ background: GOLD }} />
-          edge → can edit
-        </span>
-        <span className="flex items-center gap-2">
-          <span
-            className="inline-block h-0.5 w-4"
-            style={{ background: "rgba(238,238,238,0.5)" }}
-          />
-          edge → reads
-        </span>
+        {(
+          [
+            ["delegates", CYAN],
+            ["can edit", GOLD],
+            ["reads", "rgba(238,238,238,0.55)"],
+          ] as const
+        ).map(([label, color], i) => (
+          <span key={label} className={`flex items-center gap-2 ${i === 0 ? "mt-1.5" : ""}`}>
+            <span className="inline-block h-0.5 w-4" style={{ background: color }} />
+            edge → {label}
+          </span>
+        ))}
       </div>
 
       <Sheet open={drawer !== null} onOpenChange={(o) => !o && closeDrawer()}>
