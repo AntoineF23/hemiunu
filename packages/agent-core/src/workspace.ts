@@ -501,6 +501,40 @@ export const CHECKPOINT_BRANCH = "hemiunu/checkpoint";
  */
 const CHECKPOINT_REMOTE_BACKUP = false;
 
+/** Build outputs that must never be tracked in a prototype repo. */
+const BUILD_ARTIFACTS = ["node_modules", "dist", "build"];
+
+/**
+ * Keep build artifacts out of git before any commit. The deploy runs
+ * `pnpm install` + `vite build` in the workspace (and the preview server runs
+ * `install`), so without this the `git add -A` in an auto-save/publish would
+ * commit node_modules/dist — and every later session's reconcile then flags
+ * them as "un-published changes". Ensures the workspace `.gitignore` lists the
+ * artifacts and untracks any that were already committed (e.g. from before this
+ * fix), leaving the files on disk. Best-effort: never throws.
+ */
+async function ensureArtifactsIgnored(path: string): Promise<void> {
+  try {
+    if (!existsSync(join(path, ".git"))) return;
+    const giPath = join(path, ".gitignore");
+    const existing = existsSync(giPath) ? readFileSync(giPath, "utf8") : "";
+    const have = new Set(
+      existing.split(/\r?\n/).map((l) => l.trim().replace(/^\/+/, "").replace(/\/+$/, "")),
+    );
+    const missing = BUILD_ARTIFACTS.filter((a) => !have.has(a));
+    if (missing.length) {
+      const body = existing && !existing.endsWith("\n") ? `${existing}\n` : existing;
+      writeFileSync(giPath, `${body}${missing.map((a) => `${a}/`).join("\n")}\n`, "utf8");
+    }
+    // Untrack any already-committed artifacts; --ignore-unmatch = no-op if none.
+    await git(["rm", "-r", "--cached", "--ignore-unmatch", "--quiet", ...BUILD_ARTIFACTS], {
+      cwd: path,
+    });
+  } catch {
+    // best effort — a stale artifact in git is annoying, not fatal
+  }
+}
+
 /** The repo's default branch (what we publish to), from the remote; "main" if unknown. */
 async function defaultBranch(path: string): Promise<string> {
   // Prefer the remote's advertised default via origin/HEAD. But not every
@@ -531,6 +565,7 @@ export async function commitAndPush(
 ): Promise<PushResult> {
   const path = workspacePath(repo);
   if (!existsSync(path)) return { ok: false, note: "No local workspace — run iterate first." };
+  await ensureArtifactsIgnored(path); // never commit node_modules/dist/build
   // Publishing targets the repo's DEFAULT branch, resolved from the remote — not
   // the current local branch, which auto-checkpoints leave on hemiunu/checkpoint.
   const branch = opts.toMain ? await defaultBranch(path) : (opts.branch ?? `hemiunu/${stamp()}`);
@@ -602,6 +637,7 @@ export async function checkpointWorkspace(
     if (!repo) return { pushed: false, note: "no team" };
     const path = workspacePath(normalizeRepo(repo));
     if (!existsSync(join(path, ".git"))) return { pushed: false, note: "no checkout" };
+    await ensureArtifactsIgnored(path); // never commit node_modules/dist/build
     // Auto-checkpoints live on their own branch; ensure we're on it (harmless if
     // already there — resets it to HEAD, keeping the working-tree changes).
     await git(["checkout", "-B", CHECKPOINT_BRANCH], { cwd: path });
