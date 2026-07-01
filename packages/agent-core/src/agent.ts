@@ -21,6 +21,7 @@ import {
   WEB_TOOLS,
   PLANNING_TOOLS,
   subagentPrompt,
+  SUBAGENT_GUARD,
   type SubagentRunContext,
   type SubagentEvent,
 } from "./subagents";
@@ -136,7 +137,7 @@ export async function* runTurn(opts: RunTurnOptions) {
     if (!full || agents[a.name]) continue; // a built-in name never gets overridden
     agents[a.name] = {
       description: full.description,
-      prompt: full.prompt + attachmentsBlock(a.name),
+      prompt: full.prompt + attachmentsBlock(a.name) + SUBAGENT_GUARD,
       model: full.model || model,
       tools: [],
     };
