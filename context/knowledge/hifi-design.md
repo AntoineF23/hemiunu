@@ -26,6 +26,24 @@ a few screens done to a production bar beat many rough ones.
 - Keep components small, typed, and composable. Lift shared UI (Button, Card, Field,
   Badge) into `components/` rather than repeating markup.
 
+## Working in parallel — build only your role's files
+- For a larger screen the coordinator may split the build across several designers
+  running at once on the SAME prototype. The workspace has no file locking, so the
+  only rule that keeps it safe is: **each designer writes disjoint files.** Your brief
+  names your role — do exactly it.
+- **SETUP**: scaffold + do the design-system setup ONCE (tokens/typography/fonts into
+  `src/index.css`) + lay down shared/base primitives + return a component inventory
+  (each component → the `src/components/<Name>.tsx` file it owns). Don't build the
+  feature components.
+- **COMPONENT (scoped)**: scaffold and DS are already set up — don't redo them, don't
+  touch `App.tsx`/`index.css`/config/shared primitives. Read `src/index.css` for
+  tokens; build only the file(s) your brief names. Any shared/sibling/asset file a DS
+  bundle returns is **write-if-absent** — skip it if the path already exists.
+- **WIRE**: import the components into `App.tsx`, lay out, fix, and run at most ONE
+  validation pass. Only this role edits `App.tsx`.
+- Don't waste steps: never re-read a file you just wrote, and run the DS checker (e.g.
+  `design_doctor`) at most once, near the end.
+
 ## Tokens, not magic numbers
 - Define a token layer once (CSS variables surfaced to Tailwind): a small **colour**
   set (background/surface, text, accent, border, plus semantic success/warn/danger),
