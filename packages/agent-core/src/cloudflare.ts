@@ -1,26 +1,24 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { DeployProvider, DeployResult } from "./deploy";
 import { detectPM, hasDevScript, waitForReady } from "./preview";
 
 /**
- * Deploy a prototype to a shareable Cloudflare Pages URL via Wrangler — used
- * only when the user wants to share. Each company brings its own free Cloudflare
- * account (no embedded Hemiunu token): a "Cloudflare Pages: Edit" API token,
- * plus the account ID, are read from the environment (persisted to
- * ~/.hemiunu/.env by the `/cloudflare` connect flow). Wrangler itself is run via
- * `npx`, so no global install is required.
+ * Cloudflare Pages deploy provider (the default). Sharing runs `wrangler pages
+ * deploy` as a direct upload — used only when the user wants to share. Each
+ * company brings its own free Cloudflare account (no embedded Hemiunu token): a
+ * "Cloudflare Pages: Edit" API token plus the account ID are read from the
+ * environment (persisted to ~/.hemiunu/.env by the `/cloudflare` connect flow).
+ * Wrangler itself is run via `npx`, so no global install is required.
  *
- * Unlike Vercel (which built our Vite projects server-side), `wrangler pages
- * deploy` is a direct upload of static assets — so hi-fi (Vite/React)
- * prototypes are built locally first; low-fi static HTML is uploaded as-is.
+ * Because `wrangler pages deploy` is a direct upload of static assets (no
+ * server-side build), hi-fi (Vite/React) prototypes are built locally first;
+ * low-fi static HTML is uploaded as-is. This module is registered behind the
+ * generic DeployProvider seam in ./deploy.
  */
 
 const WRANGLER = ["--yes", "wrangler@4"];
-
-export type DeployResult =
-  | { url: string; pending?: boolean }
-  | { error: string; needsLogin?: boolean; notInstalled?: boolean };
 
 export interface CloudflareCreds {
   apiToken: string;
@@ -214,3 +212,15 @@ export async function cloudflareDeploy(
     return { error: out.trim().slice(0, 300) || "deploy failed" };
   }
 }
+
+/** Cloudflare Pages as a generic DeployProvider (see ./deploy). */
+export const cloudflareProvider: DeployProvider = {
+  id: "cloudflare",
+  label: "Cloudflare Pages",
+  isConfigured: cloudflareConfigured,
+  connectHint: () =>
+    "Not connected to Cloudflare. Ask the user to run /cloudflare (or use the web Settings panel) and paste a Cloudflare API token (Pages: Edit). Then try again.",
+  // The provider owns naming so each host can apply its own slug rules.
+  deploy: (dir, opts) =>
+    cloudflareDeploy(dir, { prod: opts.prod ?? true, projectName: projectNameFor(opts.repo) }),
+};

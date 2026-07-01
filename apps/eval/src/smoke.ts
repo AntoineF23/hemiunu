@@ -76,6 +76,8 @@ import {
   workspacePath,
   cloudflareConfigured,
   projectNameFor,
+  activeProvider,
+  listDeployProviders,
   setControlHandler,
   requestControl,
 } from "@hemiunu/agent-core";
@@ -902,6 +904,18 @@ async function main() {
     const long = projectNameFor(`org/${"x".repeat(80)}`);
     assert(long.length <= 58, "should cap at 58 chars");
     assert(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(long), "should be a valid lowercase slug");
+  });
+
+  await check("deploy: provider seam defaults to Cloudflare and exposes the interface", () => {
+    const p = activeProvider();
+    assert(p !== undefined, "an active provider should resolve");
+    assert(p.id === "cloudflare", `default provider should be cloudflare, got ${p?.id}`);
+    assert(typeof p.deploy === "function", "provider should expose deploy()");
+    assert(typeof p.isConfigured === "function", "provider should expose isConfigured()");
+    assert(
+      listDeployProviders().some((x) => x.id === "cloudflare"),
+      "cloudflare should be registered in the provider list",
+    );
   });
 
   await check("migrate: local prototype work is pushed into a new team repo", async () => {

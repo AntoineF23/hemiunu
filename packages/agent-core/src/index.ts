@@ -179,8 +179,11 @@ export {
   cloudflareDeploy,
   fetchCloudflareAccountId,
   projectNameFor,
+  cloudflareProvider,
 } from "./cloudflare";
-export type { DeployResult, CloudflareCreds } from "./cloudflare";
+export type { CloudflareCreds } from "./cloudflare";
+export { activeProvider, activeProviderId, listDeployProviders } from "./deploy";
+export type { DeployProvider, DeployResult } from "./deploy";
 export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";
 export type { ControlEvent, AskQuestion } from "./control";
 export { createAskServer, ASK_TOOLS, ASK_USER_TOOL_ID } from "./ask";
