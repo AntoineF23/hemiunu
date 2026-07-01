@@ -996,10 +996,25 @@ async function main() {
         g(["commit", "-qm", "init"], seed);
         g(["push", "origin", "HEAD:main"], seed);
 
-        // Clone into the managed workspace, write a prototype file, auto-save it.
+        // Clone into the managed workspace, write a prototype file + build
+        // artifacts (as the deploy's install/build would), then auto-save.
         await ensureWorkspace("acme/cp", { cloneUrl: bare });
-        writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
+        const ws = workspacePath("acme/cp");
+        writeFileSync(join(ws, "index.html"), "<h1>v1</h1>");
+        mkdirSync(join(ws, "dist"), { recursive: true });
+        writeFileSync(join(ws, "dist", "bundle.js"), "// built");
+        mkdirSync(join(ws, "node_modules", "x"), { recursive: true });
+        writeFileSync(join(ws, "node_modules", "x", "index.js"), "// dep");
         const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
+        // Build artifacts must never be tracked — otherwise reconcile flags them
+        // as "un-published changes" every session.
+        const tracked = out(["ls-files"], ws);
+        assert(!/(^|\n)dist\//.test(tracked), "dist/ must not be tracked after auto-save");
+        assert(
+          !/(^|\n)node_modules\//.test(tracked),
+          "node_modules/ must not be tracked after auto-save",
+        );
+        assert(tracked.includes("index.html"), "the prototype file itself should be tracked");
         // Auto-save is LOCAL-ONLY: it commits to the checkpoint branch but does
         // NOT push — nothing reaches GitHub until publish/deploy.
         assert(!cp.pushed, `auto-save should NOT push (local-only): ${cp.note}`);
