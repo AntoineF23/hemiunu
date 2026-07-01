@@ -13,4 +13,5 @@ export {
   cleanResultPreview,
   shortId,
   shortPath,
+  isSpilledResultPath,
 } from "@hemiunu/format";

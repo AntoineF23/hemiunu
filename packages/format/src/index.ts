@@ -16,6 +16,11 @@ export const shortId = (id: string) => (id.length > 12 ? `${id.split("-")[0]}…
 export const shortPath = (p: string) =>
   HOME_DIR && p.startsWith(HOME_DIR) ? `~${p.slice(HOME_DIR.length)}` : p;
 
+/** True for an SDK tool-result overflow file (…/projects/<slug>/…/tool-results/…),
+ *  the escape-hatch path read_workspace_file follows — NOT real prototype work. */
+export const isSpilledResultPath = (p: string) =>
+  /[\\/]projects[\\/].+[\\/]tool-results[\\/]/.test(p);
+
 /** mcp__filesystem__read_file → filesystem·read_file */
 export function prettyTool(name: string): string {
   if (name.startsWith("mcp__")) {
@@ -70,7 +75,12 @@ export function toolPreview(input: unknown): string {
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   if (str(i.query)) return `“${clip(str(i.query), 60)}”`;
   if (str(i.pattern)) return clip(str(i.pattern), 60);
-  if (str(i.path)) return clip(shortPath(str(i.path)), 60);
+  if (str(i.path)) {
+    const p = str(i.path);
+    // A spilled tool-result overflow file is internal bookkeeping, not prototype
+    // work — never leak its path into the activity feed / permission dialog.
+    return isSpilledResultPath(p) ? "" : clip(shortPath(p), 60);
+  }
   if (str(i.page_id)) return shortId(str(i.page_id));
   if (str(i.data_source_id)) return shortId(str(i.data_source_id));
   if (str(i.mcp)) return str(i.mcp);
