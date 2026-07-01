@@ -490,13 +490,16 @@ export interface PushResult {
 export const CHECKPOINT_BRANCH = "hemiunu/checkpoint";
 
 /**
- * Auto-saves commit each turn to CHECKPOINT_BRANCH (`hemiunu/checkpoint`), NOT
- * main — so in-progress prototype work is safely pushed (survives a workspace
- * reset) while main stays clean. main is published only when the user validates
- * the live preview and the agent runs `commit_prototype(to='main')`. Flip to
- * `true` to go back to direct-to-main every turn.
+ * Auto-saves commit each turn to a LOCAL CHECKPOINT_BRANCH (`hemiunu/checkpoint`)
+ * and do NOT push — so in-progress work is kept in a local commit (surviving the
+ * next turn's workspace sync, and keeping the live preview intact) while GitHub
+ * only ever sees `main`. `main` updates only when the user ships: the agent runs
+ * `commit_prototype(to='main')` or `deploy_prototype` (which publishes + deploys).
+ * This matches the "work locally, ship on deploy" flow — no stray branches on
+ * GitHub. Flip CHECKPOINT_REMOTE_BACKUP to also push the checkpoint branch to
+ * origin as an off-machine backup (e.g. a hosted, ephemeral-workspace setup).
  */
-const AUTO_PUSH_TO_MAIN = false;
+const CHECKPOINT_REMOTE_BACKUP = false;
 
 /** The repo's default branch (what we publish to), from the remote; "main" if unknown. */
 async function defaultBranch(path: string): Promise<string> {
@@ -582,11 +585,11 @@ export async function commitAndPush(
 
 /**
  * Auto-save the team's prototype workspace after a turn: stage any changes,
- * commit them, and push — so prototype work always reaches GitHub automatically
- * and survives a later workspace reset. With AUTO_PUSH_TO_MAIN (the current
- * default) it pushes straight to the default branch; otherwise to a stable
- * `hemiunu/checkpoint` branch. Either way local == origin/<branch> after the
- * push, so the next iterate's ensureWorkspace sync won't discard the work.
+ * commit them to a LOCAL checkpoint branch — so prototype work is preserved
+ * across the next turn's workspace sync (which rebases onto latest main and
+ * never discards local commits) and the live preview keeps rendering. By default
+ * nothing is pushed: GitHub only sees `main`, on publish/deploy. Flip
+ * CHECKPOINT_REMOTE_BACKUP to also push the branch to origin as a backup.
  *
  * Best-effort: never throws; a no-op when there's no team, no checkout, or
  * nothing changed since the last save.
@@ -599,18 +602,44 @@ export async function checkpointWorkspace(
     if (!repo) return { pushed: false, note: "no team" };
     const path = workspacePath(normalizeRepo(repo));
     if (!existsSync(join(path, ".git"))) return { pushed: false, note: "no checkout" };
-    // Skip entirely when the tree is clean — avoids a needless branch switch/push.
+    // Auto-checkpoints live on their own branch; ensure we're on it (harmless if
+    // already there — resets it to HEAD, keeping the working-tree changes).
+    await git(["checkout", "-B", CHECKPOINT_BRANCH], { cwd: path });
     await git(["add", "-A"], { cwd: path });
+    // Skip entirely when the tree is clean — avoids a needless empty commit.
     if ((await gitOut(["status", "--porcelain"], path)).length === 0) {
-      return { pushed: false, note: "nothing changed" };
+      return { pushed: false, branch: CHECKPOINT_BRANCH, note: "nothing changed" };
     }
-    const r = await commitAndPush(repo, {
-      message: opts.message || "Auto-saved prototype work",
-      token: opts.token,
-      login: opts.login,
-      ...(AUTO_PUSH_TO_MAIN ? { toMain: true } : { branch: CHECKPOINT_BRANCH }),
+    // Identity for the commit — git refuses to commit without one, and fresh
+    // clones / CI runners have no global identity to fall back on.
+    const ident = [
+      "-c",
+      `user.name=${opts.login ?? "Hemiunu"}`,
+      "-c",
+      `user.email=${opts.login ? `${opts.login}@users.noreply.github.com` : "hemiunu@users.noreply.github.com"}`,
+    ];
+    const c = await git([...ident, "commit", "-m", opts.message || "Auto-saved prototype work"], {
+      cwd: path,
     });
-    return { pushed: r.ok, branch: r.branch, note: r.note };
+    if (!c.ok)
+      return {
+        pushed: false,
+        branch: CHECKPOINT_BRANCH,
+        note: `commit failed: ${c.stderr.trim().slice(0, 200)}`,
+      };
+    // Local-only by default — nothing reaches GitHub until publish/deploy.
+    if (!CHECKPOINT_REMOTE_BACKUP) {
+      return { pushed: false, branch: CHECKPOINT_BRANCH, note: "saved locally" };
+    }
+    const p = await git(["push", "-u", "origin", `HEAD:${CHECKPOINT_BRANCH}`], {
+      cwd: path,
+      token: opts.token,
+    });
+    return {
+      pushed: p.ok,
+      branch: CHECKPOINT_BRANCH,
+      note: p.ok ? "backed up to origin" : `push failed: ${p.stderr.trim().slice(0, 200)}`,
+    };
   } catch (e) {
     return { pushed: false, note: e instanceof Error ? e.message : String(e) };
   }
@@ -618,8 +647,10 @@ export async function checkpointWorkspace(
 
 /**
  * Best-effort restore of a prototype for VIEWING when the local workspace is
- * gone or was reset: ensure a checkout exists, then check out the pushed
- * `hemiunu/checkpoint` branch (where auto-checkpoints live). Returns the
+ * gone or was reset: ensure a checkout exists, then check out the checkpoint
+ * branch if it was ever pushed (only when CHECKPOINT_REMOTE_BACKUP is on).
+ * Auto-checkpoints are local by default, so if the workspace is gone this falls
+ * back to whatever is on main (the last published version). Returns the
  * workspace path if an index.html is present afterward, else null.
  */
 export async function restoreCheckpoint(
