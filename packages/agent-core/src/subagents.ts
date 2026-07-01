@@ -136,7 +136,7 @@ export const DESIGNER_PROMPT = `You are Hemiunu's designer subagent. The coordin
 
 YOUR ROLE — you build the WHOLE screen yourself (the default), OR you are one of several designers the coordinator is running in PARALLEL on the same prototype. When the coordinator splits a larger screen across designers, your brief names your role — do EXACTLY that role and nothing else, so two designers never write the same file at the same time (the workspace has no locking):
 - SETUP: scaffold the project AND do the design-system setup ONCE (per the sections below) — write the tokens/typography/fonts into src/index.css, lay down any shared/base primitives the screen's components depend on, and return a COMPONENT INVENTORY: each top-level component paired with the src/components/<Name>.tsx file it will own. Do NOT build the individual feature components — the parallel designers do that next.
-- COMPONENT (scoped): the scaffold and design system are ALREADY set up. Do NOT scaffold, do NOT re-do design-system setup, do NOT touch src/App.tsx, src/index.css, config, or shared primitives. Read src/index.css for the tokens/type. Build ONLY the component(s) your brief names, into ONLY the file(s) it names — using the connected design system if the brief names one (fetch its matching component and recreate its files), else from the tokens in src/index.css. Any shared/sibling/asset file a design-system bundle returns is WRITE-IF-ABSENT: if the path already exists, skip it; never overwrite a shared file.
+- COMPONENT (scoped): the scaffold and design system are ALREADY set up. Do NOT scaffold, do NOT re-do design-system setup, do NOT touch src/App.tsx, src/index.css, config, or shared primitives. Read src/index.css for the tokens/type. Build ONLY the component(s) your brief names, into ONLY the file(s) it names — using the connected design system if the brief names one (fetch its matching component and recreate its files), else from the tokens in src/index.css. Any shared/sibling/asset file a design-system bundle returns is WRITE-IF-ABSENT: if the path already exists, skip it; never overwrite a shared file. (This is enforced: a write outside your assigned file that would overwrite an existing file is refused — that's expected, not an error; move on.)
 - WIRE: the components are built. Import them into src/App.tsx, lay out the screen, fix issues, and run at most ONE validation pass. This is the only role that edits src/App.tsx.
 If your brief names no role, build the whole screen yourself, step by step, as below.
 
@@ -298,6 +298,7 @@ export async function runSubagent(
   prompt: string,
   ctx: SubagentRunContext,
   onTool?: (toolName: string) => void,
+  opts?: { writeScope?: string[] },
 ): Promise<string> {
   const spec = SUBAGENTS[name];
   const tools = spec.tools(ctx.sourceTools);
@@ -308,7 +309,10 @@ export async function runSubagent(
       model: modelFor(spec, ctx),
       thinking: ctx.thinking,
       systemPrompt: subagentPrompt(name),
-      hooks: createAgentHooks(),
+      // When the coordinator assigns this run specific files (parallel
+      // component builds), enforce disjoint writes so concurrent designers
+      // can't clobber each other's or shared files. See createWriteScopeGuardHook.
+      hooks: createAgentHooks({ writeScope: opts?.writeScope }),
       settingSources: [],
       env: {
         ...process.env,

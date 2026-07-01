@@ -53,6 +53,12 @@ export function createOrchestratorServer(ctx: SubagentRunContext) {
               .string()
               .optional()
               .describe("Short label for this task in the combined results."),
+            writes: z
+              .array(z.string())
+              .optional()
+              .describe(
+                "Files/dirs (workspace-relative, e.g. ['src/components/Header.tsx']) this task is allowed to create or modify. When set, the subagent may write ONLY these paths plus brand-new files that don't exist yet — it cannot overwrite any other existing file, and can't scaffold. Set it on parallel designer builds so concurrent designers never clobber shared files or each other. Leave unset for the SETUP/WIRE passes, which own the shared files.",
+              ),
           }),
         )
         .min(1)
@@ -64,8 +70,12 @@ export function createOrchestratorServer(ctx: SubagentRunContext) {
         const agent = t.agent as SubagentName;
         ctx.onEvent?.({ type: "task-start", label, agent });
         try {
-          const text = await runSubagent(agent, t.prompt, ctx, (tool) =>
-            ctx.onEvent?.({ type: "task-tool", label, tool }),
+          const text = await runSubagent(
+            agent,
+            t.prompt,
+            ctx,
+            (tool) => ctx.onEvent?.({ type: "task-tool", label, tool }),
+            { writeScope: t.writes },
           );
           ctx.onEvent?.({ type: "task-done", label, agent, ok: true });
           return { label, agent: t.agent, text };

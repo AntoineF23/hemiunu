@@ -1,4 +1,5 @@
-import { basename, isAbsolute, join, relative } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { createPolicyBlockHook } from "./toolpolicy";
 import { activeProtoDir } from "./workspace";
@@ -47,12 +48,22 @@ function textOf(resp: unknown): string {
  * is its own key. Use this everywhere instead of the bare `createToolCapHook()`
  * so a user's "block" AND the workspace confinement are honored in subagents too.
  */
-export function createAgentHooks(budgetTokens?: number): NonNullable<Options["hooks"]> {
+export function createAgentHooks(
+  opts: { budgetTokens?: number; writeScope?: string[] } = {},
+): NonNullable<Options["hooks"]> {
   const block = createPolicyBlockHook();
   const guard = createWorkspaceGuardHook();
+  const scope =
+    opts.writeScope && opts.writeScope.length
+      ? createWriteScopeGuardHook(opts.writeScope)
+      : undefined;
   return {
-    PreToolUse: [...(block.PreToolUse ?? []), ...(guard.PreToolUse ?? [])],
-    ...createToolCapHook(budgetTokens),
+    PreToolUse: [
+      ...(block.PreToolUse ?? []),
+      ...(guard.PreToolUse ?? []),
+      ...(scope?.PreToolUse ?? []),
+    ],
+    ...createToolCapHook(opts.budgetTokens),
   };
 }
 
@@ -106,6 +117,74 @@ export function createWorkspaceGuardHook(): NonNullable<Options["hooks"]> {
             return {
               hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: next },
             };
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Normalise a workspace-relative path for comparison: strip a leading `./` or
+ *  `/`, drop a trailing slash, and use forward slashes. */
+function normRel(p: string): string {
+  return p
+    .split(sep)
+    .join("/")
+    .replace(/^\.?\//, "")
+    .replace(/\/+$/, "");
+}
+
+/**
+ * A PreToolUse hook that confines a SCOPED subagent's file writes to its
+ * assigned paths — the enforcement behind parallel component builds, where
+ * several designers write ONE prototype at once on a workspace that has no
+ * locking. Active only when a write-scope is set (i.e. the coordinator handed
+ * this subagent specific files to own); otherwise it never fires.
+ *
+ * A `write_workspace_file` is ALLOWED when the target is within the assigned
+ * scope, OR the file does not exist yet (write-if-absent, so a scoped designer
+ * can still lay down brand-new shared/sibling assets a design-system bundle
+ * returns). It is DENIED when it would OVERWRITE a file outside the scope —
+ * another designer's component, or a shared file (App.tsx / index.css / config)
+ * the SETUP role established. Scaffolding tools (save_prototype /
+ * iterate_prototype) are denied outright: (re)scaffolding is the SETUP role's
+ * job, never a scoped component build's.
+ */
+export function createWriteScopeGuardHook(scope: string[]): NonNullable<Options["hooks"]> {
+  const prefixes = scope.map(normRel).filter(Boolean);
+  const inScope = (rel: string) => prefixes.some((pre) => rel === pre || rel.startsWith(pre + "/"));
+  const deny = (reason: string) => ({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse" as const,
+      permissionDecision: "deny" as const,
+      permissionDecisionReason: reason,
+    },
+  });
+  return {
+    PreToolUse: [
+      {
+        hooks: [
+          async (input) => {
+            const toolName = (input as { tool_name?: string }).tool_name ?? "";
+            if (/__(?:save_prototype|iterate_prototype)$/.test(toolName)) {
+              return deny(
+                "You're a scoped component build — don't (re)scaffold. Scaffolding and the design-system setup are the SETUP role's job; write your assigned file with write_workspace_file.",
+              );
+            }
+            if (!/__write_workspace_file$/.test(toolName)) return {};
+            const ti = (input as { tool_input?: Record<string, unknown> }).tool_input ?? {};
+            const p = typeof ti.path === "string" ? ti.path : "";
+            if (!p) return {};
+            const dir = activeProtoDir();
+            const abs = confineToDir(dir, p);
+            const rel = normRel(relative(dir, abs));
+            if (inScope(rel)) return {};
+            // Outside the assigned scope: allow creating a brand-new file
+            // (write-if-absent for shared assets), but never overwrite one.
+            if (!existsSync(abs)) return {};
+            return deny(
+              `You may only write ${prefixes.join(", ")} (plus brand-new files). '${rel}' already exists and is outside your scope — don't overwrite a shared or another designer's file (shared assets are write-if-absent; App.tsx/index.css/config belong to the SETUP/WIRE role).`,
+            );
           },
         ],
       },
