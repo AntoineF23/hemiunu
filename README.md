@@ -174,7 +174,9 @@ Plan-first and auto-accept are toggles in the composer.
 Keys and settings live in **`~/.hemiunu/`**, separate from the code, so updates
 never touch them: `~/.hemiunu/.env` (keys), `~/.hemiunu/mcp.json` (your MCP
 servers, merged over the default), `~/.hemiunu/hemiunu.db`, `~/.hemiunu/skills/`,
-`~/.hemiunu/sources/`.
+`~/.hemiunu/sources/`. Updating only ever replaces the app code at
+`~/.hemiunu/app`; your conversations and memory are left in place — a guarantee
+locked in by `packages/memory/src/preserve-on-update.test.ts`.
 
 | Variable (`~/.hemiunu/.env`) | Purpose |
 | --- | --- |
