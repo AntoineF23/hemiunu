@@ -67,8 +67,26 @@ ${list}`;
 
   // User context files the user has attached to this subagent (overlay layer).
   prompt += attachmentsBlock(name);
+  // Universal, authoritative operating rules — appended last so they win.
+  prompt += SUBAGENT_GUARD;
   return prompt;
 }
+
+/**
+ * Operating rules appended to EVERY subagent prompt (built-in and custom). A
+ * subagent is a scoped, single-purpose delegation: it isn't in plan mode and
+ * has neither the planning tools nor a general file-writing tool. Without this,
+ * a subagent handed a planning-flavored task will try to persist a plan file to
+ * the SDK's plan path (`~/.hemiunu/agent/plans/…`) and fail with a confusing
+ * "no file-writing tool can reach that location" — see agent.ts where custom
+ * agents also append this.
+ */
+export const SUBAGENT_GUARD = `
+
+# Operating rules (always)
+- Your final message IS your entire deliverable — it's returned to the coordinator (never shown to the user directly), so put everything there.
+- You are NOT in plan mode and you have no planning tools (no EnterPlanMode/ExitPlanMode/TodoWrite) and no general file-writing tool. Do NOT try to enter plan mode, write a plan file, or write any file outside the specific tools you were given — those attempts just fail.
+- Deliver plans, analysis, and results as TEXT in your final message. If something should be saved to a file, say so and let the coordinator do it.`;
 
 export type SubagentName = "researcher" | "prototyper" | "designer" | "strategist" | "analyst";
 

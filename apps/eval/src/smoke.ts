@@ -265,6 +265,14 @@ async function main() {
       /analytics principles/i.test(subagentPrompt("analyst")),
       "analyst should inject the metrics pack",
     );
+    // Every subagent carries the operating-rules guard (no plan mode / no file
+    // writes outside their tools) — so they never try to write to the SDK plan
+    // path and return their deliverable as text.
+    for (const n of ["researcher", "prototyper", "designer", "strategist", "analyst"] as const) {
+      const p = subagentPrompt(n);
+      assert(/final message IS/i.test(p), `${n} prompt should carry the operating-rules guard`);
+      assert(/NOT in plan mode/i.test(p), `${n} prompt should forbid plan mode`);
+    }
   });
 
   await check("writeUserEnv writes ~/.hemiunu/.env and a user mcp.json overlay merges", () => {
