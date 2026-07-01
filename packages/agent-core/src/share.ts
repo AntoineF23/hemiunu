@@ -4,17 +4,47 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { discoveryLine, recordDiscovery } from "./atlas";
 import { hasControlHandler, requestControl } from "./control";
-import { cloudflareDeploy, projectNameFor } from "./cloudflare";
+import { activeProvider } from "./deploy";
 import { githubViewer, resolveGithubToken, resolveRepo } from "./github";
 import { commitAndPush, workspacePath } from "./workspace";
 
 /**
  * Sharing a prototype: commit + push the local workspace to its repo, and
- * (on demand) deploy it to a shareable Cloudflare Pages URL. The agent should reach for
- * these only when the user wants to save/share — see the persona.
+ * publish it online. `deploy_prototype` is the one-tap "ship & share" — it
+ * pushes to main AND deploys to a stable shareable URL via the active provider
+ * (see ./deploy). The agent should reach for these only when the user wants to
+ * save/share — see the persona.
  */
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
+
+/**
+ * Record the Atlas discovery for a publish-to-main and surface it. Gamification:
+ * publishing a new version to main earns a random famous building, drawn by
+ * rarity tier, into the user's global Atlas (the map lives in the web app). We
+ * PUSH the announcement to the front-end via the control bridge rather than
+ * return it as tool text — prose tool results get filtered out of the chat, so a
+ * returned line never reaches the user. The bridge lets each surface render a
+ * real message + an Atlas link. Fall back to the tool text only when nobody's
+ * listening (headless). Returns the residual text for the model.
+ */
+async function announcePublish(repo: string, published: string): Promise<string> {
+  const result = recordDiscovery(repo);
+  const line = discoveryLine(result);
+  const m = result.monument;
+  if (hasControlHandler()) {
+    await requestControl({
+      type: "discovery",
+      line,
+      monumentId: m.id,
+      name: m.name,
+      tier: result.tier,
+    });
+    // The discovery was already shown to the user — tell the model not to repeat it.
+    return `${published}\n\n(The Atlas discovery has been shown to the user — don't restate it.)`;
+  }
+  return `${published}\n\n${line}`;
+}
 
 export function createShareServer() {
   const commitTool = tool(
@@ -45,65 +75,56 @@ export function createShareServer() {
         // not the end. The user can keep iterating right where they are; the
         // workspace is only cleared when they leave the team. (commitAndPush
         // already rebased onto the latest main, so the checkout matches main.)
-        // Gamification: publishing a new version to main earns a random famous
-        // building, drawn by rarity tier, into the user's global Atlas. The map
-        // itself lives in the web app. We PUSH the announcement to the front-end
-        // via the control bridge rather than return it as tool text — prose tool
-        // results get filtered out of the chat, so a returned line never reaches
-        // the user. The bridge lets each surface render a real message + an Atlas
-        // link. Fall back to the tool text only when nobody's listening (headless).
-        const result = recordDiscovery(repo);
-        const line = discoveryLine(result);
-        const m = result.monument;
-        const published = `Published to ${r.branch}. Your workspace stays open — keep iterating and publish again whenever you're ready.`;
-        if (hasControlHandler()) {
-          await requestControl({
-            type: "discovery",
-            line,
-            monumentId: m.id,
-            name: m.name,
-            tier: result.tier,
-          });
-          // The discovery was already shown to the user — tell the model not to repeat it.
-          return text(
-            `${published}\n\n(The Atlas discovery has been shown to the user — don't restate it.)`,
-          );
-        }
-        return text(`${published}\n\n${line}`);
+        const published = `Published to ${r.branch}. Your workspace stays open — keep iterating and publish again whenever you're ready. To also put it online, use deploy_prototype.`;
+        return text(await announcePublish(repo, published));
       }
-      return text(`${r.note}. Open a PR for it, or share a preview with deploy_prototype.`);
+      return text(`${r.note}. Share it online with deploy_prototype.`);
     },
     { annotations: { title: "Commit prototype", readOnlyHint: false } },
   );
 
   const deployTool = tool(
     "deploy_prototype",
-    "Deploy the current prototype to a shareable Cloudflare Pages URL. Use ONLY when the user wants to share it (ask first). prod=true for the production URL, else a preview. If Cloudflare isn't connected, the result explains how — relay it to the user rather than retrying.",
-    { prod: z.boolean().optional().describe("Deploy to production (default: a preview URL).") },
-    async ({ prod }) => {
+    "Publish AND share the current prototype in one step: pushes the work to the repo's main branch, then deploys it to a stable, shareable URL (the same link updates in place on each deploy). Use ONLY once the user has validated their changes and wants a link to send around — ask first. If no deploy provider is connected, the result explains how — relay it to the user rather than retrying.",
+    { message: z.string().describe("Short commit message summarizing the changes being shipped.") },
+    async ({ message }) => {
       const repo = resolveRepo();
       if (!repo) return text("No team selected — pick one (/team) first.");
+      const token = resolveGithubToken();
+      if (!token) return text("Not signed in to GitHub — run /github.");
       const dir = workspacePath(repo);
-      if (!existsSync(dir)) return text("No local workspace — run iterate_prototype first.");
-      const r = await cloudflareDeploy(dir, { prod, projectName: projectNameFor(repo) });
-      if ("url" in r) {
-        // The URL is live & serving over HTTPS by the time we return — unless it
-        // was still provisioning (DNS + TLS cert) after the wait, in which case
-        // warn the user so a "can't provide a secure connection" error is expected
-        // rather than alarming.
-        if (r.pending)
-          return text(
-            `Deployed${prod ? " to production" : ""}: ${r.url}\n\n` +
-              "Heads up: the URL is still finishing setup (DNS + its SSL certificate). For the first minute or two it may show “can't provide a secure connection” — that's expected; wait ~1–2 min and reload (an incognito window avoids cached redirects). Tell the user this before they open it.",
-          );
-        return text(`Deployed${prod ? " to production" : ""} (live & verified): ${r.url}`);
-      }
-      if (r.notInstalled) return text(r.error);
-      if (r.needsLogin)
+      if (!existsSync(join(dir, ".git")))
         return text(
-          "Not connected to Cloudflare. Ask the user to run /cloudflare and paste a Cloudflare API token (Pages: Edit). Then try again.",
+          `The workspace for ${repo} isn't set up yet — save the prototype again or run iterate_prototype, then deploy.`,
         );
-      return text(`Deploy failed: ${r.error}`);
+      // Check the share target BEFORE publishing, so "deploy" is atomic: it
+      // either ships + shares, or tells the user to connect a provider first —
+      // never a surprise publish they can't get a link for.
+      const provider = activeProvider();
+      if (!provider) return text("No deploy provider configured (set HEMIUNU_DEPLOY_PROVIDER).");
+      if (!provider.isConfigured()) return text(provider.connectHint());
+
+      // 1. Publish to main. (commitAndPush rebases onto latest main and keeps the
+      // workspace, so we can build & deploy straight from it.)
+      const login = (await githubViewer(token)) ?? undefined;
+      const r = await commitAndPush(repo, { message, token, login, toMain: true });
+      if (!r.ok) return text(r.note);
+
+      // 2. Deploy the workspace to the stable shareable URL.
+      const d = await provider.deploy(dir, { repo });
+      let outcome: string;
+      if ("url" in d) {
+        const note = d.pending
+          ? ` (the link is still finishing setup — DNS + its SSL certificate; for the first minute or two it may show "can't provide a secure connection", so tell the user to wait ~1–2 min and reload)`
+          : "";
+        outcome = `Published to ${r.branch} and deployed online. Give the user this clickable shareable link: ${d.url}${note}`;
+      } else if (d.needsLogin) {
+        outcome = `Published to ${r.branch}, but the share link couldn't be created: ${provider.connectHint()}`;
+      } else {
+        outcome = `Published to ${r.branch}, but the deploy failed: ${d.error}`;
+      }
+      // The publish itself succeeded either way — award the Atlas discovery.
+      return text(await announcePublish(repo, outcome));
     },
     { annotations: { title: "Deploy prototype", readOnlyHint: false } },
   );
