@@ -36,6 +36,7 @@ import {
   cleanResultPreview,
   title,
   toolPreview,
+  isSpilledResultPath,
 } from "../format";
 import { activeMcp, bootRuntime, effectiveSystem, turnRepo } from "../runtime";
 import {
@@ -300,7 +301,16 @@ turnRoute.post("/api/turn", async (c) => {
                 // Asking IS the action — the question card renders it directly, so
                 // don't also show a redundant "ask_user" activity line.
               } else {
-                emit({ type: "tool", name: b.name ?? "tool", preview: toolPreview(b.input), sub });
+                // A read_workspace_file that targets an SDK tool-result overflow
+                // file is internal bookkeeping, not prototype work — relabel it so
+                // it doesn't read as "Working on the prototype" in an internal dir.
+                const rawName = b.name ?? "tool";
+                const path = typeof b.input?.path === "string" ? b.input.path : "";
+                const name =
+                  /read_workspace_file/.test(rawName) && isSpilledResultPath(path)
+                    ? "read_saved_result"
+                    : rawName;
+                emit({ type: "tool", name, preview: toolPreview(b.input), sub });
               }
             }
           }

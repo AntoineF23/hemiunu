@@ -44,6 +44,10 @@ const RULES: Rule[] = [
   { test: /commit_prototype/i, label: "Saving to the repo", icon: GitBranch },
   { test: /deploy_prototype/i, label: "Publishing a shareable link", icon: Link2 },
   { test: /search_workspace/i, label: "Searching the prototype files", icon: Search },
+  // A spilled-tool-result read (synthetic name from the server) — reading back a
+  // large earlier result from disk, NOT prototype work. Must precede the generic
+  // workspace rule so it isn't swallowed by it.
+  { test: /read_saved_result/i, label: "Reading a saved result", icon: FolderOpen },
   {
     test: /iterate_prototype|write_workspace|read_workspace|list_workspace/i,
     label: "Working on the prototype",
