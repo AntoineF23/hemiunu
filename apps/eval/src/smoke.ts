@@ -966,7 +966,7 @@ async function main() {
   });
 
   await check(
-    "auto-save → checkpoint branch (main stays clean); publish → main; reconcile detects divergence",
+    "auto-save commits locally only (nothing pushed to GitHub); publish → main; reconcile detects divergence",
     async () => {
       const cfg = mkdtempSync(join(tmpdir(), "hemiunu-cpcfg-"));
       const bare = mkdtempSync(join(tmpdir(), "hemiunu-cpbare-"));
@@ -992,21 +992,26 @@ async function main() {
         await ensureWorkspace("acme/cp", { cloneUrl: bare });
         writeFileSync(join(workspacePath("acme/cp"), "index.html"), "<h1>v1</h1>");
         const cp = await checkpointWorkspace("acme/cp", { login: "tester" });
-        assert(cp.pushed, `auto-save should push: ${cp.note}`);
+        // Auto-save is LOCAL-ONLY: it commits to the checkpoint branch but does
+        // NOT push — nothing reaches GitHub until publish/deploy.
+        assert(!cp.pushed, `auto-save should NOT push (local-only): ${cp.note}`);
         assert(
           cp.branch === CHECKPOINT_BRANCH,
-          `auto-save should hit the checkpoint branch, got ${cp.branch}`,
+          `auto-save should commit to the checkpoint branch, got ${cp.branch}`,
+        );
+        assert(
+          out(["rev-parse", "--abbrev-ref", "HEAD"], workspacePath("acme/cp")) ===
+            CHECKPOINT_BRANCH,
+          "the workspace should be on the local checkpoint branch",
         );
 
-        // main stays CLEAN; the un-published work lives on the checkpoint branch.
+        // GitHub stays CLEAN: no un-published work on main, and NO checkpoint
+        // branch pushed to origin during iteration.
         g(["clone", bare, verify], tmpdir());
+        assert(!existsSync(join(verify, "index.html")), "main must NOT have un-published work");
         assert(
-          !existsSync(join(verify, "index.html")),
-          "main must NOT have un-published work (auto-save goes to the checkpoint branch)",
-        );
-        assert(
-          out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
-          "the checkpoint branch should carry the work",
+          !out(["branch", "-r"], verify).includes(`origin/${CHECKPOINT_BRANCH}`),
+          "the checkpoint branch must NOT be pushed to origin (local-only auto-save)",
         );
 
         // reconcile sees the divergence (un-published work differs from main).
