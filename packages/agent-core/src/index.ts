@@ -6,7 +6,7 @@ export type { RunTurnOptions } from "./agent";
 export type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 export { withWorkspace, currentWorkspace } from "./workspace-context";
 export type { WorkspaceContext } from "./workspace-context";
-export { loadConfig, configDir, hasApiKey, writeUserEnv } from "./config";
+export { loadConfig, configDir, hasApiKey, writeUserEnv, contextWindowFor } from "./config";
 export type { HemiunuConfig, UserEnv } from "./config";
 export {
   createMemoryServer,
@@ -22,7 +22,12 @@ export { PROVIDERS, PROVIDER_NAMES, resolveProvider } from "./providers";
 export type { ProviderSpec } from "./providers";
 export { createPrototypeServer, SAVE_PROTOTYPE_TOOL_ID, savePrototype, slugify } from "./prototype";
 export type { PrototypeFile, SavePrototypeOptions, SavedPrototype } from "./prototype";
-export { createOrchestratorServer, PARALLEL_TOOL_ID, pool } from "./orchestrator";
+export {
+  createOrchestratorServer,
+  PARALLEL_TOOL_ID,
+  pool,
+  validateParallelTasks,
+} from "./orchestrator";
 export {
   loadSkills,
   loadSkill,
@@ -118,6 +123,8 @@ export type {
   ReconcileStatus,
 } from "./workspace";
 export { startPreview, stopPreview, previewStatus, hasDevScript } from "./preview";
+export { verifyPrototype, capOutput } from "./verify";
+export type { VerifyResult } from "./verify";
 export { createWorkspaceServer, WORKSPACE_TOOLS } from "./iterate";
 export {
   commitAndPush,

@@ -113,8 +113,9 @@ commands, plan-first mode, and a status line.
 **Web app (browser):**
 
 ```bash
-corepack pnpm web        # from the repo
-# or, from anywhere:     node /path/to/hemiunu/bin/hemiunu-web.mjs
+hemiunu-web              # after the curl install, from any folder
+# or, from the repo:
+corepack pnpm web
 ```
 
 Opens **http://127.0.0.1:5173** (a local worker runs on `:4317`). The same agent
@@ -123,8 +124,8 @@ panels for MCP servers, teams, settings, skills, and the prototype brief.
 Plan-first and auto-accept are toggles in the composer.
 
 > Launch either inside a project folder to let the agent read *that* folder. The
-> curl installer wires up the `hemiunu` command; to call the web app from
-> anywhere, add an alias to `…/bin/hemiunu-web.mjs` or run it by path.
+> curl installer wires up both commands: `hemiunu` (terminal) and `hemiunu-web`
+> (browser app).
 
 ## What it can do
 

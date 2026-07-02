@@ -80,6 +80,8 @@ import {
   listDeployProviders,
   setControlHandler,
   requestControl,
+  verifyPrototype,
+  validateParallelTasks,
 } from "@hemiunu/agent-core";
 import { execFileSync } from "node:child_process";
 import { loadContext, buildSystemPrompt, remember, seedContextFiles } from "@hemiunu/memory";
@@ -274,6 +276,49 @@ async function main() {
       assert(/NOT in plan mode/i.test(p), `${n} prompt should forbid plan mode`);
     }
   });
+
+  await check(
+    "hi-fi verification: designer contract, verify skip-paths, fan-out guard",
+    async () => {
+      // The designer must be told to verify the build before reporting done —
+      // the preview answers HTTP 200 even when a component fails to compile.
+      const designer = subagentPrompt("designer");
+      assert(
+        /check_prototype/.test(designer),
+        "designer prompt should require the check_prototype validation pass",
+      );
+      assert(
+        /tsconfig\.json/.test(designer),
+        "designer scaffold should include a tsconfig so check_prototype can type-check",
+      );
+      // verifyPrototype never false-fails: static wireframes and uninstalled
+      // workspaces report ok with a note instead of an error.
+      const dir = mkdtempSync(join(tmpdir(), "hemiunu-smoke-verify-"));
+      try {
+        writeFileSync(join(dir, "index.html"), "<!doctype html><h1>wf</h1>");
+        const wf = await verifyPrototype(dir);
+        assert(wf.ok, "static wireframe must verify ok");
+        writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));
+        const noDeps = await verifyPrototype(dir);
+        assert(noDeps.ok, "uninstalled framework project must skip, not fail");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+      // Concurrent designers must declare disjoint write scopes up front — the
+      // write-scope guard can't protect a task that never declared one.
+      assert(
+        validateParallelTasks([{ agent: "designer" }, { agent: "designer" }]) !== null,
+        "unscoped concurrent designers must be refused",
+      );
+      assert(
+        validateParallelTasks([
+          { agent: "designer", writes: ["src/components/A.tsx"] },
+          { agent: "designer", writes: ["src/components/B.tsx"] },
+        ]) === null,
+        "scoped, disjoint concurrent designers must be allowed",
+      );
+    },
+  );
 
   await check("writeUserEnv writes ~/.hemiunu/.env and a user mcp.json overlay merges", () => {
     // Snapshot every env var writeUserEnv may mutate — the live checks below

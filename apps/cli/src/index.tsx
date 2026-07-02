@@ -14,6 +14,8 @@ import {
   setToolPolicy,
   PARALLEL_TOOL_ID,
   configDir,
+  contextWindowFor as coreContextWindowFor,
+  explainError,
   hasApiKey,
   writeUserEnv,
   upsertUserEnv,
@@ -193,19 +195,13 @@ Use these headings; keep each to short bullets and omit any that are empty:
 Be factual and concise. Output only the summary — no preamble.`;
 
 // Context window adapts to the model (override with HEMIUNU_CONTEXT_WINDOW).
+// The real lookup lives in agent-core (contextWindowFor) so it's tested —
+// undersizing it compacts a 1M-window model at a fraction of its capacity.
 const ENV_WINDOW = process.env.HEMIUNU_CONTEXT_WINDOW
   ? Number(process.env.HEMIUNU_CONTEXT_WINDOW)
   : undefined;
 function contextWindowFor(model: string): number {
-  if (ENV_WINDOW) return ENV_WINDOW;
-  const m = model.toLowerCase();
-  if (m.includes("claude")) return 200_000;
-  if (m.includes("gemini")) return 1_000_000;
-  if (m.includes("grok")) return 256_000;
-  if (m.includes("qwen")) return 256_000;
-  if (m.includes("gpt") || m.includes("o1") || m.includes("o3")) return 128_000;
-  if (m.includes("llama") || m.includes("mistral") || m.includes("deepseek")) return 128_000;
-  return 128_000;
+  return ENV_WINDOW ?? coreContextWindowFor(model);
 }
 const COMPACT_THRESHOLD = Number(process.env.HEMIUNU_COMPACT_THRESHOLD ?? 0.5);
 // Guard against a non-numeric override: NaN would propagate through Math.min/max
@@ -1187,7 +1183,9 @@ function App({
       // Commit the partial group so the work-so-far survives an interrupt/error.
       flushGroup();
       if (ac.signal.aborted) push({ kind: "note", text: "⎯ interrupted" });
-      else push({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+      // explainError turns raw API/network failures into one plain-language
+      // line (it falls back to the raw message when it doesn't recognise one).
+      else push({ kind: "error", text: explainError(e) });
     } finally {
       abortRef.current = null;
       liveRef.current = "";
