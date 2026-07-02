@@ -22,7 +22,7 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning node --import tsx --test \"packages/**/*.test.ts\""
+    "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning node --import tsx --test \"packages/**/*.test.ts\" \"apps/**/*.test.ts\""
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs}": [

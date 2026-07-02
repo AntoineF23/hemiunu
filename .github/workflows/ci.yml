@@ -58,3 +58,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: sk-ci-offline-placeholder-never-used
         run: pnpm smoke --offline
+
+      # Build and pack the publishable package so a broken release bundle (bad
+      # esbuild config, drifted externals, missing files) is caught here rather
+      # than at publish time. `npm pack` runs in release/ to prove the generated
+      # package.json is valid and the tarball assembles.
+      - name: Build release bundle
+        run: pnpm build:release
+
+      - name: Pack release (validate publishable package)
+        run: npm pack --dry-run
+        working-directory: release

@@ -94,6 +94,7 @@ import {
 import { Box, render, Static, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
 import React, { useEffect, useRef, useState } from "react";
+import { compactAt, errText, fmtElapsed, kfmt, tokfmt } from "./format";
 
 // --- ancient-Egypt palette: gold leaf, lapis/faience, sandstone, papyrus ---
 const SAND = "#d7af87"; // gold ochre — accents, the name, prompts
@@ -203,17 +204,7 @@ const ENV_WINDOW = process.env.HEMIUNU_CONTEXT_WINDOW
 function contextWindowFor(model: string): number {
   return ENV_WINDOW ?? coreContextWindowFor(model);
 }
-const COMPACT_THRESHOLD = Number(process.env.HEMIUNU_COMPACT_THRESHOLD ?? 0.5);
-// Guard against a non-numeric override: NaN would propagate through Math.min/max
-// and make `ctxTokens >= ctxWindow * COMPACT_AT` always false, silently disabling
-// auto-compaction until the context overflows.
-const COMPACT_AT = Math.min(
-  0.95,
-  Math.max(0.1, Number.isFinite(COMPACT_THRESHOLD) ? COMPACT_THRESHOLD : 0.5),
-);
-const kfmt = (n: number) => `${Math.round(n / 1000)}k`;
-/** A displayable message for an unknown thrown value. */
-const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const COMPACT_AT = compactAt(process.env.HEMIUNU_COMPACT_THRESHOLD);
 
 // Hieroglyph spinner (a glyph is "carved" each tick) + status words.
 // NB: these live in the Egyptian Hieroglyphs Unicode block — if your terminal
@@ -241,16 +232,6 @@ const WORDS = [
   "Mapping",
   "Summoning",
 ];
-
-function fmtElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
-}
-
-function tokfmt(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
-}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
