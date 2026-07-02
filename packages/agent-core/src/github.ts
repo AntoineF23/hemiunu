@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { configDir } from "./config";
+import { configDir, writeSecretFile } from "./config";
 import { timeoutSignal } from "./net";
 import { currentWorkspace } from "./workspace-context";
 
@@ -75,7 +75,7 @@ function loadGithubAuth(): GithubAuthFile {
 
 function saveGithubAuth(f: GithubAuthFile): void {
   mkdirSync(configDir(), { recursive: true });
-  writeFileSync(githubAuthPath(), `${JSON.stringify(f, null, 2)}\n`, "utf8");
+  writeSecretFile(githubAuthPath(), `${JSON.stringify(f, null, 2)}\n`);
 }
 
 function activeAccountToken(): string | undefined {

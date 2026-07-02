@@ -285,7 +285,11 @@ export interface SubagentRunContext {
   abortController?: AbortController;
 }
 
-function modelFor(spec: SubagentSpec, ctx: SubagentRunContext): string {
+/** Resolve the concrete model a subagent runs on from its tier and the turn context. */
+export function modelFor(
+  spec: SubagentSpec,
+  ctx: Pick<SubagentRunContext, "model" | "researchModel">,
+): string {
   return spec.tier === "research" ? ctx.researchModel : ctx.model;
 }
 

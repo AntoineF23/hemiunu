@@ -19,10 +19,23 @@ function serverUrl(name: string): string | undefined {
   return typeof cfg?.url === "string" ? cfg.url : undefined;
 }
 
+/** Escape text for safe interpolation into HTML. `message` includes
+ *  attacker-controllable OAuth error params and raw exception text, so it must
+ *  never be treated as markup — otherwise a malicious site could top-level
+ *  navigate here and run a same-origin script against the local API. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function resultPage(message: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Hemiunu</title></head>
 <body style="font:16px/1.5 system-ui;background:#1a1714;color:#eadfd0;display:grid;place-items:center;height:100vh;margin:0">
-<p style="max-width:32rem;padding:0 1.5rem;text-align:center">${message}</p></body></html>`;
+<p style="max-width:32rem;padding:0 1.5rem;text-align:center">${escapeHtml(message)}</p></body></html>`;
 }
 
 mcpOAuthRoute.post("/api/mcp/oauth/start", async (c) => {

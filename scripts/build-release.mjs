@@ -8,7 +8,7 @@
 // external). The result in ./release is a self-contained package: `npm pack`
 // or `npm publish` from there, and `npx hemiunu` works on a clean machine.
 import esbuild from "esbuild";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,15 +17,47 @@ const out = join(root, "release");
 const VERSION = "0.1.0";
 
 // Third-party deps left external: required from node_modules at runtime exactly
-// as in dev. React's runtime entry points are subpaths, so list them too.
-const externalDeps = {
-  "@anthropic-ai/claude-agent-sdk": "^0.3.185",
-  "better-sqlite3": "^11.8.0",
-  ink: "^7.1.0",
-  "ink-text-input": "^6.0.0",
-  react: "^19.2.7",
-  zod: "^4.4.3",
-};
+// as in dev (better-sqlite3 is native and *must* stay external; @modelcontextprotocol/sdk
+// and the SDK are kept external to avoid inlining their dynamic requires).
+// Versions are read from the workspace package.json that actually declares each
+// dep, so the released package can never drift from what dev resolves.
+const EXTERNAL_NAMES = [
+  "@anthropic-ai/claude-agent-sdk",
+  "@modelcontextprotocol/sdk",
+  "better-sqlite3",
+  "ink",
+  "ink-text-input",
+  "react",
+  "zod",
+];
+const WORKSPACE_MANIFESTS = [
+  "apps/cli/package.json",
+  "packages/agent-core/package.json",
+  "packages/memory/package.json",
+  "packages/mcp/package.json",
+  "packages/format/package.json",
+];
+function resolveVersions(names, manifests) {
+  const versions = {};
+  for (const rel of manifests) {
+    let deps;
+    try {
+      const pkg = JSON.parse(readFileSync(join(root, rel), "utf8"));
+      deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (versions[name] == null && typeof deps?.[name] === "string") versions[name] = deps[name];
+    }
+  }
+  const missing = names.filter((n) => versions[n] == null);
+  if (missing.length) {
+    throw new Error(`build-release: no workspace declares external dep(s): ${missing.join(", ")}`);
+  }
+  return versions;
+}
+const externalDeps = resolveVersions(EXTERNAL_NAMES, WORKSPACE_MANIFESTS);
 const external = [...Object.keys(externalDeps), "react/jsx-runtime", "react/jsx-dev-runtime"];
 
 console.log("• cleaning release/");
@@ -112,7 +144,7 @@ const pkg = {
   license: "MIT",
   type: "module",
   bin: { hemiunu: "bin/hemiunu.mjs" },
-  engines: { node: ">=20" },
+  engines: { node: ">=22" },
   files: ["dist", "bin", "context", "mcp.json", "assets", "README.md", "LICENSE"],
   dependencies: externalDeps,
 };

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
@@ -8,6 +8,22 @@ const PLACEHOLDER_KEY = "sk-your-litellm-key-here";
 /** Hemiunu's per-user config + data dir (keys, conversations, folder-trust). */
 export function configDir(): string {
   return process.env.HEMIUNU_CONFIG_DIR ?? join(homedir(), ".hemiunu");
+}
+
+/**
+ * Write a file that holds credentials (API keys, GitHub / OAuth tokens) with
+ * owner-only permissions (0600), so they aren't world-readable on a shared
+ * machine. The `mode` option only applies when the file is created, so we also
+ * `chmod` an existing file to repair permissions written by older versions.
+ * Best-effort: chmod is a no-op on platforms that don't support POSIX modes.
+ */
+export function writeSecretFile(path: string, data: string): void {
+  writeFileSync(path, data, { encoding: "utf8", mode: 0o600 });
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    // e.g. Windows / filesystems without POSIX permissions — ignore.
+  }
 }
 
 /**
@@ -104,7 +120,7 @@ export function writeUserEnv(env: UserEnv): string {
   if (baseUrl) lines.unshift(`ANTHROPIC_BASE_URL=${baseUrl}`);
   if (env.model) lines.push(`HEMIUNU_MODEL=${env.model}`);
   const path = join(dir, ".env");
-  writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
+  writeSecretFile(path, `${lines.join("\n")}\n`);
 
   process.env.ANTHROPIC_API_KEY = env.apiKey;
   if (baseUrl) process.env.ANTHROPIC_BASE_URL = baseUrl;

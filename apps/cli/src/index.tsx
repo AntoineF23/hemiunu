@@ -203,11 +203,17 @@ const ENV_WINDOW = process.env.HEMIUNU_CONTEXT_WINDOW
 function contextWindowFor(model: string): number {
   return ENV_WINDOW ?? coreContextWindowFor(model);
 }
+const COMPACT_THRESHOLD = Number(process.env.HEMIUNU_COMPACT_THRESHOLD ?? 0.5);
+// Guard against a non-numeric override: NaN would propagate through Math.min/max
+// and make `ctxTokens >= ctxWindow * COMPACT_AT` always false, silently disabling
+// auto-compaction until the context overflows.
 const COMPACT_AT = Math.min(
   0.95,
-  Math.max(0.1, Number(process.env.HEMIUNU_COMPACT_THRESHOLD ?? 0.5)),
+  Math.max(0.1, Number.isFinite(COMPACT_THRESHOLD) ? COMPACT_THRESHOLD : 0.5),
 );
 const kfmt = (n: number) => `${Math.round(n / 1000)}k`;
+/** A displayable message for an unknown thrown value. */
+const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 // Hieroglyph spinner (a glyph is "carved" each tick) + status words.
 // NB: these live in the Egyptian Hieroglyphs Unicode block — if your terminal
@@ -552,7 +558,14 @@ function App({
   const refreshGithubLogin = () => {
     // syncGithubStatus adopts an existing env/`gh` identity into the store so the
     // footer shows it (and it becomes switchable), then returns the active login.
-    void (async () => setGithubLogin((await syncGithubStatus()).login ?? null))();
+    // Best-effort: a network/`gh` failure just leaves the footer label unchanged.
+    void (async () => {
+      try {
+        setGithubLogin((await syncGithubStatus()).login ?? null);
+      } catch {
+        /* offline or gh unavailable — keep the current label */
+      }
+    })();
   };
   useEffect(refreshGithubLogin, []);
 
@@ -1264,7 +1277,13 @@ function App({
   async function syncTeamsWithGithub(): Promise<void> {
     const token = resolveGithubToken();
     if (!token) return;
-    const removed = await pruneTeams(token);
+    // Best-effort startup cleanup — a GitHub outage must not crash the app.
+    let removed: string[];
+    try {
+      removed = await pruneTeams(token);
+    } catch {
+      return;
+    }
     if (!removed.length) return;
     setTeams(listTeams());
     if (currentProjectRef.current && removed.includes(currentProjectRef.current))
@@ -1287,6 +1306,24 @@ function App({
     setTeams(listTeams());
     push({ kind: "note", text: `· ${repo} no longer on GitHub — working locally` });
     return false;
+  }
+
+  // Switch into a team: verify its repo is alive, carry any local work into the
+  // checkout, then make it current. Drops to local if the repo is gone. Wrapped
+  // so a network/git failure surfaces as an error item instead of an unhandled
+  // rejection (these run detached from the render as fire-and-forget IIFEs).
+  async function enterTeam(target: string, opts: { note?: boolean } = {}): Promise<void> {
+    try {
+      if (!(await ensureTeamAlive(target))) {
+        switchProject(null);
+        return;
+      }
+      await bringLocalWorkInto(target);
+      switchProject(target);
+      if (opts.note) push({ kind: "note", text: `· switched to team ${target}` });
+    } catch (e) {
+      push({ kind: "error", text: `✗ couldn't switch to ${target}: ${errText(e)}` });
+    }
   }
 
   // Set the current team WITHOUT resetting the conversation — used by the
@@ -2106,23 +2143,14 @@ function App({
               return;
             }
             // Verify the repo still exists, then carry local work in and switch.
-            void (async () => {
-              if (!(await ensureTeamAlive(target))) return switchProject(null);
-              await bringLocalWorkInto(target);
-              switchProject(target);
-            })();
+            void enterTeam(target);
           },
         });
         return;
       }
       const repo = addTeam(arg);
       setTeams(listTeams());
-      void (async () => {
-        if (!(await ensureTeamAlive(repo))) return switchProject(null);
-        await bringLocalWorkInto(repo); // carry any local work into the repo first
-        switchProject(repo);
-        push({ kind: "note", text: `· switched to team ${repo}` });
-      })();
+      void enterTeam(repo, { note: true });
       return;
     }
     if (cmd === "scan") {
@@ -2324,12 +2352,7 @@ function App({
           const target = next === "" ? null : next;
           if (target === null) switchProject(null);
           // Verify the repo still exists, then carry local work in and switch.
-          else
-            void (async () => {
-              if (!(await ensureTeamAlive(target))) return switchProject(null);
-              await bringLocalWorkInto(target);
-              switchProject(target);
-            })();
+          else void enterTeam(target);
         }
       }
     },
@@ -2835,4 +2858,7 @@ async function main() {
   store.close();
 }
 
-main();
+main().catch((err) => {
+  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
+  process.exit(1);
+});

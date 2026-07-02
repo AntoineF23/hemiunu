@@ -2,7 +2,7 @@
 // startup with a cryptic error about a missing API or an ABI-mismatched native
 // module — useless to a non-coder. This turns that into a clear, actionable
 // message before anything else runs.
-const MIN_MAJOR = 20;
+const MIN_MAJOR = 22;
 
 export function requireNode(min = MIN_MAJOR) {
   const major = Number(process.versions.node.split(".")[0]);

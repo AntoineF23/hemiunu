@@ -194,7 +194,7 @@ export type { DeployProvider, DeployResult } from "./deploy";
 export { setControlHandler, requestControl, addTeammate, removeTeammate } from "./control";
 export type { ControlEvent, AskQuestion } from "./control";
 export { createAskServer, ASK_TOOLS, ASK_USER_TOOL_ID } from "./ask";
-export { runSubagent, subagentPrompt, SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
+export { runSubagent, subagentPrompt, modelFor, SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
 export type { SubagentName, SubagentSpec, SubagentRunContext, SubagentEvent } from "./subagents";
 export {
   startMcpAuth,

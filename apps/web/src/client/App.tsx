@@ -32,7 +32,7 @@ import { friendlyTool } from "./friendly";
 import { StatusWord } from "./Hieroglyphs";
 import { sendJSON } from "./lib/api";
 import { Markdown } from "./Markdown";
-import { useSettings } from "./useSettings";
+import { useSettings, DEFAULT_MODEL } from "./useSettings";
 import { useSkills } from "./useSkills";
 import { type ChatItem, useTurnStream } from "./useTurnStream";
 
@@ -266,7 +266,7 @@ export function App() {
     setDraft("");
   }, [draft, busy, send, skills, runCommand, planMode, autoAccept]);
 
-  const model = settings?.model ?? "claude-opus-4.8";
+  const model = settings?.model ?? DEFAULT_MODEL;
   const empty = items.length === 0;
   const lastId = items[items.length - 1]?.id;
 
