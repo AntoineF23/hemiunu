@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import { configDir } from "./config";
+import { configDir, writeSecretFile } from "./config";
 
 /**
  * Persistent per-tool / per-server permission policy for MCP tools, so a user
@@ -41,7 +41,7 @@ export function loadToolPolicy(root: string = configDir()): ToolPolicyFile {
 
 function save(cfg: ToolPolicyFile, root: string): void {
   mkdirSync(root, { recursive: true });
-  writeFileSync(policyPath(root), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+  writeSecretFile(policyPath(root), `${JSON.stringify(cfg, null, 2)}\n`);
 }
 
 /** Server name from a tool id: `mcp__filesystem__read_file` → `filesystem` (else ""). */
