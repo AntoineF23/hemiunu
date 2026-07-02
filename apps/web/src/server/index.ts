@@ -8,6 +8,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { registerControlHandler } from "./control";
+import { originGuard } from "./origin-guard";
 import { bootRuntime } from "./runtime";
 import { atlasRoute } from "./routes/atlas";
 import { conversationsRoute } from "./routes/conversations";
@@ -28,24 +29,9 @@ const PORT = Number(process.env.HEMIUNU_WEB_PORT ?? 4317);
 const app = new Hono();
 
 // DNS-rebinding / cross-origin guard: a malicious web page must not be able to
-// POST to this local worker. Allow only same-origin localhost callers (and
-// same-origin requests, which omit Origin). The Vite dev client on :5173
-// proxies through to us, so its requests carry no cross-site Origin.
-app.use("/api/*", async (c, next) => {
-  const origin = c.req.header("origin");
-  if (origin) {
-    let host: string;
-    try {
-      host = new URL(origin).hostname;
-    } catch {
-      return c.json({ error: "bad origin" }, 403);
-    }
-    if (host !== "127.0.0.1" && host !== "localhost") {
-      return c.json({ error: "forbidden origin" }, 403);
-    }
-  }
-  return next();
-});
+// POST to this local worker. The Vite dev client on :5173 proxies through to us,
+// so its requests carry no cross-site Origin. See ./origin-guard for the policy.
+app.use("/api/*", originGuard);
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/", settingsRoute);

@@ -5,7 +5,8 @@
 import { useCallback, useRef, useState } from "react";
 import { type ActivityEvent, type ActivityGroup, reduceActivity } from "@hemiunu/format/activity";
 import { friendlyTool } from "./friendly";
-import type { PermissionDecision, ServerEvent } from "../shared/protocol";
+import { sseFrames } from "./sse";
+import type { PermissionDecision } from "../shared/protocol";
 
 export interface ChatItem {
   id: number;
@@ -77,30 +78,6 @@ export interface TurnState {
   loadConversation: (sessionId: string, messages: { role: string; content: string }[]) => void;
   /** SDK session id currently loaded in the thread (undefined for a fresh chat). */
   currentSessionId: string | undefined;
-}
-
-/** Parse a fetch stream as SSE, yielding each `data:` frame's parsed JSON. */
-async function* sseFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<ServerEvent> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let i: number;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const frame = buf.slice(0, i);
-      buf = buf.slice(i + 2);
-      const line = frame.split("\n").find((l) => l.startsWith("data:"));
-      if (!line) continue;
-      try {
-        yield JSON.parse(line.slice(5).trim()) as ServerEvent;
-      } catch {
-        /* ignore malformed frame */
-      }
-    }
-  }
 }
 
 export function useTurnStream(onTeam?: (repo: string | null) => void): TurnState {
