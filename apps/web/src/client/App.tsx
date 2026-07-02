@@ -6,6 +6,8 @@ import {
   ClipboardList,
   CornerDownRight,
   FileText,
+  KeyRound,
+  Loader2,
   MapPin,
   PencilLine,
   Share2,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { summarizeGroup } from "@hemiunu/format/activity";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ArtifactCard } from "@/components/ArtifactCard";
 import { Composer } from "@/components/Composer";
 import { Home } from "@/components/Home";
@@ -314,6 +317,9 @@ export function App() {
 
   const composer = (
     <>
+      {/* First-run gate: without a key the first turn would fail with a raw
+          error, so ask for it up front — right where the user is about to type. */}
+      {settings && !settings.hasApiKey && <FirstRunKeyCard onSaved={refresh} />}
       {reconcilePrompt}
       <Composer
         draft={draft}
@@ -591,6 +597,68 @@ export function App() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+// First-run setup, web-only path: the CLI collects the API key on first launch,
+// but a user who starts with the web app has no key yet — without this card
+// their first message fails with an error pointing them back to the terminal.
+// Saves through the same endpoint as the Settings panel (~/.hemiunu/.env).
+function FirstRunKeyCard({ onSaved }: { onSaved: () => void }) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const save = async () => {
+    if (!key.trim() || busy) return;
+    setBusy(true);
+    setFlash(null);
+    try {
+      await sendJSON("/api/settings/anthropic-key", { key: key.trim() });
+      setKey("");
+      onSaved();
+    } catch {
+      setFlash("Couldn't save the key — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="perm mb-2.5">
+      <div className="perm-head">
+        <KeyRound size={16} className="perm-icon" />
+        <span>
+          <strong>One-time setup:</strong> add your Anthropic API key to start building. It's stored
+          only on this computer.
+        </span>
+      </div>
+      <div className="perm-actions items-center">
+        <Input
+          type="password"
+          placeholder="sk-ant-…"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+          }}
+          autoFocus
+        />
+        <Button size="sm" onClick={() => void save()} disabled={busy || !key.trim()}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : "Save key"}
+        </Button>
+      </div>
+      <p className="mt-1.5 text-xs text-ink-3">
+        No key yet?{" "}
+        <a
+          href="https://console.anthropic.com/settings/keys"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Create one at console.anthropic.com
+        </a>
+        {flash ? ` — ${flash}` : ""}
+      </p>
     </div>
   );
 }

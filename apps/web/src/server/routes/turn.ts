@@ -12,6 +12,7 @@ import {
   applyMcpOAuth,
   asStream,
   checkpointWorkspace,
+  explainError,
   generateTitle,
   GET_SOURCE_MAP_TOOL_ID,
   githubViewer,
@@ -405,7 +406,9 @@ turnRoute.post("/api/turn", async (c) => {
       }
     } catch (e) {
       if (session.ac.signal.aborted) emit({ type: "interrupted" });
-      else emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      // explainError turns raw API/network failures into one plain-language
+      // line (it falls back to the raw message when it doesn't recognise one).
+      else emit({ type: "error", message: explainError(e) });
     } finally {
       clearTimeout(idleTimer);
     }

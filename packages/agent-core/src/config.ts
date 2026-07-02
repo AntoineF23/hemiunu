@@ -143,7 +143,31 @@ export function loadConfig(): HemiunuConfig {
     budget > 0 ? { type: "enabled", budgetTokens: budget } : { type: "disabled" };
 
   if (!apiKey) {
-    throw new Error("Missing ANTHROPIC_API_KEY. Run `hemiunu` and complete first-run setup.");
+    throw new Error(
+      "Missing ANTHROPIC_API_KEY. Add your Anthropic API key in Settings (web app) or run `hemiunu` and complete first-run setup (terminal).",
+    );
   }
   return { baseUrl, apiKey, model, researchModel, thinking };
+}
+
+/**
+ * Context window (tokens) for a model id. Claude Opus 4.6+, Sonnet 4.6+/5, and
+ * Fable/Mythos serve a 1M-token window; Haiku and older Claude models 200k. A
+ * `[1m]` suffix (how gateways/proxies name the long-context variant) always
+ * selects 1M. Getting this wrong is expensive: the CLI auto-compacts at a
+ * fraction of this value, and compacting a 1M model at 200k throws away 80% of
+ * the usable window and drops the session's prompt cache with it.
+ */
+export function contextWindowFor(model: string): number {
+  const m = model.toLowerCase();
+  if (m.includes("[1m]")) return 1_000_000;
+  if (m.includes("claude") || m.includes("opus") || m.includes("sonnet") || m.includes("haiku")) {
+    if (m.includes("haiku")) return 200_000;
+    if (/opus-4[.-][678]/.test(m) || /sonnet-4[.-]6/.test(m)) return 1_000_000;
+    if (/(sonnet|fable|mythos|opus)-5/.test(m)) return 1_000_000;
+    return 200_000;
+  }
+  if (m.includes("gemini")) return 1_000_000;
+  if (m.includes("grok") || m.includes("qwen")) return 256_000;
+  return 128_000;
 }

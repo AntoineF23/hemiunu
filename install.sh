@@ -65,10 +65,12 @@ if ! "$APP_DIR/node_modules/.bin/tsx" -e 'process.exit(0)' >/dev/null 2>&1; then
 fi
 rm -f "$LOG"
 
-# 4. Expose the `hemiunu` command (symlink resolves back to the install dir).
+# 4. Expose the `hemiunu` (terminal) and `hemiunu-web` (browser app) commands
+# (symlinks resolve back to the install dir).
 mkdir -p "$BIN_DIR"
-chmod +x "$APP_DIR/bin/hemiunu.mjs"
+chmod +x "$APP_DIR/bin/hemiunu.mjs" "$APP_DIR/bin/hemiunu-web.mjs"
 ln -sf "$APP_DIR/bin/hemiunu.mjs" "$BIN_DIR/hemiunu"
+ln -sf "$APP_DIR/bin/hemiunu-web.mjs" "$BIN_DIR/hemiunu-web"
 
 # 5. PATH guidance (keys are collected by `hemiunu` on first run - no file editing).
 case ":$PATH:" in
@@ -77,4 +79,5 @@ case ":$PATH:" in
      printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
 esac
 
-sage "Done. Run:  hemiunu   (it will ask for your API key the first time)"
+sage "Done. Run:  hemiunu   (terminal)  or  hemiunu-web   (browser app)"
+sage "Either one will ask for your API key the first time."

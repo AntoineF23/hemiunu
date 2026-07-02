@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sdkConfigDir } from "./config";
 import { resolveGithubToken, resolveRepo } from "./github";
 import { previewStatus, startPreview } from "./preview";
+import { verifyPrototype } from "./verify";
 import { activeProtoDir, ensureWorkspace, localWorkspaceDir } from "./workspace";
 
 /**
@@ -278,10 +279,25 @@ export function createWorkspaceServer() {
     { annotations: { title: "Write workspace file", readOnlyHint: false } },
   );
 
+  const checkTool = tool(
+    "check_prototype",
+    "Verify the current prototype actually compiles (TypeScript check, or a production build when there's no tsconfig). The live preview can look fine while a component fails to compile — run this ONCE when a hi-fi build is complete (the WIRE/validation pass), fix any errors it reports with write_workspace_file, then run it once more to confirm. Skips gracefully for static HTML wireframes.",
+    {},
+    async () => {
+      const dir = await ensureProtoReady();
+      const r = await verifyPrototype(dir);
+      if (r.ok) return text(`✓ ${r.note}.`);
+      return text(
+        `✗ ${r.note} — the preview may look up but the build is broken. Fix these with write_workspace_file, then run check_prototype once more:\n\n${r.output}`,
+      );
+    },
+    { annotations: { title: "Check prototype", readOnlyHint: true } },
+  );
+
   return createSdkMcpServer({
     name: "hemiunu-workspace",
     version: "0.0.0",
-    tools: [iterateTool, listTool, readTool, searchTool, writeTool],
+    tools: [iterateTool, listTool, readTool, searchTool, writeTool, checkTool],
   });
 }
 
