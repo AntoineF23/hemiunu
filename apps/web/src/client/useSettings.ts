@@ -44,7 +44,14 @@ export function useSettings() {
   return { settings, refresh, setModel };
 }
 
-/** The known brain models the model selector offers (label + id). */
+/** Fallback brain model id shown before the server reports the active one.
+ *  Must match the server default in apps/web/src/server/runtime.ts. */
+export const DEFAULT_MODEL = "claude-opus-4.8";
+
+/** The known brain models the model selector offers (label + id). The dashed ids
+ *  are the direct-Anthropic names; the dotted "(proxy)" ids are what a gateway
+ *  such as the LiteLLM proxy exposes — both are kept so the label resolves
+ *  whichever endpoint the user configured. */
 export const MODELS: { id: string; label: string }[] = [
   { id: "claude-opus-4-8", label: "Opus 4.8" },
   { id: "claude-opus-4.8", label: "Opus 4.8 (proxy)" },

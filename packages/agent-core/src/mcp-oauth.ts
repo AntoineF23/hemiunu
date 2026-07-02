@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { configDir } from "./config";
+import { configDir, writeSecretFile } from "./config";
 import { timeoutSignal } from "./net";
 
 /**
@@ -62,7 +62,7 @@ function loadFile(): McpOAuthFile {
 
 function saveFile(f: McpOAuthFile): void {
   mkdirSync(configDir(), { recursive: true });
-  writeFileSync(authPath(), `${JSON.stringify(f, null, 2)}\n`, "utf8");
+  writeSecretFile(authPath(), `${JSON.stringify(f, null, 2)}\n`);
 }
 
 function getRecord(server: string): McpOAuthRecord | undefined {

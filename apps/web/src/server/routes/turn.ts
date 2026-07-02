@@ -103,9 +103,18 @@ turnRoute.post("/api/turn", async (c) => {
         session.ac.abort();
       }, idleMs);
     };
+    // Serialize SSE writes through a promise chain so events keep their order
+    // under backpressure, and swallow writes that reject after the client has
+    // disconnected (otherwise they surface as unhandled rejections).
+    let writeChain: Promise<void> = Promise.resolve();
     const emit = (e: ServerEvent) => {
       armIdle();
-      return void stream.writeSSE({ data: JSON.stringify(e) });
+      writeChain = writeChain.then(() =>
+        stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {
+          /* client gone / stream closed — stop writing */
+        }),
+      );
+      return writeChain;
     };
     session.emit = emit;
     // Browser closed the tab / navigated away → abort the live turn.

@@ -32,6 +32,7 @@ import {
   loadConfig,
   configDir,
   SUBAGENTS,
+  modelFor,
   PARALLEL_TOOL_ID,
   type RunTurnOptions,
 } from "@hemiunu/agent-core";
@@ -142,7 +143,15 @@ async function main() {
     await check("S9 researcher uses the research tier; prototyper the synthesis tier", () => {
       assert(SUBAGENTS.researcher.tier === "research", "researcher must be on the research tier");
       assert(SUBAGENTS.prototyper.tier === "synthesis", "prototyper must be on the synthesis tier");
-      assert(RESEARCH !== MODEL || true, "research tier is wired to researchModel in runTurn");
+      const ctx = { model: MODEL, researchModel: RESEARCH };
+      assert(
+        modelFor(SUBAGENTS.researcher, ctx) === RESEARCH,
+        "the research tier must resolve to researchModel",
+      );
+      assert(
+        modelFor(SUBAGENTS.prototyper, ctx) === MODEL,
+        "the synthesis tier must resolve to the main model",
+      );
     });
 
   // ---- S1: grounded answer from a connected source ----
@@ -153,7 +162,7 @@ async function main() {
         { "pricing.md": "# Pricing\n\nThe Pro tier launches at €14 per month.\n" },
         "Using ONLY the connected sources, what is the Pro tier launch price? Answer in one short sentence.",
       );
-      assert(/14/.test(d.text), `expected the €14 fact, got: ${d.text.slice(0, 120)}`);
+      assert(/€?\s?14\b/.test(d.text), `expected the €14 fact, got: ${d.text.slice(0, 120)}`);
       assert(
         d.delegations.includes("researcher") || calledTool(d, "filesystem"),
         "expected it to actually consult the source (researcher delegation or a filesystem read)",
