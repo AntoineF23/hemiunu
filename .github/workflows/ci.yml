@@ -1,0 +1,70 @@
+name: CI
+
+# Gates every push to main and every pull request on the same checks a
+# developer runs locally (see the "Develop & verify" section of the README).
+# Live `smoke` / `cap` are intentionally NOT run here: they call the model,
+# cost money, and need an ANTHROPIC_API_KEY — CI carries no secrets. The
+# offline smoke below is free and deterministic.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref so a quick succession of pushes
+# doesn't pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # corepack provides the exact pnpm pinned in package.json
+      # (packageManager: pnpm@11.8.0) as a real binary on PATH, which both
+      # setup-node's cache and turbo need.
+      - name: Enable Corepack
+        run: corepack enable
+
+      # Node 22+ is required: the pinned pnpm@11.8.0 uses the node:sqlite
+      # builtin, which only exists in Node 22.13+.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format
+
+      - name: Test
+        run: pnpm test
+
+      # Offline mode makes no network calls and needs NO API key: first-run
+      # readiness is provider-agnostic (any usable registry model), so
+      # loadConfig() no longer demands ANTHROPIC_API_KEY. This runs exactly as
+      # a fresh keyless machine would.
+      - name: Smoke (offline)
+        run: pnpm smoke --offline
+
+      # Build and pack the publishable package so a broken release bundle (bad
+      # esbuild config, drifted externals, missing files) is caught here rather
+      # than at publish time. `npm pack` runs in release/ to prove the generated
+      # package.json is valid and the tarball assembles.
+      - name: Build release bundle
+        run: pnpm build:release
+
+      - name: Pack release (validate publishable package)
+        run: npm pack --dry-run
+        working-directory: release

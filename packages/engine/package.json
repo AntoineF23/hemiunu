@@ -1,0 +1,31 @@
+{
+  "name": "@hemiunu/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.5",
+    "@ai-sdk/google": "4.0.6",
+    "@ai-sdk/openai": "4.0.5",
+    "@ai-sdk/openai-compatible": "3.0.3",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@mozilla/readability": "0.6.0",
+    "ai": "7.0.11",
+    "better-sqlite3": "^11.8.0",
+    "linkedom": "0.18.12",
+    "turndown": "7.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "4.0.1",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/turndown": "5.0.6"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@hemiunu/eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "tsx src/smoke.ts",
+    "cap": "tsx src/capability.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hemiunu/agent-core": "workspace:*",
+    "@hemiunu/engine": "workspace:*",
+    "@hemiunu/memory": "workspace:*",
+    "@hemiunu/mcp": "workspace:*"
+  }
+}

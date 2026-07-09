@@ -1,0 +1,311 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { todayISO } from "./date";
+import { explainError } from "./explain";
+import { parseFrontmatter, renderFrontmatter } from "./frontmatter";
+import {
+  commitFile,
+  getFile,
+  githubViewer,
+  repoExists,
+  resolveGithubToken,
+  resolveRepo,
+} from "./github";
+import { slugify } from "./prototype";
+import { localWorkspaceDir, workspacePath } from "./workspace";
+
+/**
+ * A 404 from the Contents API is ambiguous: the FILE may be absent, OR the whole
+ * repo may be unreachable by this token (wrong GitHub account / revoked access).
+ * When something 404s, confirm the repo is actually reachable; if not, return
+ * actionable guidance instead of pretending the file just needs creating — this
+ * is the single most common confusing failure for a non-coder.
+ */
+async function repoAccessError(token: string, repo: string): Promise<string | null> {
+  return (await repoExists(token, repo))
+    ? null
+    : `can't reach ${repo} — you may be signed in to a different GitHub account, or access was revoked. Reconnect with /github (or switch accounts), then try again.`;
+}
+
+/**
+ * Team-knowledge layer. A team = a feature = a repo (1:1), so each repo carries
+ * ONE living knowledge file — `PROTOTYPE.md` at the repo ROOT — holding the
+ * feature's brief and memory (goal, primary user, sources, decisions, open
+ * questions). This is the REMOTE path: it reads/commits that file straight
+ * through the GitHub Contents API, so the agent maintains it WITHOUT cloning.
+ */
+
+/** The feature's knowledge file, at the repo root. */
+export const PROTOTYPE_FILE = "PROTOTYPE.md";
+
+export type NoteKind = "decision" | "question" | "feedback" | "note";
+
+const SECTION: Record<NoteKind, string> = {
+  decision: "Decisions",
+  question: "Open questions",
+  feedback: "Feedback",
+  note: "Notes",
+};
+
+/** Path of the current feature's knowledge file (repo root). */
+export function prototypePath(): string {
+  return PROTOTYPE_FILE;
+}
+
+function titleize(name: string): string {
+  const t = name
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+  return t || name;
+}
+
+/** Insert `bullet` at the end of the `## heading` section, creating it if absent. */
+function appendUnderHeading(body: string, heading: string, bullet: string): string {
+  const lines = body.length ? body.split("\n") : [];
+  const hi = lines.findIndex((l) => l.trim() === heading);
+  if (hi === -1) {
+    const base = body.trim();
+    return `${base ? `${base}\n\n` : ""}${heading}\n${bullet}`;
+  }
+  let end = lines.length;
+  for (let i = hi + 1; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  while (end - 1 > hi && lines[end - 1].trim() === "") end--; // drop trailing blanks in section
+  lines.splice(end, 0, bullet);
+  return lines.join("\n");
+}
+
+/** Ensure/refresh the frontmatter for the feature's knowledge file. */
+function withFrontmatter(
+  existing: Record<string, string>,
+  feature: string,
+  date: string,
+  body: string,
+  authorAsOwner?: string,
+): string {
+  return renderFrontmatter(
+    {
+      title: existing.title || titleize(feature),
+      feature: existing.feature || slugify(feature),
+      owner: existing.owner || authorAsOwner,
+      status: existing.status || "building",
+      updated: date,
+    },
+    body,
+  );
+}
+
+/**
+ * Pure transform: append a knowledge entry to the feature's PROTOTYPE.md content
+ * (or build it from scratch when `current` is null). Append-only, so concurrent
+ * remote edits re-apply cleanly on retry.
+ */
+export function appendKnowledge(
+  current: string | null,
+  feature: string,
+  kind: NoteKind,
+  text: string,
+  author: string,
+  date: string,
+): string {
+  const parsed = current ? parseFrontmatter(current) : { meta: {}, body: "" };
+  const bullet =
+    kind === "question"
+      ? `- [ ] ${text.trim()} (${author}, ${date})`
+      : `- ${date} (${author}): ${text.trim()}`;
+  const body = appendUnderHeading(parsed.body, `## ${SECTION[kind]}`, bullet);
+  return withFrontmatter(parsed.meta, feature, date, body, author);
+}
+
+interface RemoteOpts {
+  repo?: string;
+  token?: string;
+  branch?: string;
+}
+
+function featureName(repo: string): string {
+  return repo.split("/")[1] ?? repo;
+}
+
+// --- No-team (local) backend -------------------------------------------------
+// With no team selected, knowledge is kept in a local PROTOTYPE.md in the launch
+// folder, so work isn't lost; the agent suggests creating a team to push later.
+function localPath(): string {
+  return join(localWorkspaceDir(), PROTOTYPE_FILE);
+}
+function readLocal(): string | null {
+  return existsSync(localPath()) ? readFileSync(localPath(), "utf8") : null;
+}
+// Agent-facing nudge: with no team, feature work isn't in a repo. Steer the
+// agent to set one up ITSELF (create_team) rather than telling the user to run a
+// manual command — most users don't think in "teams"/"repos". See soul.md.
+const LOCAL_HINT =
+  "It isn't saved to a repo yet. If the user is building a real feature (not a quick throwaway), set up a space for it yourself with create_team so the work persists — don't ask them to create one manually.";
+
+// --- Active-workspace backend ------------------------------------------------
+// When a team CHECKOUT exists (active prototyping), PROTOTYPE.md lives IN the
+// workspace and travels with the code through checkpoint → publish. Writing it
+// here (instead of an out-of-band Contents-API commit to main) keeps the local
+// workspace in lock-step with the remote — the separate main commit was what
+// made main diverge from the checkout (blocked publishes, discarded code). We
+// fall back to the Contents API only when there's no checkout yet.
+function workspaceProtoPath(repo: string): string {
+  return join(workspacePath(repo), PROTOTYPE_FILE);
+}
+function hasCheckout(repo: string): boolean {
+  return existsSync(join(workspacePath(repo), ".git"));
+}
+function readWorkspaceProto(repo: string): string | null {
+  const p = workspaceProtoPath(repo);
+  return existsSync(p) ? readFileSync(p, "utf8") : null;
+}
+
+/**
+ * Append a note/decision/question/feedback to the current feature's PROTOTYPE.md.
+ * With a team selected → commit to the repo root via the GitHub API (no clone);
+ * with no team → write a local PROTOTYPE.md in the launch folder.
+ */
+export async function addPrototypeNote(
+  kind: NoteKind,
+  text: string,
+  opts?: RemoteOpts,
+): Promise<string> {
+  const repo = opts?.repo ?? resolveRepo();
+  const date = todayISO();
+  if (!repo) {
+    const next = appendKnowledge(readLocal(), "prototype", kind, text, "you", date);
+    mkdirSync(localWorkspaceDir(), { recursive: true });
+    writeFileSync(localPath(), next, "utf8");
+    return `Saved ${kind} locally. ${LOCAL_HINT}`;
+  }
+  // Active prototype checkout → keep the note in the workspace so it publishes
+  // with the build (no out-of-band main commit that would diverge the checkout).
+  if (hasCheckout(repo)) {
+    const tok = opts?.token ?? resolveGithubToken();
+    const author = tok ? ((await githubViewer(tok)) ?? "you") : "you";
+    const next = appendKnowledge(
+      readWorkspaceProto(repo),
+      featureName(repo),
+      kind,
+      text,
+      author,
+      date,
+    );
+    writeFileSync(workspaceProtoPath(repo), next, "utf8");
+    return `Saved ${kind} to the prototype's PROTOTYPE.md — it publishes to ${repo} with the build.`;
+  }
+  const token = opts?.token ?? resolveGithubToken();
+  if (!token)
+    return "Not signed in to GitHub — run /github, or switch to “no team” (Shift+Tab) to work locally.";
+  try {
+    const author = (await githubViewer(token)) ?? "unknown";
+    const feature = featureName(repo);
+    const { commitUrl } = await commitFile(
+      token,
+      repo,
+      PROTOTYPE_FILE,
+      (cur) => appendKnowledge(cur, feature, kind, text, author, date),
+      `PROTOTYPE.md: add ${kind}`,
+      opts?.branch,
+    );
+    return `Added ${kind} to ${repo}'s PROTOTYPE.md${commitUrl ? ` — ${commitUrl}` : ""}.`;
+  } catch (e) {
+    const access = await repoAccessError(token, repo);
+    return `Couldn't update PROTOTYPE.md: ${access ?? explainError(e)}`;
+  }
+}
+
+/** Read the current feature's PROTOTYPE.md (local with no team), or a message. */
+export async function getPrototypeKnowledge(opts?: RemoteOpts): Promise<string> {
+  const repo = opts?.repo ?? resolveRepo();
+  if (!repo) {
+    return (
+      readLocal() ??
+      `No PROTOTYPE.md here yet — it's created automatically the first time I save a note or decision. ${LOCAL_HINT}`
+    );
+  }
+  // Active checkout → the workspace copy is the source of truth (it carries
+  // un-published notes alongside the code).
+  if (hasCheckout(repo)) {
+    return (
+      readWorkspaceProto(repo) ??
+      `${repo} has no PROTOTYPE.md yet — it's created automatically the first time I save a note or decision.`
+    );
+  }
+  const token = opts?.token ?? resolveGithubToken();
+  if (!token) return "Not signed in to GitHub — run /github, or work locally with no team.";
+  try {
+    const file = await getFile(token, repo, PROTOTYPE_FILE, opts?.branch);
+    if (!file) {
+      // A 404 here might mean the repo itself is unreachable, not just an absent
+      // file — distinguish so we don't promise a create that will then fail.
+      const access = await repoAccessError(token, repo);
+      return access
+        ? `Couldn't read PROTOTYPE.md: ${access}`
+        : `${repo} has no PROTOTYPE.md yet — it's created automatically the first time I save a note, decision, or update there. Nothing for you to do.`;
+    }
+    return file.content;
+  } catch (e) {
+    return `Couldn't read PROTOTYPE.md: ${explainError(e)}`;
+  }
+}
+
+/**
+ * Replace the feature's PROTOTYPE.md with an improved version (local with no
+ * team). The caller passes the full Markdown body (frontmatter is managed); read
+ * the current file first with getPrototypeKnowledge, then improve and rewrite.
+ */
+export async function updatePrototype(content: string, opts?: RemoteOpts): Promise<string> {
+  const repo = opts?.repo ?? resolveRepo();
+  const date = todayISO();
+  const provided = parseFrontmatter(content); // tolerate content with or without frontmatter
+  if (!repo) {
+    const cur = readLocal();
+    const meta = { ...(cur ? parseFrontmatter(cur).meta : {}), ...provided.meta };
+    mkdirSync(localWorkspaceDir(), { recursive: true });
+    writeFileSync(
+      localPath(),
+      withFrontmatter(meta, "prototype", date, provided.body || content.trim()),
+      "utf8",
+    );
+    return `Updated the local PROTOTYPE.md. ${LOCAL_HINT}`;
+  }
+  // Active checkout → rewrite the workspace copy (publishes with the build).
+  if (hasCheckout(repo)) {
+    const cur = readWorkspaceProto(repo);
+    const meta = { ...(cur ? parseFrontmatter(cur).meta : {}), ...provided.meta };
+    writeFileSync(
+      workspaceProtoPath(repo),
+      withFrontmatter(meta, featureName(repo), date, provided.body || content.trim()),
+      "utf8",
+    );
+    return `Updated the prototype's PROTOTYPE.md — it publishes to ${repo} with the build.`;
+  }
+  const token = opts?.token ?? resolveGithubToken();
+  if (!token) return "Not signed in to GitHub — run /github, or work locally with no team.";
+  try {
+    const author = (await githubViewer(token)) ?? undefined;
+    const feature = featureName(repo);
+    const { commitUrl } = await commitFile(
+      token,
+      repo,
+      PROTOTYPE_FILE,
+      (cur) => {
+        const meta = { ...(cur ? parseFrontmatter(cur).meta : {}), ...provided.meta };
+        return withFrontmatter(meta, feature, date, provided.body || content.trim(), author);
+      },
+      `PROTOTYPE.md: update`,
+      opts?.branch,
+    );
+    return `Updated ${repo}'s PROTOTYPE.md${commitUrl ? ` — ${commitUrl}` : ""}.`;
+  } catch (e) {
+    const access = await repoAccessError(token, repo);
+    return `Couldn't update PROTOTYPE.md: ${access ?? explainError(e)}`;
+  }
+}

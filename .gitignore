@@ -1,0 +1,33 @@
+node_modules/
+dist/
+release/
+.turbo/
+*.log
+
+# Local Claude Code project instructions & settings — kept out of the repo.
+CLAUDE.md
+.claude/
+
+# secrets & local data
+.env
+*.db
+*.db-*
+.hemiunu/
+
+# Per-project memory the agent writes when run from THIS repo during dev
+# (HEMIUNU.md is meant to be committed in real user projects, just not here).
+# The global user.md lives in ~/.hemiunu (covered by .hemiunu/ above), and any
+# legacy per-user files under context/ are ignored too.
+/HEMIUNU.md
+context/user.md
+context/memory.md
+
+# generated wireframes / prototypes (agent output, not source)
+prototypes/
+
+# stray MCP tool output (e.g. Playwright snapshots) — never belongs in the repo;
+# the Playwright MCP is configured to write to ~/.hemiunu/tmp/playwright instead.
+.playwright-mcp/
+
+# macOS Finder metadata
+.DS_Store

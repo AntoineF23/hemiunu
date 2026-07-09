@@ -1,0 +1,23 @@
+{
+  "name": "@hemiunu/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hemiunu/agent-core": "workspace:*",
+    "@hemiunu/engine": "workspace:*",
+    "@hemiunu/format": "workspace:*",
+    "@hemiunu/mcp": "workspace:*",
+    "@hemiunu/memory": "workspace:*",
+    "ink": "^7.1.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17"
+  }
+}

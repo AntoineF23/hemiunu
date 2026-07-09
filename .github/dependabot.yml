@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # npm/pnpm dependencies across the workspace. Dependabot reads the pnpm
+  # lockfile and opens grouped PRs so routine minor/patch bumps don't sprawl.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # Supply-chain hygiene: don't propose a version the moment it's published (a
+    # common vector for compromised releases). Let it age first — Dependabot's
+    # cooldown holds a new version back for this many days before opening a PR.
+    cooldown:
+      default-days: 7
+    # Don't auto-open major-version bumps — they can carry breaking changes and
+    # deserve a deliberate, hands-on upgrade. Minor/patch flow automatically.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # Keep the GitHub Actions in .github/workflows up to date too.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

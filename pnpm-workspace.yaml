@@ -1,0 +1,18 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Native/postinstall build scripts we trust. esbuild (via tsx) and
+# better-sqlite3 (the conversation store) each ship one; approve them so pnpm
+# builds them instead of warning (and so CI builds the SQLite binding).
+# `allowBuilds` is what this pnpm distribution writes/reads for approval;
+# `onlyBuiltDependencies` is the upstream-standard key CI's pnpm honors. Keep
+# both so the build runs locally and on a clean CI runner alike.
+allowBuilds:
+  esbuild: true
+  better-sqlite3: true
+onlyBuiltDependencies:
+  - esbuild
+  - better-sqlite3
+
+verifyDepsBeforeRun: false
