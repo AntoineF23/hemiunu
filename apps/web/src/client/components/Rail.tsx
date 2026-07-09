@@ -24,14 +24,7 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./Avatar";
 
 export type Panel =
-  | "conversations"
-  | "teams"
-  | "prototypes"
-  | "atlas"
-  | "memory"
-  | "skills"
-  | "mcp"
-  | "settings";
+  "conversations" | "teams" | "prototypes" | "atlas" | "memory" | "skills" | "mcp" | "settings";
 
 interface RailProps {
   collapsed: boolean;

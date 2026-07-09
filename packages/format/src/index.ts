@@ -86,8 +86,7 @@ export function toolPreview(input: unknown): string {
   if (str(i.mcp)) return str(i.mcp);
   if (str(i.prompt)) return `“${clip(str(i.prompt), 60)}”`;
   const firstStr = Object.values(i).find((v) => typeof v === "string" && v.trim()) as
-    | string
-    | undefined;
+    string | undefined;
   return firstStr ? clip(firstStr.trim(), 60) : "";
 }
 

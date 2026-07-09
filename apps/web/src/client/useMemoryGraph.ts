@@ -2,14 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getJSON } from "./lib/api";
 
 export type MemoryNodeKind =
-  | "agent"
-  | "persona"
-  | "user"
-  | "knowledge"
-  | "skill"
-  | "source"
-  | "prototype"
-  | "context";
+  "agent" | "persona" | "user" | "knowledge" | "skill" | "source" | "prototype" | "context";
 
 export interface MemoryNode {
   id: string;

@@ -48,8 +48,7 @@ export class ConversationStore {
   /** Remembered file-access decision for a folder (undefined = never asked). */
   getFolderTrust(path: string): boolean | undefined {
     const row = this.db.prepare("SELECT allowed FROM folder_trust WHERE path = ?").get(path) as
-      | { allowed?: number }
-      | undefined;
+      { allowed?: number } | undefined;
     return row ? row.allowed === 1 : undefined;
   }
 

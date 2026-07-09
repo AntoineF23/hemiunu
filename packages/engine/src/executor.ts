@@ -23,8 +23,7 @@ export interface ToolExecutor {
 
 /** What the permission callback decided (P2 consumes this in the pipeline). */
 export type PermissionDecision =
-  | { behavior: "allow"; updatedInput?: unknown }
-  | { behavior: "deny"; message?: string };
+  { behavior: "allow"; updatedInput?: unknown } | { behavior: "deny"; message?: string };
 
 /** Interactive permission callback (yes / always / no), carried in options. */
 export type CanUseTool = (

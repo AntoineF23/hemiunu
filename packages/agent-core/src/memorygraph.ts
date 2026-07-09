@@ -16,14 +16,7 @@ import { SUBAGENTS, SUBAGENT_NAMES } from "./subagents";
  */
 
 export type MemoryNodeKind =
-  | "agent"
-  | "persona"
-  | "user"
-  | "knowledge"
-  | "skill"
-  | "source"
-  | "prototype"
-  | "context";
+  "agent" | "persona" | "user" | "knowledge" | "skill" | "source" | "prototype" | "context";
 
 export interface MemoryNode {
   id: string;

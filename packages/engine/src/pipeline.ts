@@ -13,8 +13,7 @@ export type PolicyDecision = "allow" | "ask" | "block";
 
 /** What the interactive gate answers (same shape as the SDK's canUseTool). */
 export type CanUseToolResult =
-  | { behavior: "allow"; updatedInput?: unknown }
-  | { behavior: "deny"; message: string };
+  { behavior: "allow"; updatedInput?: unknown } | { behavior: "deny"; message: string };
 
 export interface PipelineConfig {
   tools: HemiTool[];
