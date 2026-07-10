@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { attachmentsBlock, knowledgeDoc } from "./overlay";
@@ -23,6 +24,18 @@ function knowledge(name: string, root: string = process.env.HEMIUNU_HOME ?? proc
   if (override) return override;
   const path = join(root, "context", "knowledge", `${name}.md`);
   return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
+}
+
+/**
+ * A short content hash of a knowledge pack (override-aware) plus whether it's a
+ * user override (`~/.hemiunu`) rather than the shipped pack. Used as a telemetry
+ * attribute so a team can correlate edits to a pack with changes in the agent's
+ * traced behaviour — the eval signal for prompt-engineering the packs.
+ */
+export function knowledgeHash(name: string): { hash: string; override: boolean } {
+  const doc = knowledge(name);
+  const hash = doc ? createHash("sha256").update(doc).digest("hex").slice(0, 12) : "none";
+  return { hash, override: !!knowledgeDoc(name) };
 }
 
 /**

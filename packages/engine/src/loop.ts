@@ -37,6 +37,24 @@ import {
 import { isJsonSchemaInput, type HemiTool, type PermissionMode, type ToolContext } from "./tool";
 import type { TranscriptMessage, TranscriptStore } from "./transcript";
 import { withWorkspace, type WorkspaceContext } from "./workspace";
+import { SpanStatusCode } from "@opentelemetry/api";
+import {
+  contentAttr,
+  ctxWith,
+  otelContext,
+  recordContent,
+  startSpan,
+  telemetryEnabled,
+} from "./telemetry";
+
+/** JSON-serialize a tool input/output for a span attribute (never throws). */
+function spanJson(v: unknown): string {
+  try {
+    return typeof v === "string" ? v : JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
 
 /** The one non-read-only tool that stays advertised in plan mode. */
 export const PLAN_EXIT_TOOL = "exit_plan_mode";
@@ -106,6 +124,11 @@ export interface RunTurnOptions {
   compactionCheck?: CompactionCheck;
   /** Test/DI seam: skip registry resolution and use this model directly. */
   resolvedModel?: ResolvedModel;
+  /** OpenTelemetry span naming + attributes for this turn. Subagent runs set a
+   *  `functionId` (e.g. "hemiunu.subagent.designer") and knowledge-pack
+   *  attributes so their spans are labelled and attributable. No-op when OTel
+   *  is off. */
+  telemetry?: { functionId?: string; attributes?: Record<string, string | number | boolean> };
 }
 
 /**
@@ -140,20 +163,26 @@ export async function* runTurn(opts: RunTurnOptions): AsyncGenerator<TurnEvent> 
     f();
   };
 
+  // Capture the active OTel context so spans created inside the detached IIFE
+  // (which the async-context relay would otherwise orphan) still nest under the
+  // caller's span — the same reason the workspace binding is re-established here.
+  const parentCtx = otelContext.active();
   withWorkspace(opts.workspace, () => {
-    void (async () => {
-      try {
-        for await (const event of turnLoop(opts)) {
-          buffer.push(event);
+    void otelContext.with(parentCtx, () =>
+      (async () => {
+        try {
+          for await (const event of turnLoop(opts)) {
+            buffer.push(event);
+            wake();
+          }
+        } catch (e) {
+          failure = e;
+        } finally {
+          done = true;
           wake();
         }
-      } catch (e) {
-        failure = e;
-      } finally {
-        done = true;
-        wake();
-      }
-    })();
+      })(),
+    );
   });
 
   while (true) {
@@ -174,6 +203,16 @@ async function* turnLoop(opts: RunTurnOptions): AsyncGenerator<TurnEvent> {
   const tools = opts.tools ?? [];
   const executor = opts.executor ?? new DirectExecutor(tools);
   const maxSteps = opts.maxSteps ?? DEFAULT_MAX_STEPS;
+
+  // The turn span — parent of every step / model / tool / subagent span. No-op
+  // (undefined) when telemetry is off, so the rest of the loop stays branch-free.
+  const turnSpan = startSpan(opts.telemetry?.functionId ?? "hemiunu.turn", {
+    "hemiunu.conversation_id": conversationId,
+    "hemiunu.model": entry.id,
+    "hemiunu.permission_mode": opts.permissionMode ?? "default",
+    ...(opts.telemetry?.attributes ?? {}),
+  });
+  const turnCtx = ctxWith(turnSpan);
 
   // History: the latest compaction summary rides in the system prompt; live
   // (non-superseded, post-compaction) messages come back verbatim. Because the
@@ -201,11 +240,15 @@ async function* turnLoop(opts: RunTurnOptions): AsyncGenerator<TurnEvent> {
   let mode: PermissionMode = opts.permissionMode ?? "default";
   const pending: TurnEvent[] = [];
   let notify: (() => void) | undefined;
+  // Permission decision per tool-call id, captured off the event stream so the
+  // tool span can record who authorized the call.
+  const decisions = new Map<string, "auto" | "policy" | "user">();
   const ctx: ToolContext = {
     workspace: opts.workspace,
     signal,
     conversationId,
     emit: (e) => {
+      if (e.type === "permission-note") decisions.set(e.id, e.decision);
       pending.push(e);
       notify?.();
     },
@@ -244,131 +287,214 @@ async function* turnLoop(opts: RunTurnOptions): AsyncGenerator<TurnEvent> {
   let lastStepUsage = emptyUsage();
   let finalText = "";
   let stopReason: StopReason = "end";
+  let toolErrors = 0;
+  let stepIndex = 0;
 
-  turn: while (true) {
-    if (signal.aborted) {
-      stopReason = "aborted";
-      break;
-    }
-    if (total.steps >= maxSteps) {
-      stopReason = "max-steps";
-      break;
-    }
-    // Plan mode: advertise only read-only tools plus the plan-exit tool.
-    // Recomputed every step because a tool may setMode() mid-turn. Resolved
-    // BEFORE the compaction check so the estimate counts the schemas actually
-    // going on this call.
-    const active =
-      mode === "plan" ? tools.filter((t) => t.readOnly || t.name === PLAN_EXIT_TOOL) : tools;
-
-    const compaction = await opts.compactionCheck?.({
-      conversationId,
-      messages,
-      entry,
-      usage: lastStepUsage,
-      system,
-      tools: active,
-    });
-    if (compaction) yield { type: "compaction", summary: compaction.summary };
-
-    const wire = wireMessages(system, messages, entry);
-    const result = streamText({
-      model: resolved.languageModel,
-      messages: wire,
-      allowSystemInMessages: true,
-      tools: toToolSet(active),
-      stopWhen: stepCountIs(1),
-      abortSignal: signal,
-      providerOptions: resolved.providerOptions as Parameters<
-        typeof streamText
-      >[0]["providerOptions"],
-    });
-
-    let stepText = "";
-    let stepUsage = emptyUsage();
-    let finishReason: string | undefined;
-    const calls: ToolCall[] = [];
-    try {
-      for await (const part of result.fullStream) {
-        switch (part.type) {
-          case "text-delta":
-            stepText += part.text;
-            yield { type: "text-delta", text: part.text };
-            break;
-          case "reasoning-delta":
-            yield { type: "reasoning-delta", text: part.text };
-            break;
-          case "tool-call": {
-            const c = part as unknown as { toolCallId: string; toolName: string; input: unknown };
-            calls.push({ id: c.toolCallId, name: c.toolName, input: c.input });
-            yield { type: "tool-start", id: c.toolCallId, name: c.toolName, input: c.input };
-            break;
-          }
-          case "finish-step":
-            stepUsage = toTurnUsage(part.usage);
-            finishReason = part.finishReason;
-            break;
-          case "abort":
-            stopReason = "aborted";
-            break turn;
-          case "error":
-            warnWireShape(part.error, wire);
-            yield { type: "error", message: describe(part.error) };
-            stopReason = "error";
-            break turn;
-        }
-      }
-    } catch (e) {
+  try {
+    turn: while (true) {
       if (signal.aborted) {
         stopReason = "aborted";
         break;
       }
-      warnWireShape(e, wire);
-      yield { type: "error", message: describe(e) };
-      stopReason = "error";
-      break;
-    }
+      if (total.steps >= maxSteps) {
+        stopReason = "max-steps";
+        break;
+      }
+      // Plan mode: advertise only read-only tools plus the plan-exit tool.
+      // Recomputed every step because a tool may setMode() mid-turn. Resolved
+      // BEFORE the compaction check so the estimate counts the schemas actually
+      // going on this call.
+      const active =
+        mode === "plan" ? tools.filter((t) => t.readOnly || t.name === PLAN_EXIT_TOOL) : tools;
 
-    total = addUsage(total, stepUsage);
-    lastStepUsage = stepUsage;
-    if (stepText) finalText = stepText;
-    yield { type: "step-finish", usage: stepUsage };
-
-    // Persist what the model said (assistant message incl. tool-call parts).
-    // The stream's `calls[]` are authoritative for what we execute below, so
-    // reconcile the snapshot against them — never persist a tool result whose
-    // tool-call is missing from the assistant message (a provider-rejected
-    // orphan; see ensureAssistantToolCalls).
-    const stepMessages = ensureAssistantToolCalls(
-      (await result.response).messages as TranscriptMessage[],
-      calls,
-    );
-    messages.push(...stepMessages);
-    opts.transcript?.append(conversationId, stepMessages);
-
-    if (finishReason !== "tool-calls" || calls.length === 0) break;
-
-    // Run the tool calls through the executor seam and pair each with its
-    // tool-start. An abort mid-batch synthesizes error results for the rest
-    // so the transcript stays resumable (every tool call has a result).
-    const results: Extract<TranscriptMessage, { role: "tool" }>["content"] = [];
-    for (const call of calls) {
-      const output: ToolOutput = signal.aborted
-        ? { content: "Tool execution aborted.", isError: true }
-        : yield* emitDuring(execSafe(executor, call, ctx));
-      yield { type: "tool-result", id: call.id, name: call.name, output };
-      results.push({
-        type: "tool-result",
-        toolCallId: call.id,
-        toolName: call.name,
-        output: output.isError
-          ? { type: "error-text", value: output.content }
-          : { type: "text", value: output.content },
+      const compaction = await opts.compactionCheck?.({
+        conversationId,
+        messages,
+        entry,
+        usage: lastStepUsage,
+        system,
+        tools: active,
       });
+      if (compaction) yield { type: "compaction", summary: compaction.summary };
+
+      // One step span per model round-trip. The AI-SDK model span (from
+      // experimental_telemetry) and any tool spans nest under it via stepCtx.
+      const stepSpan = startSpan(
+        "hemiunu.step",
+        { "hemiunu.step": stepIndex, "hemiunu.model": entry.id },
+        turnCtx,
+      );
+      const stepCtx = ctxWith(stepSpan, turnCtx);
+      try {
+        const wire = wireMessages(system, messages, entry);
+        const result = otelContext.with(stepCtx, () =>
+          streamText({
+            model: resolved.languageModel,
+            messages: wire,
+            allowSystemInMessages: true,
+            tools: toToolSet(active),
+            stopWhen: stepCountIs(1),
+            abortSignal: signal,
+            providerOptions: resolved.providerOptions as Parameters<
+              typeof streamText
+            >[0]["providerOptions"],
+            // The GenAI model span nests under our hemiunu.step span (via
+            // stepCtx), which already carries conversation/model/knowledge-pack
+            // attributes — so this only needs the enable + content flags. (v7's
+            // TelemetryOptions has no `metadata` field.)
+            experimental_telemetry: telemetryEnabled()
+              ? {
+                  isEnabled: true,
+                  functionId: opts.telemetry?.functionId ?? "hemiunu.turn",
+                  recordInputs: recordContent(),
+                  recordOutputs: recordContent(),
+                }
+              : undefined,
+          }),
+        );
+
+        let stepText = "";
+        let stepUsage = emptyUsage();
+        let finishReason: string | undefined;
+        const calls: ToolCall[] = [];
+        try {
+          for await (const part of result.fullStream) {
+            switch (part.type) {
+              case "text-delta":
+                stepText += part.text;
+                yield { type: "text-delta", text: part.text };
+                break;
+              case "reasoning-delta":
+                yield { type: "reasoning-delta", text: part.text };
+                break;
+              case "tool-call": {
+                const c = part as unknown as {
+                  toolCallId: string;
+                  toolName: string;
+                  input: unknown;
+                };
+                calls.push({ id: c.toolCallId, name: c.toolName, input: c.input });
+                yield { type: "tool-start", id: c.toolCallId, name: c.toolName, input: c.input };
+                break;
+              }
+              case "finish-step":
+                stepUsage = toTurnUsage(part.usage);
+                finishReason = part.finishReason;
+                break;
+              case "abort":
+                stopReason = "aborted";
+                break turn;
+              case "error":
+                warnWireShape(part.error, wire);
+                yield { type: "error", message: describe(part.error) };
+                stopReason = "error";
+                break turn;
+            }
+          }
+        } catch (e) {
+          if (signal.aborted) {
+            stopReason = "aborted";
+            break;
+          }
+          warnWireShape(e, wire);
+          yield { type: "error", message: describe(e) };
+          stopReason = "error";
+          break;
+        }
+
+        total = addUsage(total, stepUsage);
+        lastStepUsage = stepUsage;
+        if (stepText) finalText = stepText;
+        yield { type: "step-finish", usage: stepUsage };
+
+        if (stepSpan) {
+          if (finishReason) stepSpan.setAttribute("hemiunu.finish_reason", finishReason);
+          stepSpan.setAttribute("hemiunu.usage.input_tokens", stepUsage.inputTokens);
+          stepSpan.setAttribute("hemiunu.usage.output_tokens", stepUsage.outputTokens);
+          stepSpan.setAttribute("hemiunu.usage.cache_read_tokens", stepUsage.cacheReadTokens);
+          const t = contentAttr(stepText);
+          if (t) stepSpan.setAttribute("hemiunu.step.text", t);
+        }
+
+        // Persist what the model said (assistant message incl. tool-call parts).
+        // The stream's `calls[]` are authoritative for what we execute below, so
+        // reconcile the snapshot against them — never persist a tool result whose
+        // tool-call is missing from the assistant message (a provider-rejected
+        // orphan; see ensureAssistantToolCalls).
+        const stepMessages = ensureAssistantToolCalls(
+          (await result.response).messages as TranscriptMessage[],
+          calls,
+        );
+        messages.push(...stepMessages);
+        opts.transcript?.append(conversationId, stepMessages);
+
+        if (finishReason !== "tool-calls" || calls.length === 0) break;
+
+        // Run the tool calls through the executor seam and pair each with its
+        // tool-start. An abort mid-batch synthesizes error results for the rest
+        // so the transcript stays resumable (every tool call has a result).
+        const results: Extract<TranscriptMessage, { role: "tool" }>["content"] = [];
+        for (const call of calls) {
+          // Tool span — nested under the step. Captures input, result, the
+          // permission decision, duration; and, for `delegate`, the subagent's
+          // whole span subtree (execSafe runs within toolCtx).
+          const toolSpan = startSpan(
+            `hemiunu.tool.${call.name}`,
+            {
+              "hemiunu.tool.name": call.name,
+              "hemiunu.tool.id": call.id,
+              ...(contentAttr(spanJson(call.input))
+                ? { "hemiunu.tool.input": contentAttr(spanJson(call.input))! }
+                : {}),
+            },
+            stepCtx,
+          );
+          const toolCtx = ctxWith(toolSpan, stepCtx);
+          const startedAt = Date.now();
+          const output: ToolOutput = signal.aborted
+            ? { content: "Tool execution aborted.", isError: true }
+            : yield* emitDuring(otelContext.with(toolCtx, () => execSafe(executor, call, ctx)));
+          if (output.isError) toolErrors += 1;
+          if (toolSpan) {
+            toolSpan.setAttribute("hemiunu.tool.duration_ms", Date.now() - startedAt);
+            toolSpan.setAttribute("hemiunu.tool.is_error", !!output.isError);
+            const decision = decisions.get(call.id);
+            if (decision) toolSpan.setAttribute("hemiunu.tool.decision", decision);
+            const resultAttr = contentAttr(output.content);
+            if (resultAttr) toolSpan.setAttribute("hemiunu.tool.result", resultAttr);
+            if (output.isError) toolSpan.setStatus({ code: SpanStatusCode.ERROR });
+            toolSpan.end();
+          }
+          yield { type: "tool-result", id: call.id, name: call.name, output };
+          results.push({
+            type: "tool-result",
+            toolCallId: call.id,
+            toolName: call.name,
+            output: output.isError
+              ? { type: "error-text", value: output.content }
+              : { type: "text", value: output.content },
+          });
+        }
+        const toolMessage: TranscriptMessage = { role: "tool", content: results };
+        messages.push(toolMessage);
+        opts.transcript?.append(conversationId, [toolMessage]);
+        stepIndex += 1;
+      } finally {
+        stepSpan?.end();
+      }
     }
-    const toolMessage: TranscriptMessage = { role: "tool", content: results };
-    messages.push(toolMessage);
-    opts.transcript?.append(conversationId, [toolMessage]);
+  } finally {
+    if (turnSpan) {
+      turnSpan.setAttribute("hemiunu.usage.input_tokens", total.inputTokens);
+      turnSpan.setAttribute("hemiunu.usage.output_tokens", total.outputTokens);
+      turnSpan.setAttribute("hemiunu.usage.cache_read_tokens", total.cacheReadTokens);
+      turnSpan.setAttribute("hemiunu.usage.steps", total.steps);
+      turnSpan.setAttribute("hemiunu.cost_usd", costUsd(entry, total));
+      turnSpan.setAttribute("hemiunu.stop_reason", stopReason);
+      turnSpan.setAttribute("hemiunu.tool_errors", toolErrors);
+      if (stopReason === "error") turnSpan.setStatus({ code: SpanStatusCode.ERROR });
+      turnSpan.end();
+    }
   }
 
   yield {

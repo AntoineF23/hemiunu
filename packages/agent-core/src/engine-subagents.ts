@@ -36,7 +36,13 @@ import { defineTool, ok } from "./hemitools/helpers";
 import { attachmentsBlock } from "./overlay";
 import { PARALLEL_TOOL_ID } from "./orchestrator";
 import { createHemiPipelineConfig } from "./pipeline-wiring";
-import { SUBAGENTS, SUBAGENT_GUARD, subagentPrompt, type SubagentName } from "./subagents";
+import {
+  SUBAGENTS,
+  SUBAGENT_GUARD,
+  knowledgeHash,
+  subagentPrompt,
+  type SubagentName,
+} from "./subagents";
 
 /** The engine's delegation tool — the replacement for the SDK's `Task`. */
 export const DELEGATE_TOOL_NAME = "delegate";
@@ -178,6 +184,35 @@ function resolveAgent(
 }
 
 /**
+ * Telemetry span naming + attributes for a subagent run: labels the span
+ * `hemiunu.subagent.<name>` and attaches the tier and (for a builtin with a
+ * knowledge pack) the pack name, content hash, and override flag — so its
+ * traces are attributable to the exact knowledge that drove them.
+ */
+function subagentTelemetry(
+  agent: string,
+  modelId: string,
+): { functionId: string; attributes: Record<string, string | number | boolean> } {
+  const attributes: Record<string, string | number | boolean> = {
+    "hemiunu.subagent": agent,
+    "hemiunu.model": modelId,
+  };
+  if (isBuiltin(agent)) {
+    const spec = SUBAGENTS[agent];
+    attributes["hemiunu.tier"] = spec.tier;
+    if (spec.knowledge) {
+      const { hash, override } = knowledgeHash(spec.knowledge.name);
+      attributes["hemiunu.knowledge_pack"] = spec.knowledge.name;
+      attributes["hemiunu.knowledge_hash"] = hash;
+      attributes["hemiunu.knowledge_override"] = override;
+    }
+  } else {
+    attributes["hemiunu.tier"] = "custom";
+  }
+  return { functionId: `hemiunu.subagent.${agent}`, attributes };
+}
+
+/**
  * Run one subagent to completion on the ENGINE loop and return its final text.
  * The sub-run is ephemeral (no TranscriptStore), auto-approved (persistent
  * "block" still refuses via the pipeline's policy step), bound to the parent's
@@ -246,6 +281,7 @@ export async function runEngineSubagent(
       abortController,
       workspace: opts.workspace,
       maxSteps: ctx.maxSteps,
+      telemetry: subagentTelemetry(resolved.name, resolved.modelId),
       // Ephemeral history (no TranscriptStore), but the compactor keeps the
       // window bounded so a long tool session can't blow the model's context.
       compactionCheck: compactor.check,

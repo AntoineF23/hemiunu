@@ -62,6 +62,7 @@ import {
   type EngineRuntime,
 } from "@hemiunu/agent-core";
 import {
+  initTelemetry,
   keyEnvFor,
   loadModelRegistry,
   modelForTag,
@@ -69,6 +70,7 @@ import {
   PLAN_REFINE_MESSAGE,
   registryReady,
   resolveDefaultModel,
+  shutdownTelemetry,
   type CanUseToolResult,
   type ModelEntry,
 } from "@hemiunu/engine";
@@ -2213,6 +2215,10 @@ async function main() {
     printHelp();
     return;
   }
+
+  // Start OpenTelemetry if the operator opted in (HEMIUNU_OTEL / OTEL_* env).
+  // No-op otherwise; spans are flushed in the shutdown sequence below.
+  initTelemetry();
   // Hemiunu's HOME (its config: soul.md, mcp.json, context/) is the install
   // dir when launched via the `hemiunu` command, else the current dir (running
   // from the repo). This is separate from the launch dir, which the agent reads
@@ -2283,6 +2289,7 @@ async function main() {
   await app.waitUntilExit();
   stopPreview(); // tear down any running localhost preview
   await runtime.shutdown(); // close MCP clients + the engine transcript store
+  await shutdownTelemetry(); // flush buffered spans before the process exits
   store.close();
 }
 

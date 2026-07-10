@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { initTelemetry, shutdownTelemetry } from "@hemiunu/engine";
 import { Hono } from "hono";
 import { registerControlHandler } from "./control";
 import { bodyLimit, originGuard } from "./origin-guard";
@@ -56,6 +57,15 @@ const clientDir = join(import.meta.dirname, "..", "..", "dist", "client");
 if (existsSync(clientDir)) {
   app.use("/*", serveStatic({ root: clientDir }));
   app.get("/*", serveStatic({ path: join(clientDir, "index.html") }));
+}
+
+// Start OpenTelemetry once per worker process if the operator opted in
+// (HEMIUNU_OTEL / OTEL_* env). No-op otherwise. Flushed on shutdown below.
+initTelemetry();
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, () => {
+    void shutdownTelemetry().finally(() => process.exit(0));
+  });
 }
 
 // Fail fast with a clear message if the engine can't boot (e.g. bad config dir).

@@ -104,6 +104,23 @@ whose `runTurn()` is an **async generator**: both front-ends call it and stream 
   `models.json`, `skills/`, `sources/`), so updating the code never touches a
   user's setup.
 
+## Observability (OpenTelemetry)
+
+Tracing is **opt-in and off by default** (`packages/engine/src/telemetry.ts`). When
+the operator sets `HEMIUNU_OTEL=1` or an `OTEL_EXPORTER_OTLP_*` endpoint, the engine
+starts an OTLP exporter against the standard env contract, so a teammate running
+Hemiunu sees its traces in the observability stack they already run — nothing
+Hemiunu-specific to host. Each turn is a `hemiunu.turn` span with a `hemiunu.step`
+child per model round-trip; under each step sit the AI SDK's GenAI model span (via
+`experimental_telemetry`) and a `hemiunu.tool.<name>` span per tool call (input,
+result, permission decision) — the tool spans are ours because the loop runs tools
+itself (the SDK never does). A delegated subagent is a nested `hemiunu.subagent.<name>`
+span tagged with its knowledge pack + a content hash, so a team can correlate edits
+to `context/knowledge/*.md` with traced outcomes. Two privacy defaults: the actor is
+pseudonymous (a persisted random instance id — no host/user identity on the resource),
+and a redacting exporter scrubs secrets from recorded content. See `.env.example` for
+the full knob list.
+
 ## Build and runtime
 
 There is **no build step** in development: `tsx` runs the TypeScript directly, so

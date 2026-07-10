@@ -94,3 +94,14 @@ export { createWebFetchTool, extractReadableMarkdown, isPrivateAddress } from ".
 
 export type { PlanDecision, PlanDecisionEffects } from "./plan";
 export { PLAN_DECISIONS, PLAN_REFINE_MESSAGE, isPlanDecision, applyPlanDecision } from "./plan";
+
+export type { RedactLevel } from "./telemetry";
+export {
+  initTelemetry,
+  shutdownTelemetry,
+  telemetryEnabled,
+  recordContent,
+  redact,
+  redactLevel,
+  actorId,
+} from "./telemetry";
