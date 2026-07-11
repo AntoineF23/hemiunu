@@ -357,6 +357,66 @@ server is auto-skipped if it is `disabled` or any of its env vars are unset. The
 only built-in default is the **filesystem** server (it reads the folder you launch
 in).
 
+### Observability (OpenTelemetry)
+
+Hemiunu can emit **OpenTelemetry traces** of everything it does — off by default,
+and a no-op until you turn it on. It speaks the **standard OTLP env contract**, so
+it exports to whatever collector your team already runs (Jaeger, Grafana Tempo,
+Honeycomb, Datadog, an OTel Collector, …) — nothing Hemiunu-specific to host. Anyone
+who runs the agent from GitHub gets the same traces in their own stack.
+
+**Turn it on** by pointing it at your collector (or forcing it on):
+
+```bash
+# in ~/.hemiunu/.env  (or your shell env)
+HEMIUNU_OTEL=1
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318      # your collector
+# OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer%20... # e.g. a SaaS backend
+```
+
+No collector handy? Run one locally in seconds and open <http://localhost:16686>:
+
+```bash
+docker run --rm -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one
+HEMIUNU_OTEL=1 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 hemiunu
+```
+
+**What you get** — one span tree per turn:
+
+```
+hemiunu.turn            (model, tokens, cost, stop reason)
+├── hemiunu.step[0]     (one per model round-trip)
+│   ├── ai.streamText   (the GenAI model call: prompt, tokens, output)
+│   └── hemiunu.tool.web_search   (input, result, permission decision, ms)
+└── hemiunu.step[1]
+    └── hemiunu.tool.delegate
+        └── hemiunu.subagent.designer
+            (knowledge_pack=hifi-design, knowledge_hash=…, override=true)
+            └── hemiunu.step… → ai.streamText + hemiunu.tool.save_prototype …
+```
+
+**Use it to improve the agent.** Each subagent span is tagged with the
+`context/knowledge/*.md` pack that drove it plus a **content hash**. Edit a pack
+(shipped, or your `~/.hemiunu` override), run the same task again, and compare the
+two traces by `knowledge_hash` — that is prompt-engineering your agent with evidence
+instead of guessing. Model, token, and cost attributes on every span also make it
+easy to spot which model/step is slow or expensive.
+
+**Privacy.** Two defaults keep shared traces safe: the actor is **pseudonymous** (a
+random, persisted instance id — no host name or user identity), and a **redacting
+exporter** scrubs API keys/tokens out of recorded content. Prompt/output content is
+recorded by default (richest for evaluation); dial it back if you need to.
+
+| Variable (`~/.hemiunu/.env`) | Purpose |
+| --- | --- |
+| `HEMIUNU_OTEL` | `1` to enable, `0` to force off. If unset, auto-enables when an `OTEL_EXPORTER_OTLP_*` endpoint is present. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Your collector's OTLP/HTTP endpoint (e.g. `http://localhost:4318`). Standard OTel var. |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` | Standard OTel: auth headers for a hosted backend; service name (default `hemiunu`). |
+| `HEMIUNU_OTEL_RECORD_CONTENT` | Record prompt/output text on spans. Default `1`; set `0` for metadata-only. |
+| `HEMIUNU_OTEL_REDACT` | Content redaction level: `secrets` (default) · `pii` (also emails/phones) · `off` · `all` (drop content). |
+| `HEMIUNU_OTEL_ACTOR` | Override the random instance id with a team-chosen pseudonym. |
+| `HEMIUNU_OTEL_REDACT_PATTERNS` | Extra redaction regexes (one per line) applied to recorded content. |
+
 ## CLI essentials
 
 - **Slash commands.** Type `/help` for the full grouped list. Highlights: `/plan`
