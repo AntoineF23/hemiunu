@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "4.0.5",
-    "@ai-sdk/google": "4.0.6",
-    "@ai-sdk/openai": "4.0.5",
-    "@ai-sdk/openai-compatible": "3.0.3",
+    "@ai-sdk/anthropic": "4.0.10",
+    "@ai-sdk/google": "4.0.10",
+    "@ai-sdk/openai": "4.0.9",
+    "@ai-sdk/openai-compatible": "3.0.6",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@mozilla/readability": "0.6.0",
     "@opentelemetry/api": "^1.9.1",
@@ -23,14 +23,14 @@
     "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@opentelemetry/semantic-conventions": "^1.42.0",
-    "ai": "7.0.11",
+    "ai": "7.0.18",
     "better-sqlite3": "^11.8.0",
-    "linkedom": "0.18.12",
+    "linkedom": "0.18.13",
     "turndown": "7.2.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "4.0.1",
+    "@ai-sdk/provider": "4.0.2",
     "@types/better-sqlite3": "^7.6.11",
     "@types/turndown": "5.0.6"
   }
