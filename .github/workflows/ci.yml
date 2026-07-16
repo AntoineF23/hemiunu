@@ -31,7 +31,7 @@ jobs:
 
       # Node 22+ is required: the pinned pnpm@11.8.0 uses the node:sqlite
       # builtin, which only exists in Node 22.13+.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
